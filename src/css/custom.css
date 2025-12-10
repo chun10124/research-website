@@ -5,26 +5,77 @@
  */
 
 /* You can override the default Infima variables here. */
+
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
+  /* ------------------------------------------------------------- */
+  /* 高亮香檳金/石墨藍 (Light Mode) */
+
+  /* 主色：將香檳金的亮度提高，使其更顯眼 */
+  --ifm-color-primary: #C9A464;        /* 基礎主色：明亮香檳金 */
+  --ifm-color-primary-dark: #A6874E;    
+  --ifm-color-primary-darker: #927544;
+  --ifm-color-primary-darkest: #6E5B35;
+  --ifm-color-primary-light: #D4B67F;   
+  --ifm-color-primary-lighter: #DDC391;
+  --ifm-color-primary-lightest: #E8D3AE;
+  
+  /* 文字顏色：極深墨黑 */
+  --ifm-font-color-base: #101010; 
+  /* 背景顏色：純淨的白色 */
+  --ifm-background-color: #ffffff;
+
+  /* 調整連結顏色：連結本身為香檳金 */
+  --ifm-link-color: var(--ifm-color-primary);
+
   --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.05);
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  /* 主色：維持亮香檳金作為暗模式的高亮色 */
+  --ifm-color-primary: #D4AF37;       
+  /* 背景顏色：極深石墨藍/灰 */
+  --ifm-background-color: #1a1a1a;
+  /* 文字顏色：高亮的淺灰 */
+  --ifm-font-color-base: #e0e0e0; 
+  
+  --ifm-link-color: var(--ifm-color-primary);
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.15);
+}
+
+/* 將 footer 推到視窗底部的 CSS 修復 */
+
+/* 1. 設定 HTML 和 Body 佔據整個視窗高度 */
+html,
+body {
+  height: 100%;
+}
+
+/* 2. 設定 Docusaurus 的根元素佔據整個視窗高度 */
+#___docusaurus {
+  height: 100%;
+}
+
+/* 3. 使用 Flexbox 確保頁腳被推到底部 */
+.main-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh; /* 確保內容區塊至少佔據整個視窗的高度 */
+}
+
+/* 4. 確保主內容區塊能彈性成長，將頁腳推到最底 */
+.main-wrapper main {
+  flex: 1 0 auto;
+}
+
+.navbar__brand img {
+  /* 設置圓角半徑為 50%，將正方形變成圓形 */
+  border-radius: 50%; 
+  
+  /* (可選) 設置Logo尺寸，確保它不會太大或太小 */
+  width: 40px; /* 根據您的需求調整寬度 */
+  height: 40px; /* 根據您的需求調整高度 */
+  
+  /* 確保裁切 Logo 時，邊緣清晰銳利 */
+  object-fit: cover; 
 }

@@ -1,0 +1,90 @@
+/* StockLinkGenerator.module.css - 嚴格只縮小尺寸版 */
+
+/* 工具容器：保留原始裝飾，只縮小 padding 和 margin */
+.container {
+  padding: 10px; /* 從 20px 縮小 */
+  max-width: 450px; /* 從 600px 縮小更多 */
+  margin: 10px 0 10px 0;/* 從 20px 縮小 */
+  
+  /* VVVV 保持原始風格 VVVV */
+  border: 1px solid var(--ifm-color-primary-light); 
+  border-radius: 8px; 
+  background-color: var(--ifm-background-color);
+}
+
+/* 輸入組：減少間距 */
+.inputGroup {
+  display: flex;
+  gap: 6px; /* 從 10px 縮小 */
+  margin-bottom: 10px; /* 從 20px 縮小 */
+}
+
+/* 輸入框：減少 padding */
+.inputField {
+  flex-grow: 1;
+  padding: 8px; /* 從 10px 縮小 */
+  
+  /* VVVV 保持原始風格 VVVV */
+  border: 1px solid var(--ifm-color-primary-lighter); 
+  border-radius: 4px; 
+  font-size: 0.9rem; /* 縮小字體以視覺縮小 */
+}
+
+/* 按鈕：減少 padding */
+.button {
+  /* VVVV 保持原始風格 VVVV */
+  background-color: var(--ifm-color-primary);
+  color: white;
+  
+  padding: 8px 12px; /* 從 10px 15px 縮小 */
+  border: none;
+  border-radius: 4px; 
+  cursor: pointer;
+  transition: background-color 0.3s;
+  
+  font-size: 0.9rem; /* 縮小字體以視覺縮小 */
+}
+
+.button:hover {
+  background-color: var(--ifm-color-primary-dark); /* 保持原始懸浮效果 */
+}
+
+/* 連結容器：減少間距和填充 */
+.linksContainer {
+  margin-top: 15px; /* 從 30px 縮小 */
+  padding-top: 8px; /* 從 15px 縮小 */
+  border-top: 1px solid var(--ifm-color-primary-lighter); /* 保持原始分割線 */
+
+  display: grid;
+  /* repeat(2, 1fr) 表示將可用空間平均分為 2 等份 (兩欄) */
+  grid-template-columns: repeat(2, 1fr); 
+  gap: 10px; /* 設置網格間距 */
+}
+
+/* 連結項：減少間距 */
+.linkItem {
+  margin-bottom: 0; /* 從 10px 縮小 */
+}
+
+/* 連結本身：嚴格保留極簡風格，僅移除 padding */
+.linkItem a {
+  /* VVVV 保持原始排版 VVVV */
+  display: inline; 
+  padding: 0; 
+  
+  /* VVVV 保持原始風格 VVVV */
+  background-color: transparent; 
+  color: var(--ifm-link-color);
+  text-decoration: underline; 
+  border-radius: 0;
+  transition: opacity 0.3s;
+  
+  font-size: 0.9rem; /* 縮小字體以視覺縮小 */
+}
+
+.linkItem a:hover {
+  /* VVVV 保持原始懸浮風格 VVVV */
+  color: var(--ifm-color-primary-dark) !important;
+  background-color: transparent !important;
+  text-decoration: underline; 
+}

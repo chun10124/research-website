@@ -7,9 +7,19 @@
     "start": "docusaurus start",
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
-    "deploy": "docusaurus deploy",
+    
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
+
+    "git-commit-push": "git add . && git commit -m \"Auto-commit before publishing\" && git push origin main",
+
+    
+    "deploy": "GIT_USER=chun10124 docusaurus deploy",
+    
+   
+    "publish": "npm run git-commit-push && npm run deploy",
+
+
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids"
   },
@@ -24,7 +34,8 @@
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.9.2",
-    "@docusaurus/types": "3.9.2"
+    "@docusaurus/types": "3.9.2",
+    "gh-pages": "^6.3.0"
   },
   "browserslist": {
     "production": [

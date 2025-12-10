@@ -1,42 +1,27 @@
-import clsx from 'clsx';
-import Link from '@docusaurus/Link';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+// research-website/src/pages/index.js
+
+import React from 'react';
 import Layout from '@theme/Layout';
-import HomepageFeatures from '@site/src/components/HomepageFeatures';
+// VVVV 確保添加了這一行 VVVV
+import StockLinkGenerator from '../components/StockLinkGenerator'; 
+// ^^^^ 確保添加了這一行 ^^^^
 
-import Heading from '@theme/Heading';
-import styles from './index.module.css';
-
-function HomepageHeader() {
-  const {siteConfig} = useDocusaurusContext();
-  return (
-    <header className={clsx('hero hero--primary', styles.heroBanner)}>
-      <div className="container">
-        <Heading as="h1" className="hero__title">
-          {siteConfig.title}
-        </Heading>
-        <p className="hero__subtitle">{siteConfig.tagline}</p>
-        <div className={styles.buttons}>
-          <Link
-            className="button button--secondary button--lg"
-            to="/docs/intro">
-            Docusaurus Tutorial - 5min ⏱️
-          </Link>
-        </div>
-      </div>
-    </header>
-  );
-}
+// 請確保 SITE_TITLE 也在這裡被定義或引入了
+const SITE_TITLE = '您的研究與投資主頁'; // 假設 SITE_TITLE 定義在這裡
 
 export default function Home() {
-  const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
-      title={`Hello from ${siteConfig.title}`}
-      description="Description will go into a meta tag in <head />">
-      <HomepageHeader />
+      title={SITE_TITLE}
+      description="研究、投資分析與自製工具的知識庫。"
+    >
+      {/* 這裡的 <main> 標籤是網頁內容的主體，
+          現在它完全是空白的，只依賴 Layout 來顯示 Nav Bar 和 Footer。
+      */}
       <main>
-        <HomepageFeatures />
+        <div style={{ padding: '20px' }}> {/* 增加 padding 以避免貼邊 */}
+            <StockLinkGenerator />
+        </div>
       </main>
     </Layout>
   );
