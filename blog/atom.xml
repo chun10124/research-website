@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?><?xml-stylesheet type="text/xsl" href="atom.xsl"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://chun10124.github.io/research-website/blog</id>
-    <title>My Site Blog</title>
+    <title>TzuChun-Research Blog</title>
     <updated>2021-08-26T00:00:00.000Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://chun10124.github.io/research-website/blog"/>
-    <subtitle>My Site Blog</subtitle>
-    <icon>https://chun10124.github.io/research-website/img/favicon.ico</icon>
+    <subtitle>TzuChun-Research Blog</subtitle>
+    <icon>https://chun10124.github.io/research-website/img/author.jpeg</icon>
     <entry>
         <title type="html"><![CDATA[Welcome]]></title>
         <id>https://chun10124.github.io/research-website/blog/welcome</id>
