@@ -7,7 +7,7 @@ import StockLinkGenerator from '../components/StockLinkGenerator';
 // ^^^^ 確保添加了這一行 ^^^^
 
 // 請確保 SITE_TITLE 也在這裡被定義或引入了
-const SITE_TITLE = '您的研究與投資主頁'; // 假設 SITE_TITLE 定義在這裡
+const SITE_TITLE = '研究與投資主頁'; // 假設 SITE_TITLE 定義在這裡
 
 export default function Home() {
   return (
