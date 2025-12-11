@@ -96,6 +96,11 @@ const config = {
             position: 'left',
             label: '資料庫',
           },
+          {
+            to: '/journal', // 指向您在 src/pages/journal.js 中創建的頁面
+            label: '交易日誌', // 導航欄上顯示的名稱
+            position: 'left', // 放在左側
+          },
 
         ],
       },
