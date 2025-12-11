@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 // Local Storage Key
 const LOCAL_STORAGE_KEY = 'tradeJournalData';
 
-// 樣式常數 (保持不變)
+// 樣式常數 (保持原樣，確保電腦版不變)
 const PNL_COLOR = (pnl) => (pnl > 0 ? 'green' : (pnl < 0 ? 'red' : 'inherit'));
 const GOLDEN_BORDER_COLOR = '#deb887'; 
 
@@ -25,7 +25,7 @@ const formatPnl = (pnl) => {
     return integerPnl.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
 
-// ========== I. P&L 計算核心函數 (保持與上次修好的版本一致) ==========
+// ========== I. P&L 計算核心函數 (保持功能穩定) ==========
 const calculatePnlSummary = (entries, filterRange = 'ALL') => {
     if (!entries || entries.length === 0) {
         return {
@@ -409,7 +409,6 @@ function TradeJournal() {
         const qtyB = Math.abs(b.netQuantity);
         
         // 1. 主要排序依據：淨持倉絕對值 (由大到小)
-        // 確保部位不為零的股票排在最前面
         if (qtyA !== qtyB) {
             return qtyB - qtyA;
         }
@@ -447,7 +446,7 @@ function TradeJournal() {
             </div>
         </div>
         
-        <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+        <div className="responsive-flex-row" style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
             
             <div style={{ flex: 1, padding: '12px', border: '1px solid #ccc', borderRadius: '5px', backgroundColor: '#f9f9f9c5' }}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>總已實現盈虧</h4>
@@ -465,38 +464,40 @@ function TradeJournal() {
         </div>
 
         <h4 style={{ marginTop: '20px' }}>個股盈虧與持倉 (淨持倉與成本為全部歷史，盈虧為篩選期間)</h4>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-          <thead>
-            <tr style={{ borderBottom: '1.5px solid #333' }}>
-              <th style={{ padding: '8px' }}>股票名稱/代號</th>
-              <th style={{ padding: '8px' }}>平均成本</th>
-              <th style={{ padding: '8px' }}>淨持倉 (股)</th>
-              <th style={{ padding: '8px' }}>已實現盈虧</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedByStock.length === 0 ? (
-                <tr><td colSpan="4" style={{ padding: '10px', textAlign: 'center' }}>無數據</td></tr>
-            ) : (
-                sortedByStock.map(data => {
-                    const avgCostDisplay = data.netQuantity !== 0 ? data.avgCost : 0;
-                    
-                    return (
-                        <tr key={data.code} style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px', fontWeight: 'bold' }}>{data.name} ({data.code})</td>
-                            <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
-                            <td style={{ padding: '8px', color: data.netQuantity > 0 ? 'green' : (data.netQuantity < 0 ? 'red' : 'inherit') }}>
-                                {formatQuantity(data.netQuantity)}
-                            </td>
-                            <td style={{ padding: '8px', color: PNL_COLOR(data.realizedPnl) }}>
-                                {formatPnl(data.realizedPnl)}
-                            </td>
-                        </tr>
-                    );
-                })
-            )}
-          </tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}> {/* 允許表格在手機上滾動 */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', minWidth: '400px' }}> {/* 設置最小寬度 */}
+              <thead>
+                <tr style={{ borderBottom: '1.5px solid #333' }}>
+                  <th style={{ padding: '8px' }}>股票名稱/代號</th>
+                  <th style={{ padding: '8px' }}>平均成本</th>
+                  <th style={{ padding: '8px' }}>淨持倉 (股)</th>
+                  <th style={{ padding: '8px' }}>已實現盈虧</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedByStock.length === 0 ? (
+                    <tr><td colSpan="4" style={{ padding: '10px', textAlign: 'center' }}>無數據</td></tr>
+                ) : (
+                    sortedByStock.map(data => {
+                        const avgCostDisplay = data.netQuantity !== 0 ? data.avgCost : 0;
+                        
+                        return (
+                            <tr key={data.code} style={{ borderBottom: '1px solid #eee' }}>
+                                <td style={{ padding: '8px', fontWeight: 'bold' }}>{data.name} ({data.code})</td>
+                                <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
+                                <td style={{ padding: '8px', color: data.netQuantity > 0 ? 'green' : (data.netQuantity < 0 ? 'red' : 'inherit') }}>
+                                    {formatQuantity(data.netQuantity)}
+                                </td>
+                                <td style={{ padding: '8px', color: PNL_COLOR(data.realizedPnl) }}>
+                                    {formatPnl(data.realizedPnl)}
+                                </td>
+                            </tr>
+                        );
+                    })
+                )}
+              </tbody>
+            </table>
+        </div>
       </div>
     );
   };
@@ -531,10 +532,10 @@ function TradeJournal() {
           borderRadius: '5px',
           padding: '15px', }}>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <div className="responsive-filter-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                 <h3>歷史交易記錄 ({entriesToRender.length} 筆)</h3>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    {/* <<< 替換：使用搜尋輸入框篩選股票代號/名稱 >>> */}
+                <div className="responsive-filter-row-controls" style={{ display: 'flex', gap: '10px' }}>
+                    {/* 搜尋輸入框 */}
                     <input
                         type="text"
                         placeholder="搜尋股票代號/名稱"
@@ -543,7 +544,7 @@ function TradeJournal() {
                         style={{ padding: '8px', border: '1px solid #ccc', minWidth: '150px' }}
                     />
 
-                    {/* 時間篩選器 (保持不變) */}
+                    {/* 時間篩選器 */}
                     <select 
                         value={historyFilterRange} 
                         onChange={(e) => setHistoryFilterRange(e.target.value)}
@@ -565,7 +566,7 @@ function TradeJournal() {
                     {entriesToRender.map(entry => (
                         <li key={entry.id} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', borderRadius: '5px' }}>
                           
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <div className="history-list-item-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                               <div>
                                   <strong>[{entry.date}] {entry.name} ({entry.code})</strong> | 
                                   <span style={{ color: entry.direction === 'BUY' ? 'green' : 'red', fontWeight: 'bold' }}>{entry.direction}</span>: 
@@ -594,9 +595,11 @@ function TradeJournal() {
   
   // 8. 最終渲染 (保持不變)
   return (
-    <div style={{ maxWidth: '1000px', margin: '20px auto', padding: '20px' }}>
+    <div className="responsive-container" style={{ maxWidth: '1000px', margin: '20px auto', padding: '20px' }}>
       
+      {/* VVVV 響應式 CSS 修正點 VVVV */}
       <style jsx="true">{`
+        /* 隱藏數字輸入框的調整箭頭 */
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
             -webkit-appearance: none;
@@ -606,14 +609,82 @@ function TradeJournal() {
             -moz-appearance: textfield; 
         }
         ::placeholder {
-            color: #575a5bff; /* 深灰色 */
-            opacity: 1; /* 確保在 Firefox 中顏色不會變淡 */
+            color: #575a5bff;
+            opacity: 1; 
             font-weight: 600;
         }
+        :-ms-input-placeholder, ::-ms-input-placeholder {
+            color: #575a5bff;
+            font-weight: 600;
+        }
+        
+        /* 手機版響應式設計 (最大寬度 768px) */
+        @media (max-width: 768px) {
+            /* 1. 外層容器調整 */
+            .responsive-container {
+                padding: 10px !important;
+                margin: 0 auto !important; 
+                max-width: 100% !important;
+            }
 
+            /* 2. 主輸入欄位 (原本是五欄並排) */
+            .form-input-row,
+            form > div:nth-child(1) { /* 定位輸入欄位 row */
+                flex-direction: column !important;
+                gap: 8px !important;
+            }
+            form > div:nth-child(1) input {
+                flex: 1 1 100% !important;
+            }
 
+            /* 3. 卡片區塊 (儀表板總體指標) */
+            .responsive-flex-row {
+                flex-direction: column !important;
+                gap: 15px !important;
+            }
+            
+            /* 4. 交易表單中的方向按鈕和備註 (原本是並排) */
+            form > div:nth-child(2) { /* 定位方向/備註 row */
+                flex-direction: column !important;
+                gap: 15px !important;
+            }
+            form > div:nth-child(2) > div:first-child {
+                width: 100% !important; /* 讓按鈕區塊佔滿寬度 */
+                flex-direction: row !important; /* 讓 BUY/SELL 左右排列 */
+                justify-content: space-between;
+            }
+            form > div:nth-child(2) button {
+                width: 48% !important; /* 讓 BUY/SELL 左右平分 */
+            }
+            
+            /* 5. 歷史記錄篩選器 (標題/搜尋/下拉選單) */
+            .responsive-filter-row {
+                flex-direction: column !important;
+                align-items: stretch !important;
+            }
+            .responsive-filter-row-controls,
+            .responsive-filter-row-controls > div {
+                flex-direction: column !important;
+                gap: 10px !important;
+                width: 100% !important;
+            }
+            .responsive-filter-row-controls input,
+            .responsive-filter-row-controls select {
+                width: 100% !important;
+                min-width: 100% !important;
+            }
 
+            /* 6. 歷史記錄列表項目中的內容和按鈕 */
+            .history-list-item-header {
+                flex-direction: column;
+                align-items: flex-start !important;
+            }
+            .history-list-item-header > div:last-child {
+                margin-top: 10px;
+            }
+        }
       `}</style>
+      {/* ^^^^ 響應式 CSS 修正點 ^^^^ */}
       
       <h2>{editingId ? '編輯交易記錄' : '交易日誌記錄'}</h2>
 
@@ -621,7 +692,7 @@ function TradeJournal() {
       <form onSubmit={handleFormSubmit} style={{ marginBottom: '30px',border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
           borderRadius: '5px',
           padding: '15px', }}>
-         <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+         <div className="form-input-row" style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
           <input
             name="name"
             value={formData.name}
@@ -743,5 +814,6 @@ function TradeJournal() {
     </div>
   );
 }
+
 
 export default TradeJournal;
