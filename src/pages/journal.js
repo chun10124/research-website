@@ -1,19 +1,19 @@
-import React from 'react';
-import Layout from '@theme/Layout';
-// 確保路徑指向正確的組件位置
-import TradeJournal from '../components/TradeJournal'; 
+// 文件: src/pages/journal.js (頁面入口檔案)
 
-function JournalPage() {
+import React from 'react';
+import BrowserOnly from '@docusaurus/BrowserOnly';
+
+export default function JournalPage() {
   return (
-    <Layout
-      title="交易日誌"
-      description="交易記錄&績效分析"
-    >
-      <main style={{ maxWidth: '1000px', margin: '0 auto', padding: '20px' }}>
-        <TradeJournal />
-      </main>
-    </Layout>
+    // <BrowserOnly> 確保只有在瀏覽器環境中才載入交易日誌組件
+    <BrowserOnly fallback={<div>載入個人交易日誌中...</div>}>
+      {() => {
+        // VVVV 修正點：使用正確的相對路徑 VVVV
+        // 從 src/pages 跳到 src/components
+        const TradeJournalComponent = require('../components/TradeJournalComponent.jsx').default;
+        
+        return <TradeJournalComponent />;
+      }}
+    </BrowserOnly>
   );
 }
-
-export default JournalPage;
