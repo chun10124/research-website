@@ -1,275 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore'; 
-import { getAnalytics } from "firebase/analytics";
-import ExecutionEnvironment from '@docusaurus/ExecutionEnvironment';
+import { setDoc, onSnapshot } from 'firebase/firestore'; // 只需要 setDoc 和 onSnapshot
 
+// 1. 引入 Firebase 配置
+import { JOURNAL_DOC_REF } from '../utils/firebaseConfig'; 
 
-// Local Storage Key
-const LOCAL_STORAGE_KEY = 'tradeJournalData';
+// 2. 引入格式化工具
+import { PNL_COLOR, GOLDEN_BORDER_COLOR, formatQuantity, formatAvgCost, formatPnl } from '../utils/formatting';
 
-// 樣式常數 (保持原樣，確保電腦版不變)
-const PNL_COLOR = (pnl) => (pnl > 0 ? 'green' : (pnl < 0 ? 'red' : 'inherit'));
-const GOLDEN_BORDER_COLOR = '#deb887'; 
+// 3. 引入核心計算邏輯
+import { calculatePnlSummary, getStartDate } from '../utils/pnlCalculator';
 
+import styles from './TradeJournal.module.css';
 
-// FireBase 設定
-const firebaseConfig = {
-    // 您的實際配置
-    apiKey: "AIzaSyAUDHCT_dtMHQFPcUh6-gFSIFXT6dR9MVg",
-    authDomain: "my-tools-1228.firebaseapp.com",
-    projectId: "my-tools-1228",
-    storageBucket: "my-tools-1228.firebasestorage.app",
-    messagingSenderId: "511787460330",
-    appId: "1:511787460330:web:2896507029051b666e5993",
-    measurementId: "G-WFF13TV61G"
-};
-
-// 初始化 Firebase 應用程式
-const app = initializeApp(firebaseConfig);
-
-
-// 初始化 Firestore 服務
-const db = getFirestore(app);
-
-// 定義我們儲存日誌的文件路徑和 ID。
-const JOURNAL_DOC_REF = doc(db, "trade_journals", "my_only_log");
-
-let analytics;
-if (ExecutionEnvironment.canUseDOM) {
-    // 只有在瀏覽器環境下才初始化 Analytics (需要 window)
-    analytics = getAnalytics(app);
-}
-
-// ========== 格式化輔助函數 (保持不變) ==========
-const formatQuantity = (num) => {
-    if (num === null || num === undefined || isNaN(num)) return '0';
-    return Math.round(num).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-};
-
-const formatAvgCost = (num) => {
-    if (num === null || num === undefined || isNaN(num)) return '0.0';
-    return Number(num).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-};
-
-const formatPnl = (pnl) => {
-    if (pnl === null || pnl === undefined || isNaN(pnl)) return '0';
-    const integerPnl = Math.round(pnl);
-    return integerPnl.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-};
-
-// ========== I. P&L 計算核心函數 (保持功能穩定) ==========
-const calculatePnlSummary = (entries, filterRange = 'ALL') => {
-    if (!entries || entries.length === 0) {
-        return {
-            byStock: [],
-            totalRealizedPnl: 0,
-            winRate: 0,
-            totalClosedTrades: 0,
-        };
-    }
-
-    const sortedEntries = [...entries].sort(
-        (a, b) => {
-            const dateA = new Date(a.date);
-            const dateB = new Date(b.date);
-            const dateDiff = dateA - dateB;
-
-            if (dateDiff !== 0) {
-                return dateDiff; 
-            }
-            return (a.timeId || 0) - (b.timeId || 0); 
-        }
-    );
-
-    const stockMap = {};
-    const EPSILON = 1e-6; 
-
-    sortedEntries.forEach((e) => {
-        const code = e.code;
-        if (!stockMap[code]) {
-            stockMap[code] = {
-                name: e.name,
-                positionQty: 0,      
-                positionCost: 0,     
-                trades: [],          
-            };
-        }
-
-        const s = stockMap[code];
-        const qty = Number(e.quantity);
-        const price = Number(e.price);
-        const time = new Date(e.date).getTime();
-
-        if (isNaN(qty) || qty <= EPSILON || isNaN(price) || price < 0.5) return;
-
-
-        const closeTradeAndRecord = (closedQty, avgPrice, newPrice, isLong) => {
-            let realizedPnl = 0;
-            const nClosedQty = Number(closedQty);
-            const nAvgPrice = Number(avgPrice);
-            const nNewPrice = Number(newPrice);
-            
-            if (isLong) {
-                realizedPnl = (nNewPrice * nClosedQty) - (nAvgPrice * nClosedQty);
-            } else {
-                realizedPnl = (nAvgPrice * nClosedQty) - (nNewPrice * nClosedQty);
-            }
-
-            if (Math.abs(realizedPnl) > EPSILON) {
-                s.trades.push({ pnl: realizedPnl, closeTime: time });
-            }
-        };
-        
-        const isPositionZero = (qty) => Math.abs(qty) < EPSILON;
-        const resetPosition = () => { s.positionQty = 0; s.positionCost = 0; }
-
-        if (e.direction === 'BUY') {
-            if (s.positionQty < 0) {
-                const absShortQty = Math.abs(s.positionQty);
-                const avgShortPrice = absShortQty > EPSILON ? Number(s.positionCost) / absShortQty : 0; 
-                
-                const closedQty = Math.min(qty, absShortQty); 
-                const remainingQty = qty - closedQty; 
-
-                if (closedQty > EPSILON) {
-                    closeTradeAndRecord(closedQty, avgShortPrice, price, false); 
-                    const costToReduce = avgShortPrice * closedQty;
-                    s.positionCost = Number(s.positionCost) - costToReduce;
-                    s.positionQty = Number(s.positionQty) + closedQty;
-                }
-                
-                if (isPositionZero(s.positionQty) && remainingQty > EPSILON) {
-                    s.positionQty = remainingQty;
-                    s.positionCost = price * remainingQty;
-                } else if (isPositionZero(s.positionQty)) {
-                    resetPosition();
-                }
-
-            } else {
-                s.positionCost = Number(s.positionCost) + (price * qty);
-                s.positionQty = Number(s.positionQty) + qty;
-            }
-        }
-
-        if (e.direction === 'SELL') {
-            if (s.positionQty > 0) {
-                const longQty = s.positionQty;
-                const avgCost = longQty > EPSILON ? Number(s.positionCost) / longQty : 0;
-                
-                const closedQty = Math.min(qty, longQty);
-                const remainingQty = qty - closedQty; 
-
-                if (closedQty > EPSILON) {
-                    closeTradeAndRecord(closedQty, avgCost, price, true); 
-                    const costToReduce = avgCost * closedQty;
-                    s.positionCost = Number(s.positionCost) - costToReduce; 
-                    s.positionQty = Number(s.positionQty) - closedQty; 
-                }
-                
-                if (isPositionZero(s.positionQty) && remainingQty > EPSILON) {
-                    s.positionQty = -remainingQty;
-                    s.positionCost = price * remainingQty;
-                } else if (isPositionZero(s.positionQty)) {
-                    resetPosition();
-                }
-
-            } else {
-                s.positionCost = Number(s.positionCost) + (price * qty);
-                s.positionQty = Number(s.positionQty) - qty;
-            }
-        }
-    });
-
-    let filterStartTime = null;
-    if (filterRange && filterRange !== 'ALL') {
-        const startDateObj = getStartDate(filterRange);
-        if (startDateObj) filterStartTime = startDateObj.getTime();
-    }
-
-    const byStock = [];
-    let totalRealizedPnl = 0;
-    let totalClosedTrades = 0;
-    let winningTrades = 0;
-
-    Object.keys(stockMap).forEach((code) => {
-        const s = stockMap[code];
-        const netQuantity = s.positionQty;
-
-        const absNetQuantity = Math.abs(netQuantity);
-        const avgCost =
-            absNetQuantity > EPSILON
-                ? Number(s.positionCost) / absNetQuantity
-                : 0;
-
-        let realizedInPeriod = 0;
-
-        s.trades.forEach((t) => {
-            const inPeriod =
-                !filterStartTime || t.closeTime >= filterStartTime;
-
-            if (inPeriod) {
-                realizedInPeriod += t.pnl;
-                totalRealizedPnl += t.pnl;
-
-                if (t.pnl > 0) {
-                    winningTrades++;
-                    totalClosedTrades++;
-                } else if (t.pnl < 0) {
-                    totalClosedTrades++;
-                }
-            }
-        });
-
-        byStock.push({
-            code,
-            name: s.name,
-            netQuantity: Math.round(netQuantity), 
-            avgCost,
-            realizedPnl: realizedInPeriod,
-        });
-    });
-
-    const winRate =
-        totalClosedTrades > 0
-            ? (winningTrades / totalClosedTrades * 100).toFixed(2)
-            : 0;
-
-    return {
-        byStock,
-        totalRealizedPnl: Math.round(totalRealizedPnl), 
-        winRate,
-        totalClosedTrades,
-    };
-};
-
-
-// ========== II. 時間篩選邏輯 (保持不變) ==========
-const getStartDate = (range) => {
-    const now = new Date();
-    let startDate = null;
-    now.setHours(0, 0, 0, 0); 
-
-    switch (range) {
-        case 'WEEK':
-            startDate = new Date(now.setDate(now.getDate() - now.getDay())); 
-            break;
-        case 'MONTH':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-            break;
-        case 'HALFYEAR':
-            startDate = new Date(now.setMonth(now.getMonth() - 6));
-            break;
-        case 'YEAR':
-            startDate = new Date(now.setFullYear(now.getFullYear() - 1));
-            break;
-        case 'ALL':
-        default:
-            return null;
-    }
-    return startDate;
-};
+// Local Storage Key (已不再使用，但保留定義)
+// const LOCAL_STORAGE_KEY = 'tradeJournalData';
 
 
 // ========== III. 主組件 (TradeJournal) ==========
@@ -289,25 +34,20 @@ function TradeJournal() {
   
   const [pnlFilterRange, setPnlFilterRange] = useState('ALL'); 
   const [historyFilterRange, setHistoryFilterRange] = useState('ALL'); 
-  // <<< 修改：historyFilterStock 現在是搜尋字串 >>>
   const [historyFilterStock, setHistoryFilterStock] = useState('');
 
 
-  // 1. Local Storage 數據加載與儲存邏輯 (保持不變)
+  // 1. 數據加載與即時同步 (useEffect 區塊)
   useEffect(() => {
-    // onSnapshot 會監聽 Firestore 文件，數據變動時即時更新
     const unsubscribe = onSnapshot(JOURNAL_DOC_REF, (docSnapshot) => {
         if (docSnapshot.exists()) {
-            // 數據存在
             const cloudData = docSnapshot.data();
             const entries = cloudData.entries || []; 
             
-            // 排序 (確保 timeId 存在，否則使用 0)
             setJournalEntries(entries.sort((a, b) => (b.timeId || 0) - (a.timeId || 0)));
             console.log("數據已從 Firestore 加載並即時同步。");
             
         } else {
-            // 首次啟動，文件不存在
             console.log("Firestore 文件不存在，從空日誌開始。");
             setJournalEntries([]);
         }
@@ -315,12 +55,11 @@ function TradeJournal() {
         console.error("Firestore 監聽失敗:", error);
     });
 
-    // 組件卸載時，停止監聽器
     return () => unsubscribe();
     
 }, []);
 
-  // 2. Local Storage 數據儲存 (替換為 Firestore 儲存函數)
+  // 2. 數據儲存 (saveJournalToCloud 函數)
 const saveJournalToCloud = async (entries) => {
     try {
         // 1. 先在本地更新 UI (確保響應快速)
@@ -337,12 +76,9 @@ const saveJournalToCloud = async (entries) => {
         setJournalEntries(sorted);
         
         // 2. 存儲到 Firestore
-        // setDoc 會用新的 { entries: entries } 物件覆蓋整個文件
         await setDoc(JOURNAL_DOC_REF, { entries: entries });
         
         console.log("數據已成功寫入 Firestore。");
-        // 如果您想完全停止使用本地儲存，可以在這裡執行：
-        // localStorage.removeItem(LOCAL_STORAGE_KEY); 
         
     } catch (error) {
         console.error("寫入 Firestore 失敗:", error);
@@ -350,7 +86,7 @@ const saveJournalToCloud = async (entries) => {
     }
 };
 
-  // 2. 歷史記錄列表的過濾數據 (修正：使用搜尋字串過濾代號或名稱)
+  // 3. 歷史記錄列表的過濾數據 (保持不變)
   const historyFilteredEntries = useMemo(() => {
     let filtered = journalEntries;
 
@@ -377,14 +113,14 @@ const saveJournalToCloud = async (entries) => {
   }, [journalEntries, historyFilterRange, historyFilterStock]); 
 
 
-  // 3. P&L 摘要的計算核心 (保持不變)
+  // 4. P&L 摘要的計算核心 (保持不變)
   const pnlSummary = useMemo(
     () => calculatePnlSummary(journalEntries, pnlFilterRange),
     [journalEntries, pnlFilterRange]
   );
 
 
-  // 4. 表單處理 (保持不變)
+  // 5. 表單處理 (保持不變)
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prevData => ({ ...prevData, [name]: value }));
@@ -426,7 +162,7 @@ const saveJournalToCloud = async (entries) => {
       updatedEntries = [newEntry, ...journalEntries];
     }
 
-    saveJournalToCloud(updatedEntries);
+    saveJournalToCloud(updatedEntries); // <<< 替換點 >>>
     
     setFormData({
       id: '',
@@ -440,11 +176,11 @@ const saveJournalToCloud = async (entries) => {
     });
   };
   
-  // 5. 刪除與編輯功能 (保持不變)
+  // 6. 刪除與編輯功能 (保持不變)
   const handleDelete = (id) => {
       if (window.confirm("確定要刪除這筆交易記錄嗎？")) {
           const updatedEntries = journalEntries.filter(entry => entry.id !== id);
-          saveJournalToCloud(updatedEntries);
+          saveJournalToCloud(updatedEntries); // <<< 替換點 >>>
       }
   };
 
@@ -457,7 +193,7 @@ const saveJournalToCloud = async (entries) => {
       setEditingId(entry.id);
   };
   
-  // 6. 渲染 P&L 摘要 (保持不變)
+  // 7. 渲染 P&L 摘要 (保持不變)
  const renderPnlSummary = () => {
     const { byStock, totalRealizedPnl, winRate } = pnlSummary;
 
@@ -486,9 +222,9 @@ const saveJournalToCloud = async (entries) => {
           padding: '15px', 
           backgroundColor: '#fff' 
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3>儀表板與損益摘要 ({period})</h3>
-            <div>
+        <div className={styles.pnlHeaderRow} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ marginRight: '20px' }}>儀表板與損益摘要 ({period})</h3>
+            <div className={styles.pnlSelectContainer}>
                 <select 
                     value={pnlFilterRange} 
                     onChange={(e) => setPnlFilterRange(e.target.value)}
@@ -503,7 +239,7 @@ const saveJournalToCloud = async (entries) => {
             </div>
         </div>
         
-        <div className="responsive-flex-row" style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+        <div className={styles.responsiveFlexRow} style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
             
             <div style={{ flex: 1, padding: '12px', border: '1px solid #ccc', borderRadius: '5px', backgroundColor: '#f9f9f9c5' }}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>總已實現損益</h4>
@@ -520,11 +256,11 @@ const saveJournalToCloud = async (entries) => {
             </div>
         </div>
 
-        <h4 style={{ marginTop: '20px' }}>個股損益與持倉 (淨持倉與成本為全部歷史，損益為篩選期間)</h4>
+        <h4 style={{ marginTop: '20px' }}>個股損益與持倉 (淨持倉與成本為全部歷史，已實現損益為篩選期間)</h4>
         <div style={{ overflowX: 'auto' }}> {/* 允許表格在手機上滾動 */}
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', minWidth: '400px' }}> {/* 設置最小寬度 */}
               <thead>
-                <tr style={{ borderBottom: '1.5px solid #333' }}>
+                <tr style={{ borderBottom: '1px solid #333' }}>
                   <th style={{ padding: '8px' }}>股票名稱/代號</th>
                   <th style={{ padding: '8px' }}>平均成本</th>
                   <th style={{ padding: '8px' }}>淨持倉 (股)</th>
@@ -559,7 +295,7 @@ const saveJournalToCloud = async (entries) => {
     );
   };
 
-  // 7. 渲染歷史記錄列表 (關鍵修改：將下拉選單替換為搜尋框)
+  // 8. 渲染歷史記錄列表 (保持不變)
   const renderHistory = () => {
     const entriesToRender = historyFilteredEntries; 
 
@@ -589,9 +325,9 @@ const saveJournalToCloud = async (entries) => {
           borderRadius: '5px',
           padding: '15px', }}>
             
-            <div className="responsive-filter-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <div className={styles.responsiveFilterRow} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                 <h3>歷史交易記錄 ({entriesToRender.length} 筆)</h3>
-                <div className="responsive-filter-row-controls" style={{ display: 'flex', gap: '10px' }}>
+                <div className={styles.responsiveFilterRowControls} style={{ display: 'flex', gap: '10px' }}>
                     {/* 搜尋輸入框 */}
                     <input
                         type="text"
@@ -620,175 +356,57 @@ const saveJournalToCloud = async (entries) => {
                 <p>在選定的篩選條件下沒有交易記錄。</p>
             ) : (
                 <ul style={{ listStyleType: 'none', padding: 0 }}>
-                    {entriesToRender.map(entry => (
-                        <li key={entry.id} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', borderRadius: '5px' }}>
-                          
-                          <div className="history-list-item-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                              <div className="history-details">
-                                  <strong>[{entry.date}] {entry.name} ({entry.code})</strong> 
-                                  <span className="trade-separator"> | </span> {/* <<< 新增 className 包裝分隔符號 >>> */}
-                                  <span className="trade-action">
-                                      <span style={{ color: entry.direction === 'BUY' ? 'green' : 'red', fontWeight: 'bold' }}>{entry.direction}</span>: 
-                                      {formatQuantity(entry.quantity)} 股 @ {formatAvgCost(entry.price)}
-                                  </span>
-                              </div>
-                              <div>
-                                  <button onClick={() => handleEdit(entry)} style={EDIT_STYLE}>
-                                      編輯
-                                  </button>
-                                  <button onClick={() => handleDelete(entry.id)} style={DELETE_STYLE}>
-                                      刪除
-                                  </button>
-                              </div>
-                          </div>
-                          
-                          <p style={{ marginTop: '5px', marginBottom: 0, paddingLeft: '10px', borderLeft: '3px solid #ccc', fontSize: '0.9em' }}>
-                            交易理由: {entry.reason || '無備註'}
-                          </p>
-                        </li>
-                      ))}
-                </ul>
+    {entriesToRender.map(entry => (
+        // VVVV 修正點：將 li 設為主要的容器，並應用類名 VVVV
+        <li key={entry.id} className={styles.historyListItem} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', borderRadius: '5px' }}>
+            
+            {/* 1. 頂部資訊行 (第一行) */}
+            <div className={styles.historyInfoRow}>
+                {/* 僅包含日期/名稱/代碼 (第一行) */}
+                <span className={styles.historyInfo}>
+                    <strong>[{entry.date}] {entry.name} ({entry.code})</strong>
+                </span>
+            </div>
+            
+            {/* 2. 交易動作行 (第二行) */}
+            <div className={styles.historyTradeRow}>
+                {/* 僅包含 SELL/BUY: 數量 @ 價格 (第二行) */}
+                <span className={styles.tradeAction}>
+                    <span style={{ color: entry.direction === 'BUY' ? 'green' : 'red', fontWeight: 'bold' }}>{entry.direction}</span>: 
+                    {formatQuantity(entry.quantity)} 股 @ {formatAvgCost(entry.price)}
+                </span>
+            </div>
+            
+            {/* 3. 交易理由區塊 (第三行) */}
+            <p className={styles.tradeReason} style={{ 
+                paddingLeft: '10px', 
+                borderLeft: '3px solid #ccc', 
+                fontSize: '0.9em',
+            }}>
+                交易理由: {entry.reason || '無備註'}
+            </p>
+            
+            {/* 4. 按鈕區塊 (第四行/底部) */}
+            <div className={styles.historyActions}> 
+                <button onClick={() => handleEdit(entry)} style={EDIT_STYLE}>
+                    編輯
+                </button>
+                <button onClick={() => handleDelete(entry.id)} style={DELETE_STYLE}>
+                    刪除
+                </button>
+            </div>
+            
+        </li>
+    ))}
+</ul>
             )}
         </div>
     );
   };
   
-  // 8. 最終渲染 (保持不變)
+  // 9. 最終渲染 (保持不變)
   return (
-    <div className="responsive-container" style={{ maxWidth: '1000px', margin: '20px auto', padding: '20px' }}>
-      
-      {/* VVVV 響應式 CSS 修正點 VVVV */}
-      <style jsx="true">{`
-
-        /* 1. 確保 Box Sizing 正常工作 */
-        * {
-            box-sizing: border-box;
-        }
-        /* 隱藏數字輸入框的調整箭頭 */
-        input[type="number"]::-webkit-outer-spin-button,
-        input[type="number"]::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-        input[type="number"] {
-            -moz-appearance: textfield; 
-        }
-        ::placeholder {
-            color: #575a5bff;
-            opacity: 1; 
-            font-weight: 600;
-        }
-        :-ms-input-placeholder, ::-ms-input-placeholder {
-            color: #575a5bff;
-            font-weight: 600;
-        }
-        
-        /* 手機版響應式設計 (最大寬度 768px) */
-        @media (max-width: 768px) {
-
-            body, html, .responsive-container {
-                overflow-x: hidden !important;
-                width: 100% !important;
-            }
-            /* 1. 外層容器調整：消除左右邊距和 padding 確保佔滿視口 */
-            .responsive-container {
-                padding: 10px 0 !important;
-                margin: 0 !important; 
-                max-width: 80% !important;
-            }
-
-            /* 2. 主輸入欄位 (原本是五欄並排) */
-            .form-input-row,
-            form > div:nth-child(1) { 
-                flex-direction: column !important;
-                gap: 8px !important;
-            }
-            form > div:nth-child(1) input {
-                flex: 1 1 100% !important;
-            }
-
-            /* 3. 卡片區塊 (儀表板總體指標) */
-            .responsive-flex-row {
-                flex-direction: column !important;
-                gap: 15px !important;
-            }
-            
-            /* 4. 交易表單中的方向按鈕和備註 */
-            form > div:nth-child(2) { 
-                flex-direction: column !important;
-                gap: 15px !important;
-            }
-            form > div:nth-child(2) > div:first-child {
-                width: 100% !important; 
-                flex-direction: row !important; 
-                justify-content: space-between;
-            }
-            form > div:nth-child(2) button {
-                width: 48% !important;
-            }
-            
-            /* 5. 歷史記錄篩選器 (標題/搜尋/下拉選單) */
-            .responsive-filter-row {
-                flex-direction: column !important;
-                align-items: stretch !important;
-                padding-left: 10px; 
-                padding-right: 10px;
-            }
-
-
-            .responsive-filter-row-controls {
-                flex-direction: column !important;
-                gap: 10px !important;
-                width: 100% !important;
-            }
-            .responsive-filter-row-controls input,
-            .responsive-filter-row-controls select {
-                width: 100% !important;
-                min-width: 100% !important;
-            }
-
-            /* 6. 歷史記錄列表項目中的內容和按鈕 */
-            .history-list-item-header {
-                flex-direction: column;
-                align-items: flex-start !important; /* 確保左對齊 */
-            }
-            .history-list-item-header > div:last-child {
-                margin-top: 5px;
-            }
-            .history-details { 
-                /* 確保整個細節區塊可以容納內容，並啟用內部 Flex */
-                width: 100%;
-                display: flex;
-                flex-wrap: wrap; /* 允許包裹 */
-            }
-            .history-details strong {
-                /* 股票資訊，讓它在同一行 */
-                display: inline; 
-            }
-            .history-details .trade-separator {
-                display: block !important; /* 讓分隔符號獨佔一行 */
-                height: 0; /* 隱藏高度 */
-                visibility: hidden; /* 隱藏內容 */
-                margin: 0; 
-                padding: 0;
-            }
-            .history-details .trade-action {
-                display: block !important; /* 強制交易操作從新的一行開始 */
-                width: 100%; /* 確保佔滿寬度 */
-                margin-top: -5px; /* 拉近與上方股票資訊的距離 */
-            }
-            form > div:nth-child(3) {   /*儲存按鈕*/
-                 flex-direction: row !important; /* 保持左右排列 */
-                 justify-content: flex-start;
-                 
-            }
-            form > div:nth-child(3) button {
-                width: 48% !important; /* 讓儲存/取消按鈕平分寬度 */
-                padding: 10px !important; /* 統一 padding */
-            }  
-        }
-      `}</style>
-      {/* ^^^^ 響應式 CSS 修正點 ^^^^ */}
+    <div className={styles.responsiveContainer} style={{ maxWidth: '1000px', margin: '20px auto', padding: '20px' }}>
       
       <h2>{editingId ? '編輯交易記錄' : '交易日誌記錄'}</h2>
 
@@ -796,7 +414,7 @@ const saveJournalToCloud = async (entries) => {
       <form onSubmit={handleFormSubmit} style={{ marginBottom: '30px',border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
           borderRadius: '5px',
           padding: '15px', }}>
-         <div className="form-input-row" style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+         <div className={styles.formInputRow} style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
           <input
             name="name"
             value={formData.name}
