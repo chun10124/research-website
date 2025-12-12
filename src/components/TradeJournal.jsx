@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore'; 
+import { getAnalytics } from "firebase/analytics";
+
+
+
 
 // Local Storage Key
 const LOCAL_STORAGE_KEY = 'tradeJournalData';
@@ -7,6 +13,32 @@ const LOCAL_STORAGE_KEY = 'tradeJournalData';
 // 樣式常數 (保持原樣，確保電腦版不變)
 const PNL_COLOR = (pnl) => (pnl > 0 ? 'green' : (pnl < 0 ? 'red' : 'inherit'));
 const GOLDEN_BORDER_COLOR = '#deb887'; 
+
+
+// FireBase 設定
+const firebaseConfig = {
+    // 您的實際配置
+    apiKey: "AIzaSyAUDHCT_dtMHQFPcUh6-gFSIFXT6dR9MVg",
+    authDomain: "my-tools-1228.firebaseapp.com",
+    projectId: "my-tools-1228",
+    storageBucket: "my-tools-1228.firebasestorage.app",
+    messagingSenderId: "511787460330",
+    appId: "1:511787460330:web:2896507029051b666e5993",
+    measurementId: "G-WFF13TV61G"
+};
+
+// 初始化 Firebase 應用程式
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app); 
+
+// 初始化 Firestore 服務
+const db = getFirestore(app);
+
+// 定義我們儲存日誌的文件路徑和 ID。
+const JOURNAL_DOC_REF = doc(db, "trade_journals", "my_only_log");
+
+
+
 
 // ========== 格式化輔助函數 (保持不變) ==========
 const formatQuantity = (num) => {
@@ -261,37 +293,60 @@ function TradeJournal() {
 
   // 1. Local Storage 數據加載與儲存邏輯 (保持不變)
   useEffect(() => {
-    const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (storedData) {
-      const entries = JSON.parse(storedData).sort((a, b) => {
-          const dateA = new Date(a.date);
-          const dateB = new Date(b.date);
-          const dateDiff = dateB - dateA; 
+    // onSnapshot 會監聽 Firestore 文件，數據變動時即時更新
+    const unsubscribe = onSnapshot(JOURNAL_DOC_REF, (docSnapshot) => {
+        if (docSnapshot.exists()) {
+            // 數據存在
+            const cloudData = docSnapshot.data();
+            const entries = cloudData.entries || []; 
+            
+            // 排序 (確保 timeId 存在，否則使用 0)
+            setJournalEntries(entries.sort((a, b) => (b.timeId || 0) - (a.timeId || 0)));
+            console.log("數據已從 Firestore 加載並即時同步。");
+            
+        } else {
+            // 首次啟動，文件不存在
+            console.log("Firestore 文件不存在，從空日誌開始。");
+            setJournalEntries([]);
+        }
+    }, (error) => {
+        console.error("Firestore 監聽失敗:", error);
+    });
 
-          if (dateDiff !== 0) {
-            return dateDiff; 
-          }
-          return (b.timeId || 0) - (a.timeId || 0); 
-      });
-      setJournalEntries(entries);
+    // 組件卸載時，停止監聽器
+    return () => unsubscribe();
+    
+}, []);
+
+  // 2. Local Storage 數據儲存 (替換為 Firestore 儲存函數)
+const saveJournalToCloud = async (entries) => {
+    try {
+        // 1. 先在本地更新 UI (確保響應快速)
+        const sorted = entries.sort((a, b) => {
+            const dateA = new Date(a.date);
+            const dateB = new Date(b.date);
+            const dateDiff = dateB - dateA; 
+
+            if (dateDiff !== 0) {
+              return dateDiff; 
+            }
+            return (b.timeId || 0) - (a.timeId || 0); 
+        });
+        setJournalEntries(sorted);
+        
+        // 2. 存儲到 Firestore
+        // setDoc 會用新的 { entries: entries } 物件覆蓋整個文件
+        await setDoc(JOURNAL_DOC_REF, { entries: entries });
+        
+        console.log("數據已成功寫入 Firestore。");
+        // 如果您想完全停止使用本地儲存，可以在這裡執行：
+        // localStorage.removeItem(LOCAL_STORAGE_KEY); 
+        
+    } catch (error) {
+        console.error("寫入 Firestore 失敗:", error);
+        alert("警告：數據寫入雲端失敗，請檢查網路連線。");
     }
-  }, []);
-
-  const saveToLocalStorage = (entries) => {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(entries));
-      
-      const sorted = entries.sort((a, b) => {
-          const dateA = new Date(a.date);
-          const dateB = new Date(b.date);
-          const dateDiff = dateB - dateA; 
-
-          if (dateDiff !== 0) {
-            return dateDiff; 
-          }
-          return (b.timeId || 0) - (a.timeId || 0); 
-      });
-      setJournalEntries(sorted);
-  };
+};
 
   // 2. 歷史記錄列表的過濾數據 (修正：使用搜尋字串過濾代號或名稱)
   const historyFilteredEntries = useMemo(() => {
@@ -369,7 +424,7 @@ function TradeJournal() {
       updatedEntries = [newEntry, ...journalEntries];
     }
 
-    saveToLocalStorage(updatedEntries);
+    saveJournalToCloud(updatedEntries);
     
     setFormData({
       id: '',
@@ -387,7 +442,7 @@ function TradeJournal() {
   const handleDelete = (id) => {
       if (window.confirm("確定要刪除這筆交易記錄嗎？")) {
           const updatedEntries = journalEntries.filter(entry => entry.id !== id);
-          saveToLocalStorage(updatedEntries);
+          saveJournalToCloud(updatedEntries);
       }
   };
 
