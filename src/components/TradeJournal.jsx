@@ -567,10 +567,13 @@ function TradeJournal() {
                         <li key={entry.id} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', borderRadius: '5px' }}>
                           
                           <div className="history-list-item-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                              <div>
-                                  <strong>[{entry.date}] {entry.name} ({entry.code})</strong> | 
-                                  <span style={{ color: entry.direction === 'BUY' ? 'green' : 'red', fontWeight: 'bold' }}>{entry.direction}</span>: 
-                                  {formatQuantity(entry.quantity)} 股 @ {formatAvgCost(entry.price)}
+                              <div className="history-details">
+                                  <strong>[{entry.date}] {entry.name} ({entry.code})</strong> 
+                                  <span className="trade-separator"> | </span> {/* <<< 新增 className 包裝分隔符號 >>> */}
+                                  <span className="trade-action">
+                                      <span style={{ color: entry.direction === 'BUY' ? 'green' : 'red', fontWeight: 'bold' }}>{entry.direction}</span>: 
+                                      {formatQuantity(entry.quantity)} 股 @ {formatAvgCost(entry.price)}
+                                  </span>
                               </div>
                               <div>
                                   <button onClick={() => handleEdit(entry)} style={EDIT_STYLE}>
@@ -599,6 +602,11 @@ function TradeJournal() {
       
       {/* VVVV 響應式 CSS 修正點 VVVV */}
       <style jsx="true">{`
+
+        /* 1. 確保 Box Sizing 正常工作 */
+        * {
+            box-sizing: border-box;
+        }
         /* 隱藏數字輸入框的調整箭頭 */
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
@@ -620,6 +628,11 @@ function TradeJournal() {
         
         /* 手機版響應式設計 (最大寬度 768px) */
         @media (max-width: 768px) {
+
+            body, html, .responsive-container {
+                overflow-x: hidden !important;
+                width: 100% !important;
+            }
             /* 1. 外層容器調整：消除左右邊距和 padding 確保佔滿視口 */
             .responsive-container {
                 padding: 10px 0 !important;
@@ -664,6 +677,8 @@ function TradeJournal() {
                 padding-left: 10px; 
                 padding-right: 10px;
             }
+
+
             .responsive-filter-row-controls {
                 flex-direction: column !important;
                 gap: 10px !important;
@@ -681,16 +696,38 @@ function TradeJournal() {
                 align-items: flex-start !important; /* 確保左對齊 */
             }
             .history-list-item-header > div:last-child {
-                margin-top: 10px;
+                margin-top: 5px;
+            }
+            .history-details { 
+                /* 確保整個細節區塊可以容納內容，並啟用內部 Flex */
+                width: 100%;
+                display: flex;
+                flex-wrap: wrap; /* 允許包裹 */
+            }
+            .history-details strong {
+                /* 股票資訊，讓它在同一行 */
+                display: inline; 
+            }
+            .history-details .trade-separator {
+                display: block !important; /* 讓分隔符號獨佔一行 */
+                height: 0; /* 隱藏高度 */
+                visibility: hidden; /* 隱藏內容 */
+                margin: 0; 
+                padding: 0;
+            }
+            .history-details .trade-action {
+                display: block !important; /* 強制交易操作從新的一行開始 */
+                width: 100%; /* 確保佔滿寬度 */
+                margin-top: -5px; /* 拉近與上方股票資訊的距離 */
             }
             form > div:nth-child(3) {   /*儲存按鈕*/
                  flex-direction: row !important; /* 保持左右排列 */
                  justify-content: flex-start;
+                 
             }
             form > div:nth-child(3) button {
                 width: 48% !important; /* 讓儲存/取消按鈕平分寬度 */
                 padding: 10px !important; /* 統一 padding */
-            
             }  
         }
       `}</style>
