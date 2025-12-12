@@ -620,16 +620,16 @@ function TradeJournal() {
         
         /* 手機版響應式設計 (最大寬度 768px) */
         @media (max-width: 768px) {
-            /* 1. 外層容器調整 */
+            /* 1. 外層容器調整：消除左右邊距和 padding 確保佔滿視口 */
             .responsive-container {
-                padding: 10px !important;
-                margin: 0 auto !important; 
-                max-width: 100% !important;
+                padding: 10px 0 !important;
+                margin: 0 !important; 
+                max-width: 80% !important;
             }
 
             /* 2. 主輸入欄位 (原本是五欄並排) */
             .form-input-row,
-            form > div:nth-child(1) { /* 定位輸入欄位 row */
+            form > div:nth-child(1) { 
                 flex-direction: column !important;
                 gap: 8px !important;
             }
@@ -643,27 +643,28 @@ function TradeJournal() {
                 gap: 15px !important;
             }
             
-            /* 4. 交易表單中的方向按鈕和備註 (原本是並排) */
-            form > div:nth-child(2) { /* 定位方向/備註 row */
+            /* 4. 交易表單中的方向按鈕和備註 */
+            form > div:nth-child(2) { 
                 flex-direction: column !important;
                 gap: 15px !important;
             }
             form > div:nth-child(2) > div:first-child {
-                width: 100% !important; /* 讓按鈕區塊佔滿寬度 */
-                flex-direction: row !important; /* 讓 BUY/SELL 左右排列 */
+                width: 100% !important; 
+                flex-direction: row !important; 
                 justify-content: space-between;
             }
             form > div:nth-child(2) button {
-                width: 48% !important; /* 讓 BUY/SELL 左右平分 */
+                width: 48% !important;
             }
             
             /* 5. 歷史記錄篩選器 (標題/搜尋/下拉選單) */
             .responsive-filter-row {
                 flex-direction: column !important;
                 align-items: stretch !important;
+                padding-left: 10px; 
+                padding-right: 10px;
             }
-            .responsive-filter-row-controls,
-            .responsive-filter-row-controls > div {
+            .responsive-filter-row-controls {
                 flex-direction: column !important;
                 gap: 10px !important;
                 width: 100% !important;
@@ -677,7 +678,7 @@ function TradeJournal() {
             /* 6. 歷史記錄列表項目中的內容和按鈕 */
             .history-list-item-header {
                 flex-direction: column;
-                align-items: flex-start !important;
+                align-items: flex-start !important; /* 確保左對齊 */
             }
             .history-list-item-header > div:last-child {
                 margin-top: 10px;
