@@ -800,7 +800,7 @@ function TradeJournal() {
                     padding: '10px 20px', 
                     backgroundColor: 'var(--ifm-color-primary)', 
                     color: 'white', 
-                    border: 'none', 
+                    border: '1px solid var(--ifm-color-primary)', 
                     cursor: 'pointer', 
                     borderRadius: '3px',
                     width: '120px' ,fontWeight: 'bold', fontSize: '13px'
@@ -809,7 +809,10 @@ function TradeJournal() {
               {editingId ? '更新記錄' : '儲存交易記錄'}
             </button>
             {editingId && (
-                <button type="button" onClick={() => setEditingId(null)} style={{ padding: '10px 20px', backgroundColor: '#6c757d', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '3px' }}>
+                <button type="button" onClick={() => setEditingId(null)} 
+                style={{ padding: '10px 20px', backgroundColor: '#6c757d', 
+                color: 'white', border: '1px solid #6c757d', cursor: 'pointer', 
+                borderRadius: '3px' ,width: '120px' ,fontWeight: 'bold', fontSize: '13px'}}>
                     取消編輯
                 </button>
             )}
