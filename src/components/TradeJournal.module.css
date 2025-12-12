@@ -54,7 +54,7 @@ input[type="number"] {
     flex-direction: row;
     position: absolute; /* 相對於父級 li 進行定位 */
     right: 12px; /* 距離 li 右側 10px */
-    bottom: 7px;
+    top: 10px;
 }
 
 /* 確保交易詳情區塊在電腦版是水平排列的 */
@@ -153,13 +153,15 @@ input[type="number"] {
         margin-bottom: 5px; 
     }
     
-    /* 2. 按鈕容器修正：佔滿寬度，並將內容推到右邊 */
+    /* 編輯、刪除按鈕 */
     .historyActions {
         width: auto; /* 讓按鈕組寬度只由內容決定 */
         flex-shrink: 0; /* 防止按鈕被壓縮 */
         gap: 0px !important;
         /* 在手機上我們想讓按鈕佔用最小空間，並靠右對齊，使用 flex-end */
         justify-content: flex-end;
+        top: 38px !important;
+        margin-right: -3px !important;
     }
     
     /* 3. 確保股票資訊區塊也佔滿寬度 */
@@ -172,8 +174,6 @@ input[type="number"] {
         margin-right: 10px; /* 與按鈕之間增加一些間隔 */
     }
 
-
-
     .tradeSeparator {
         display: block !important; 
         height: 0;
@@ -184,7 +184,7 @@ input[type="number"] {
     .tradeAction {
         display: block !important;
         width: 100%; 
-        margin-top: -3px;
+        margin-top: 5px;
     }
     .tradeReason {
         margin-top: 5px !important; /* 確保它緊跟在頂部 header 之後 */
