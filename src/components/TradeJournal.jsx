@@ -683,6 +683,15 @@ function TradeJournal() {
             .history-list-item-header > div:last-child {
                 margin-top: 10px;
             }
+            form > div:nth-child(3) {   /*儲存按鈕*/
+                 flex-direction: row !important; /* 保持左右排列 */
+                 justify-content: flex-start;
+            }
+            form > div:nth-child(3) button {
+                width: 48% !important; /* 讓儲存/取消按鈕平分寬度 */
+                padding: 10px !important; /* 統一 padding */
+            
+            }  
         }
       `}</style>
       {/* ^^^^ 響應式 CSS 修正點 ^^^^ */}
