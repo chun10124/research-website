@@ -430,7 +430,7 @@ function TradeJournal() {
           backgroundColor: '#fff' 
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3>儀表板與盈虧摘要 ({period})</h3>
+            <h3>儀表板與損益摘要 ({period})</h3>
             <div>
                 <select 
                     value={pnlFilterRange} 
@@ -449,7 +449,7 @@ function TradeJournal() {
         <div className="responsive-flex-row" style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
             
             <div style={{ flex: 1, padding: '12px', border: '1px solid #ccc', borderRadius: '5px', backgroundColor: '#f9f9f9c5' }}> 
-                <h4 style={{ margin: '0 0 5px 0' }}>總已實現盈虧</h4>
+                <h4 style={{ margin: '0 0 5px 0' }}>總已實現損益</h4>
                 <p style={{ margin: 0, fontSize: '1.5em', ...pnlColorStyle }}>
                     {formatPnl(totalRealizedPnl)}
                 </p>
@@ -463,7 +463,7 @@ function TradeJournal() {
             </div>
         </div>
 
-        <h4 style={{ marginTop: '20px' }}>個股盈虧與持倉 (淨持倉與成本為全部歷史，盈虧為篩選期間)</h4>
+        <h4 style={{ marginTop: '20px' }}>個股損益與持倉 (淨持倉與成本為全部歷史，損益為篩選期間)</h4>
         <div style={{ overflowX: 'auto' }}> {/* 允許表格在手機上滾動 */}
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', minWidth: '400px' }}> {/* 設置最小寬度 */}
               <thead>
@@ -471,7 +471,7 @@ function TradeJournal() {
                   <th style={{ padding: '8px' }}>股票名稱/代號</th>
                   <th style={{ padding: '8px' }}>平均成本</th>
                   <th style={{ padding: '8px' }}>淨持倉 (股)</th>
-                  <th style={{ padding: '8px' }}>已實現盈虧</th>
+                  <th style={{ padding: '8px' }}>已實現損益</th>
                 </tr>
               </thead>
               <tbody>
