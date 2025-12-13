@@ -34,16 +34,33 @@ input[type="number"] {
     margin-bottom: 5px; /* 確保與下方交易理由分開 */
 }
 
+/* 電腦版：股號和交易動作 不換行 */
+.historyDetailsContainer {
+    display: flex;
+    flex-direction: row; /* << 強制水平排列 >> */
+    align-items: baseline;
+    flex-wrap: nowrap;
+    gap: 8px; /* 設定兩組資訊之間的間距 */
+}
+
+/* 確保這兩行在電腦版不會強制佔滿 100% 導致換行 */
+.historyInfoRow, 
+.historyTradeRow {
+    width: auto !important; 
+    margin-bottom: 0 !important;
+}
+
 .historyListItem {
     /* 由於我們在 JSX 中將所有內容都包在 li 裡，這裡只需確保內容流動 */
     display: block; 
     position: relative;
+    padding: 6px 10px !important;
 }
 
+/* 手機版股號與交易動作垂直行距 */
 .historyInfoRow {   
         margin-bottom: -5px !important; 
-        /* 如果您希望兩行完全緊貼，請設為 0 */
-        
+        /* 如果您希望兩行完全緊貼，請設為 0 */  
 }
 
 /* 編輯、刪除按鈕 */
@@ -173,6 +190,12 @@ input[type="number"] {
         flex-grow: 1; 
         margin-right: 10px; /* 與按鈕之間增加一些間隔 */
     }
+    /* 手機版 股號和交易動作 要換行 */
+    .historyDetailsContainer {
+        flex-direction: column; /* 手機版改回垂直 */
+        align-items: flex-start;
+        gap: 2px; /* 回到您之前要求的緊密間距 */
+    }
 
     .tradeSeparator {
         display: block !important; 
@@ -233,10 +256,15 @@ input[type="number"] {
 
 [data-theme='dark'] .formInputRow input::placeholder,
 [data-theme='dark'] textarea::placeholder {
-    color: #afaeae; /* 暗色模式下建議使用深灰色，避免太亮搶走焦點 */
+    color: #bbbbbb; /* 暗色模式下建議使用深灰色，避免太亮搶走焦點 */
     opacity: 1;
 }
 
+[data-theme='dark'] .responsiveFilterRowControls input::placeholder {
+    /* 建議使用較亮的灰色，例如 #aaa 或 #bbb，確保在深底上清晰 */
+    color: #bbbbbb !important; 
+    opacity: 1 !important; /* 確保顏色不會被透明度沖淡 */
+}
 
 /* 獨立設定：表格在暗色模式下的外觀 */
 [data-theme='dark'] table {

@@ -360,22 +360,19 @@ const saveJournalToCloud = async (entries) => {
         // VVVV 修正點：將 li 設為主要的容器，並應用類名 VVVV
         <li key={entry.id} className={styles.historyListItem} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', borderRadius: '5px' }}>
             
-            {/* 1. 頂部資訊行 (第一行) */}
+            {/* 左側內容：包含第一行與第二行資訊 */}
+        <div className={styles.historyDetailsContainer}>
             <div className={styles.historyInfoRow}>
-                {/* 僅包含日期/名稱/代碼 (第一行) */}
-                <span className={styles.historyInfo}>
-                    <strong>[{entry.date}] {entry.name} ({entry.code})</strong>
-                </span>
+                <strong>[{entry.date}] {entry.name} ({entry.code})</strong>
             </div>
             
-            {/* 2. 交易動作行 (第二行) */}
             <div className={styles.historyTradeRow}>
-                {/* 僅包含 SELL/BUY: 數量 @ 價格 (第二行) */}
                 <span className={styles.tradeAction}>
                     <span style={{ color: entry.direction === 'BUY' ? 'green' : 'red', fontWeight: 'bold' }}>{entry.direction}</span>: 
                     {formatQuantity(entry.quantity)} 股 @ {formatAvgCost(entry.price)}
                 </span>
             </div>
+        </div>
             
             {/* 3. 交易理由區塊 (第三行) */}
             <p className={styles.tradeReason} style={{ 
@@ -386,7 +383,7 @@ const saveJournalToCloud = async (entries) => {
                 交易理由: {entry.reason || '無備註'}
             </p>
             
-            {/* 4. 按鈕區塊 (第四行/底部) */}
+            {/* 4. 按鈕區塊 (右側) */}
             <div className={styles.historyActions}> 
                 <button onClick={() => handleEdit(entry)} style={EDIT_STYLE}>
                     編輯
