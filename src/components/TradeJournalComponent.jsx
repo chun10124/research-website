@@ -197,16 +197,19 @@ const saveJournalToCloud = async (entries) => {
  const renderPnlSummary = () => {
     const { byStock, totalRealizedPnl, winRate } = pnlSummary;
 
+    // 修正排序邏輯：按 淨持倉 * 平均成本 (持倉市值成本) 排序
     const sortedByStock = [...byStock].sort((a, b) => {
-        const qtyA = Math.abs(a.netQuantity);
-        const qtyB = Math.abs(b.netQuantity);
+        // 計算 A 標的的總投入成本 (絕對值)
+        const totalCostA = Math.abs(a.netQuantity * a.avgCost);
+        // 計算 B 標的的總投入成本 (絕對值)
+        const totalCostB = Math.abs(b.netQuantity * b.avgCost);
         
-        // 1. 主要排序依據：淨持倉絕對值 (由大到小)
-        if (qtyA !== qtyB) {
-            return qtyB - qtyA;
+        // 1. 主要排序依據：持倉總成本 (由大到小)
+        if (totalCostB !== totalCostA) {
+            return totalCostB - totalCostA;
         }
         
-        // 2. 次要排序依據：如果數量相同，按股票代號排序
+        // 2. 次要排序依據：如果成本相同，按股票代號排序
         return a.code.localeCompare(b.code);
     });
 
