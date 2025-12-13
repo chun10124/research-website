@@ -220,7 +220,7 @@ const saveJournalToCloud = async (entries) => {
           border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
           borderRadius: '5px',
           padding: '15px', 
-          backgroundColor: '#fff' 
+          
       }}>
         <div className={styles.pnlHeaderRow} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ marginRight: '20px' }}>儀表板與損益摘要 ({period})</h3>
@@ -241,14 +241,14 @@ const saveJournalToCloud = async (entries) => {
         
         <div className={styles.responsiveFlexRow} style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
             
-            <div style={{ flex: 1, padding: '12px', border: '1px solid #ccc', borderRadius: '5px', backgroundColor: '#f9f9f9c5' }}> 
+            <div className={styles.pnlSummaryCard} style={{ flex: 1, padding: '12px', border: '1px solid #ccc', borderRadius: '5px'}}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>總已實現損益</h4>
                 <p style={{ margin: 0, fontSize: '1.5em', ...pnlColorStyle }}>
                     {formatPnl(totalRealizedPnl)}
                 </p>
             </div>
             
-            <div style={{ flex: 1, padding: '15px', border: '1px solid #ccc', borderRadius: '5px', backgroundColor: '#f9f9f9c5' }}> 
+            <div className={styles.pnlSummaryCard} style={{ flex: 1, padding: '15px', border: '1px solid #ccc', borderRadius: '5px'}}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>交易勝率</h4>
                 <p style={{ margin: 0, fontSize: '1.5em' }}>
                     {winRate}%
