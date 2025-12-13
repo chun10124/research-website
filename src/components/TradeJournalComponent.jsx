@@ -408,7 +408,10 @@ const saveJournalToCloud = async (entries) => {
       <h2>{editingId ? '編輯交易記錄' : '交易日誌記錄'}</h2>
 
       {/* 交易記錄表單區塊 (保持不變) */}
-      <form onSubmit={handleFormSubmit} style={{ marginBottom: '30px',border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
+      <form onSubmit={handleFormSubmit} 
+        className={styles.tradeFormContainer}
+      
+        style={{ marginBottom: '30px',border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
           borderRadius: '5px',
           padding: '15px', }}>
          <div className={styles.formInputRow} style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>

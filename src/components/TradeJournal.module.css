@@ -284,6 +284,16 @@ input[type="number"] {
     background-color: #3a3a3a65;
 }
 
+/* 交易日誌區域外框顏色 */
+.tradeFormContainer {
+    border: 1px solid #deb877 !important; /* 這是原本的金色色碼 */
+}
+
+/* 暗色模式下 交易紀錄輸入框的顏色 */
+[data-theme='dark'] .formInputRow input,
+[data-theme='dark'] textarea {
+    border: 1px solid #ffffff !important;
+}
 
 /* 總損益、勝率卡片 亮色模式 */
 .pnlSummaryCard {
