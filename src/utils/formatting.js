@@ -1,5 +1,5 @@
 // 樣式常數
-export const PNL_COLOR = (pnl) => (pnl > 0 ? 'green' : (pnl < 0 ? 'red' : 'inherit'));
+export const PNL_COLOR = (pnl) => (pnl > 0 ? 'red' : (pnl < 0 ? 'green' : 'inherit'));
 export const GOLDEN_BORDER_COLOR = '#deb887'; 
 
 // 格式化輔助函數

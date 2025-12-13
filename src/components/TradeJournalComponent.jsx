@@ -281,7 +281,7 @@ const saveJournalToCloud = async (entries) => {
                             <tr key={data.code} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '8px', fontWeight: 'bold' }}>{data.name} ({data.code})</td>
                                 <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
-                                <td style={{ padding: '8px', color: data.netQuantity > 0 ? 'green' : (data.netQuantity < 0 ? 'red' : 'inherit') }}>
+                                <td style={{ padding: '8px', color: data.netQuantity > 0 ? 'red' : (data.netQuantity < 0 ? 'green' : 'inherit') }}>
                                     {formatQuantity(data.netQuantity)}
                                 </td>
                                 <td style={{ padding: '8px', color: PNL_COLOR(data.realizedPnl) }}>
@@ -319,8 +319,8 @@ const saveJournalToCloud = async (entries) => {
     const EDIT_STYLE = {
         ...BUTTON_STYLE,
         marginRight: '7px',
-        color:'green',
-        borderColor:'green'
+        color:'orange',
+        borderColor:'orange'
     };
     
     return (
@@ -371,7 +371,7 @@ const saveJournalToCloud = async (entries) => {
             
             <div className={styles.historyTradeRow}>
                 <span className={styles.tradeAction}>
-                    <span style={{ color: entry.direction === 'BUY' ? 'green' : 'red', fontWeight: 'bold' }}>{entry.direction}</span>: 
+                    <span style={{ color: entry.direction === 'BUY' ? 'red' : 'green', fontWeight: 'bold' }}>{entry.direction}</span>: 
                     {formatQuantity(entry.quantity)} 股 @ {formatAvgCost(entry.price)}
                 </span>
             </div>
