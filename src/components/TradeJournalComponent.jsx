@@ -136,8 +136,8 @@ const saveJournalToCloud = async (entries) => {
     const quantity = Number(formData.quantity);
     const price = Number(formData.price);
     
-    if (!formData.code || !formData.name || quantity < 1 || price < 0.5) {
-        alert("請填寫股票名稱、代號，並確保數量 >= 1 且價格 >= 0.5！");
+    if (!formData.code || !formData.name || quantity < 1 || price < 0.1) {
+        alert("請填寫股票名稱、代號，並確保數量 >= 1 且價格 >= 0.1！");
         return;
     }
 
@@ -450,12 +450,12 @@ const saveJournalToCloud = async (entries) => {
           <input
             name="price"
             type="number"
-            step="0.5" 
+            step="0.1" 
             value={formData.price}
             onChange={handleInputChange}
             placeholder="價格"
             required
-            min="0.5" 
+            min="0.1" 
             style={{ flex: 1, padding: '8px', border: '1px solid #a4a4a4ff' }} 
           />
           <input
