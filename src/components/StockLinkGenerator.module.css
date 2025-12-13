@@ -19,6 +19,12 @@
   margin-bottom: 10px; /* 從 20px 縮小 */
 }
 
+[data-theme='dark'] .inputGroup input::placeholder {
+    /* 這裡才是設定提示小字顏色的地方 */
+    color: #bbbbbb !important; 
+    opacity: 1 !important; /* 強制不透明，避免被瀏覽器預設值沖淡 */
+}
+
 /* 輸入框：減少 padding */
 .inputField {
   flex-grow: 1;
