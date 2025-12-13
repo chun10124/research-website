@@ -244,6 +244,29 @@ input[type="number"] {
     .pnlSelectContainer {
         margin-top: -5px !important;
     }
+
+    .formInputRow input,
+    .formInputRow input[type="date"] {
+        width: 100% !important; /* 強制佔滿容器寬度 */
+        max-width: 100% !important;
+        box-sizing: border-box !important; /* 確保 padding 不會撐開寬度 */
+        
+        /* 移除瀏覽器預設的內距，確保視覺一致 */
+        margin: 0 !important;
+        
+        /* 針對 iOS 的外觀修正 */
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    /* 修正表單容器，確保內部元素不會溢出 */
+    .formInputRow {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        overflow: hidden; /* 防止子元素撐開 */
+    }
+
 }
 
 [data-theme='dark'] .responsiveContainer {
