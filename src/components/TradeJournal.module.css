@@ -295,6 +295,7 @@ input[type="number"] {
     opacity: 1 !important; /* 確保顏色不會被透明度沖淡 */
 }
 
+
 /* 獨立設定：表格在暗色模式下的外觀 */
 [data-theme='dark'] table {
     color: #e6e6e6;
