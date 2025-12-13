@@ -260,7 +260,41 @@ input[type="number"] {
 [data-theme='dark'] .pnlSummaryCard {
     /* 您可以設定比大背景稍微淺一點的深灰色，做出層次感 */
     background-color: #2c2c2ca5 !important; 
-    
-    /* 同時微調邊框顏色，讓它在暗色下不那麼刺眼 */
-    
+}
+[data-theme='dark'] .historyActions button {
+    /* 1. 將背景改為透明 */
+    background-color: #26262681 !important;
+}
+
+/* 買入、賣出 按鈕 */
+.directionBtn {
+    transition: all 0.2s ease;
+    background-color: transparent;
+    color: var(--ifm-color-primary);
+}
+
+/* 亮色模式設定 */
+.activeBuy {
+    background-color: var(--ifm-color-primary) !important;
+    color: white !important;
+}
+.activeSell {
+    background-color: var(--ifm-color-primary) !important;
+    color: white !important;
+}
+
+/* 暗色模式 - 買入按下時 */
+[data-theme='dark'] .activeBuy {
+    color: #ffffff !important;
+}
+
+/* 暗色模式 - 賣出按下時 */
+[data-theme='dark'] .activeSell {  
+    color: #ffffff !important;
+}
+
+/* 暗色模式 - 未按下時的按鈕文字顏色 */
+[data-theme='dark'] .directionBtn {
+    color: #bbbbbb; 
+    background-color: #1a1a1a;
 }

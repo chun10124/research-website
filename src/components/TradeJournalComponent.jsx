@@ -470,9 +470,10 @@ const saveJournalToCloud = async (entries) => {
                 <button 
                     type="button" 
                     onClick={() => handleDirectionChange('BUY')} 
+                    className={`${styles.directionBtn} ${formData.direction === 'BUY' ? styles.activeBuy : ''}`}
+                    
                     style={{ 
                         padding: '10px', 
-                        backgroundColor: formData.direction === 'BUY' ? 'var(--ifm-color-primary)' : 'white', 
                         color: formData.direction === 'BUY' ? 'white' : 'var(--ifm-color-primary)',
                         border: '1px solid var(--ifm-color-primary)', cursor: 'pointer', borderRadius: '3px',
                         width: '120px' ,fontWeight: 'bold', fontSize: '13px'
@@ -483,9 +484,9 @@ const saveJournalToCloud = async (entries) => {
                 <button 
                     type="button" 
                     onClick={() => handleDirectionChange('SELL')} 
+                    className={`${styles.directionBtn} ${formData.direction === 'SELL' ? styles.activeSell : ''}`}
                     style={{ 
-                        padding: '10px', 
-                        backgroundColor: formData.direction === 'SELL' ? 'var(--ifm-color-primary)' : 'white', 
+                        padding: '10px',  
                         color: formData.direction === 'SELL' ? 'white' : 'var(--ifm-color-primary)',
                         border: '1px solid var(--ifm-color-primary)', cursor: 'pointer', borderRadius: '3px',
                         width: '120px', fontWeight: 'bold', fontSize: '13px'
