@@ -89,6 +89,7 @@ input[type="number"] {
     margin-bottom: 0;
 }
 
+/* 損益區下拉式選單 */
 [data-theme='dark'] .pnlSelectContainer select {
     /* 文字改為白色 */
     color: #ffffff !important;

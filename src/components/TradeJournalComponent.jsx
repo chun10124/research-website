@@ -266,7 +266,7 @@ const saveJournalToCloud = async (entries) => {
                 <tr style={{ borderBottom: '1px solid #333' }}>
                   <th style={{ padding: '8px' }}>股票名稱/代號</th>
                   <th style={{ padding: '8px' }}>平均成本</th>
-                  <th style={{ padding: '8px' }}>淨持倉 (股)</th>
+                  <th style={{ padding: '8px' }}>持倉金額</th>
                   <th style={{ padding: '8px' }}>已實現損益</th>
                 </tr>
               </thead>
@@ -277,13 +277,22 @@ const saveJournalToCloud = async (entries) => {
                     sortedByStock.map(data => {
                         const avgCostDisplay = data.netQuantity !== 0 ? data.avgCost : 0;
                         
+                        const positionAmount = Math.round(data.netQuantity * data.avgCost);
+
                         return (
                             <tr key={data.code} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '8px', fontWeight: 'bold' }}>{data.name} ({data.code})</td>
                                 <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
-                                <td style={{ padding: '8px', color: data.netQuantity > 0 ? 'red' : (data.netQuantity < 0 ? 'green' : 'inherit') }}>
-                                    {formatQuantity(data.netQuantity)}
+                                <td style={{ 
+                                    padding: '8px', 
+                                    // 顏色邏輯：多單紅色、空單綠色、無持倉則繼承
+                                    color: data.netQuantity > 0 ? 'red' : (data.netQuantity < 0 ? 'green' : 'inherit') 
+                                    }}>
+                                    {/* 顯示格式：$12,345 (若金額為 0 則顯示 --) */}
+                                    {positionAmount !== 0 ? `${Math.abs(positionAmount).toLocaleString()}` : '--'}
                                 </td>
+
+
                                 <td style={{ padding: '8px', color: PNL_COLOR(data.realizedPnl) }}>
                                     {formatPnl(data.realizedPnl)}
                                 </td>
