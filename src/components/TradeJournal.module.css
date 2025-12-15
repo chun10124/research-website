@@ -113,6 +113,10 @@ input[type="number"] {
     border: 1px solid #ffffff !important; 
 }
 
+.pnlSearchInput:focus {
+    border-color: 'inherit' !important;
+    caret-color: 'inherit' !important;
+}
 
 /* 暗色模式 損益區搜尋框輸入框 提示字 */
 [data-theme='dark'] .pnlSearchInput::placeholder {
