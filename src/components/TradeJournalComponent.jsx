@@ -341,7 +341,7 @@ const saveJournalToCloud = async (entries) => {
                         placeholder="搜尋股票代號/名稱"
                         value={historyFilterStock}
                         onChange={(e) => setHistoryFilterStock(e.target.value)}
-                        style={{ padding: '8px', border: '1px solid #ccc', minWidth: '150px',borderRadius:4}}
+                        className={styles.pnlSearchInput}
                     />
 
                     {/* 時間篩選器 */}

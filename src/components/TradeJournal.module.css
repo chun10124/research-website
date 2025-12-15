@@ -108,6 +108,12 @@ input[type="number"] {
     outline: 'inherit'; /* 點框框的時候外框的顏色 */
 }
 
+[data-theme='dark'] .pnlSearchInput {
+    /* 你可以改成純白，或任何你喜歡的顏色 */
+    border: 1px solid #ffffff !important; 
+}
+
+
 /* 暗色模式 損益區搜尋框輸入框 提示字 */
 [data-theme='dark'] .pnlSearchInput::placeholder {
     color: #bbbbbb !important; /* 確保顏色夠亮 */
