@@ -282,12 +282,10 @@ const saveJournalToCloud = async (entries) => {
                             <tr key={data.code} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '8px', fontWeight: 'bold' }}>{data.name} ({data.code})</td>
                                 <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
-                                <td style={{ 
-                                    padding: '8px', 
-                                    color: data.netQuantity > 0 ? '#eee' : (data.netQuantity < 0 ? '#eee' : 'inherit') 
-                                }}>
+                                <td className={styles.pnlAmountCell} style={{ padding: '8px', fontWeight: 'bold' }}>
                                     {positionAmount !== 0 ? `${Math.abs(positionAmount).toLocaleString()}` : '--'}
                                 </td>
+                                
                                 <td style={{ padding: '8px', color: PNL_COLOR(data.realizedPnl) }}>
                                     {formatPnl(data.realizedPnl)}
                                 </td>

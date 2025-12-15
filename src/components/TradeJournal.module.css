@@ -118,6 +118,15 @@ input[type="number"] {
     caret-color: 'inherit' !important;
 }
 
+.pnlAmountCell {
+    color: #000000;
+    font-weight: normal !important;
+}
+
+[data-theme='dark'] .pnlAmountCell {
+    color: #eee !important;
+}
+
 /* 暗色模式 損益區搜尋框輸入框 提示字 */
 [data-theme='dark'] .pnlSearchInput::placeholder {
     color: #bbbbbb !important; /* 確保顏色夠亮 */
@@ -175,6 +184,7 @@ input[type="number"] {
     form > div:nth-child(2) button {
         width: 48% !important;
     }
+
 
     /* 損益區 下拉選單 */
     .pnlSelectContainer select{
@@ -307,6 +317,10 @@ input[type="number"] {
         overflow: hidden; /* 防止子元素撐開 */
     }
 
+    :global([data-theme='dark']) .formInputRow input[type="date"] {
+        /* 這是解決手機版「黑字」最核心的一行 */
+        -webkit-text-fill-color: #ffffff !important; 
+    }
 }
 
 [data-theme='dark'] .responsiveContainer {
