@@ -35,7 +35,7 @@ function TradeJournal() {
   const [pnlFilterRange, setPnlFilterRange] = useState('ALL'); 
   const [historyFilterRange, setHistoryFilterRange] = useState('ALL'); 
   const [historyFilterStock, setHistoryFilterStock] = useState('');
-
+  const [pnlFilterStock, setPnlFilterStock] = useState(''); // 新增：損益區搜尋狀態
 
   // 1. 數據加載與即時同步 (useEffect 區塊)
   useEffect(() => {
@@ -197,41 +197,41 @@ const saveJournalToCloud = async (entries) => {
  const renderPnlSummary = () => {
     const { byStock, totalRealizedPnl, winRate } = pnlSummary;
 
-    // 修正排序邏輯：按 淨持倉 * 平均成本 (持倉市值成本) 排序
-    const sortedByStock = [...byStock].sort((a, b) => {
-        // 計算 A 標的的總投入成本 (絕對值)
+    //  1. 新增過濾邏輯：根據代號或名稱篩選
+    const filteredByStock = byStock.filter(item => 
+        item.code.toLowerCase().includes(pnlFilterStock.toLowerCase()) ||
+        item.name.toLowerCase().includes(pnlFilterStock.toLowerCase())
+    );
+
+    //  2. 排序邏輯：按持倉金額大小排序 (使用過濾後的結果)
+    const sortedByStock = [...filteredByStock].sort((a, b) => {
         const totalCostA = Math.abs(a.netQuantity * a.avgCost);
-        // 計算 B 標的的總投入成本 (絕對值)
         const totalCostB = Math.abs(b.netQuantity * b.avgCost);
-        
-        // 1. 主要排序依據：持倉總成本 (由大到小)
-        if (totalCostB !== totalCostA) {
-            return totalCostB - totalCostA;
-        }
-        
-        // 2. 次要排序依據：如果成本相同，按股票代號排序
+        if (totalCostB !== totalCostA) return totalCostB - totalCostA;
         return a.code.localeCompare(b.code);
     });
-
 
     const pnlColorStyle = { color: PNL_COLOR(totalRealizedPnl), fontWeight: 'bold' };
     const period = pnlFilterRange === 'ALL' ? '全部記錄' : '篩選期間';
 
     return (
-      <div style={{ 
-          marginTop: '30px', 
-          border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
-          borderRadius: '5px',
-          padding: '15px', 
-          
-      }}>
+      <div style={{ marginTop: '30px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, borderRadius: '5px', padding: '15px' }}>
         <div className={styles.pnlHeaderRow} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ marginRight: '20px' }}>儀表板與損益摘要 ({period})</h3>
-            <div className={styles.pnlSelectContainer}>
+            
+            {/*  3. 加入搜尋框與下拉選單 */}
+            <div className={styles.pnlSelectContainer} style={{ display: 'flex', gap: '10px' }}>
+                <input
+                    type="text"
+                    placeholder="搜尋股票代號/名稱"
+                    value={pnlFilterStock}
+                    onChange={(e) => setPnlFilterStock(e.target.value)}
+                    className={styles.pnlSearchInput}
+                />
                 <select 
                     value={pnlFilterRange} 
                     onChange={(e) => setPnlFilterRange(e.target.value)}
-                    style={{ padding: '8px', border: '1px solid #ccc' }}
+                    style={{ padding: '8px', border: '1px solid #ccc', backgroundColor: 'transparent', color: 'inherit' }}
                 >
                     <option value="ALL">全部</option>
                     <option value="WEEK">當週</option>
@@ -242,15 +242,14 @@ const saveJournalToCloud = async (entries) => {
             </div>
         </div>
         
+        {/* 保留原本的卡片區塊 */}
         <div className={styles.responsiveFlexRow} style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
-            
             <div className={styles.pnlSummaryCard} style={{ flex: 1, padding: '12px', border: '1px solid #ccc', borderRadius: '5px'}}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>總已實現損益</h4>
                 <p style={{ margin: 0, fontSize: '1.5em', ...pnlColorStyle }}>
                     {formatPnl(totalRealizedPnl)}
                 </p>
             </div>
-            
             <div className={styles.pnlSummaryCard} style={{ flex: 1, padding: '15px', border: '1px solid #ccc', borderRadius: '5px'}}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>交易勝率</h4>
                 <p style={{ margin: 0, fontSize: '1.5em' }}>
@@ -259,9 +258,9 @@ const saveJournalToCloud = async (entries) => {
             </div>
         </div>
 
-        <h4 style={{ marginTop: '20px' }}>個股損益與持倉 (淨持倉與成本為全部歷史，已實現損益為篩選期間)</h4>
-        <div style={{ overflowX: 'auto' }}> {/* 允許表格在手機上滾動 */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', minWidth: '400px' }}> {/* 設置最小寬度 */}
+        <h4 style={{ marginTop: '20px' }}>個股損益與持倉 (按持倉金額排序)</h4>
+        <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', minWidth: '400px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #333' }}>
                   <th style={{ padding: '8px' }}>股票名稱/代號</th>
@@ -272,11 +271,11 @@ const saveJournalToCloud = async (entries) => {
               </thead>
               <tbody>
                 {sortedByStock.length === 0 ? (
-                    <tr><td colSpan="4" style={{ padding: '10px', textAlign: 'center' }}>無數據</td></tr>
+                    <tr><td colSpan="4" style={{ padding: '10px', textAlign: 'center' }}>無匹配數據</td></tr>
                 ) : (
                     sortedByStock.map(data => {
                         const avgCostDisplay = data.netQuantity !== 0 ? data.avgCost : 0;
-                        
+                        //  4. 計算持倉金額 (股數 * 平均成本)
                         const positionAmount = Math.round(data.netQuantity * data.avgCost);
 
                         return (
@@ -285,14 +284,10 @@ const saveJournalToCloud = async (entries) => {
                                 <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
                                 <td style={{ 
                                     padding: '8px', 
-                                    // 顏色邏輯：多單紅色、空單綠色、無持倉則繼承
-                                    color: data.netQuantity > 0 ? '#eees' : (data.netQuantity < 0 ? '#eee' : 'inherit') 
-                                    }}>
-                                    {/* 顯示格式：$12,345 (若金額為 0 則顯示 --) */}
+                                    color: data.netQuantity > 0 ? '#eee' : (data.netQuantity < 0 ? '#eee' : 'inherit') 
+                                }}>
                                     {positionAmount !== 0 ? `${Math.abs(positionAmount).toLocaleString()}` : '--'}
                                 </td>
-
-
                                 <td style={{ padding: '8px', color: PNL_COLOR(data.realizedPnl) }}>
                                     {formatPnl(data.realizedPnl)}
                                 </td>
@@ -346,7 +341,7 @@ const saveJournalToCloud = async (entries) => {
                         placeholder="搜尋股票代號/名稱"
                         value={historyFilterStock}
                         onChange={(e) => setHistoryFilterStock(e.target.value)}
-                        style={{ padding: '8px', border: '1px solid #ccc', minWidth: '150px' }}
+                        style={{ padding: '8px', border: '1px solid #ccc', minWidth: '150px',borderRadius:4}}
                     />
 
                     {/* 時間篩選器 */}

@@ -97,6 +97,22 @@ input[type="number"] {
     background-color: black !important;
 }
 
+/* 損益區搜尋框輸入框 */ 
+.pnlSearchInput {
+    padding: 8px 16px;
+    border: 1px solid #ccc;
+    border-radius: 4px; 
+    background-color: transparent;
+    color: 'inherit';
+    min-width: 150px;
+    outline: 'inherit'; /* 點框框的時候外框的顏色 */
+}
+
+/* 暗色模式 損益區搜尋框輸入框 提示字 */
+[data-theme='dark'] .pnlSearchInput::placeholder {
+    color: #bbbbbb !important; /* 確保顏色夠亮 */
+    opacity: 1;
+}
 
 /* --- 手機版響應式設計 (最大寬度 768px) --- */
 @media (max-width: 768px) {
