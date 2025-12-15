@@ -94,6 +94,7 @@ input[type="number"] {
     /* 文字改為白色 */
     color: #ffffff !important;
     border: 1px solid #ffffff !important;
+    background-color: black !important;
 }
 
 
@@ -176,6 +177,8 @@ input[type="number"] {
         background-color: transparent !important;
         color:#1a1a1a !important;
     }
+
+
 
     /* 6. 歷史記錄列表項目中的內容和按鈕 */
     .historyListItemHeader {
@@ -289,9 +292,11 @@ input[type="number"] {
 
 [data-theme='dark'] .formInputRow input,
 [data-theme='dark'] textarea,
+
+/* 交易歷史紀錄區 下拉式選單 */
 [data-theme='dark'] .responsiveFilterRowControls select {
-    background-color: #4c4b4b32; /* 輸入框背景 */
-    color: #ffffff;            /* 輸入框字體 */
+    background-color: black; /* 輸入框背景 */
+    color: #ffffff !important;            /* 輸入框字體 */
     border: 1px solid #ffffff; /* 輸入框邊框 */
 }
 

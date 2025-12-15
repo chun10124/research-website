@@ -286,7 +286,7 @@ const saveJournalToCloud = async (entries) => {
                                 <td style={{ 
                                     padding: '8px', 
                                     // 顏色邏輯：多單紅色、空單綠色、無持倉則繼承
-                                    color: data.netQuantity > 0 ? 'red' : (data.netQuantity < 0 ? 'green' : 'inherit') 
+                                    color: data.netQuantity > 0 ? '#eees' : (data.netQuantity < 0 ? '#eee' : 'inherit') 
                                     }}>
                                     {/* 顯示格式：$12,345 (若金額為 0 則顯示 --) */}
                                     {positionAmount !== 0 ? `${Math.abs(positionAmount).toLocaleString()}` : '--'}
