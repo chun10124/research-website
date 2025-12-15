@@ -266,6 +266,8 @@ input[type="number"] {
         /* 針對 iOS 的外觀修正 */
         -webkit-appearance: none;
         appearance: none;
+        color:rgb(0, 0, 0) !important;
+        background-color: transparent !important;
     }
 
     /* 修正表單容器，確保內部元素不會溢出 */
