@@ -66,7 +66,7 @@ input[type="number"] {
 /* 編輯、刪除按鈕 */
 .historyActions {
     display: flex; 
-    gap: 0px; 
+    gap: 8px; 
     align-items: center; 
     flex-direction: row;
     position: absolute; /* 相對於父級 li 進行定位 */
@@ -103,9 +103,8 @@ input[type="number"] {
     border: 1px solid #ccc;
     border-radius: 4px; 
     background-color: transparent;
-    color: 'inherit';
     min-width: 150px;
-    outline: 'inherit'; /* 點框框的時候外框的顏色 */
+    outline: none; /* 點框框的時候外框的顏色 */
 }
 
 [data-theme='dark'] .pnlSearchInput {
@@ -114,8 +113,8 @@ input[type="number"] {
 }
 
 .pnlSearchInput:focus {
-    border-color: 'inherit' !important;
-    caret-color: 'inherit' !important;
+    border-color: inherit !important;
+    caret-color: inherit !important;
 }
 
 .pnlAmountCell {
@@ -145,11 +144,14 @@ input[type="number"] {
     /* 1. 最外層容器 (.responsiveContainer) 修正 */
     .responsiveContainer {
         /* 修正無效的 margin 值，並給予微小的左右 padding */
-        padding: 10px 10px !important; 
-        margin: 0 auto !important; /* 修正 margin: 10!important; 並確保居中 */
-        width: 100% !important; 
-        max-width: none !important; 
-        overflow-x: hidden !important; /* 確保內容不會溢出自身 */
+        width: 100% !important;
+        max-width: 1000px !important;
+        margin: 20px auto !important;
+        padding: 20px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        /* 這是解決問題的終極關鍵：強制所有內容橫向拉滿，不准收縮 */
+        align-items: stretch !important;
     }
 
     /* 2. 主輸入欄位 (formInputRow) 修正 */
@@ -194,10 +196,11 @@ input[type="number"] {
     
     /* 5. 歷史記錄篩選器 (標題/搜尋/下拉選單) */
     .responsiveFilterRow {
-        flex-direction: column !important;
-        align-items: stretch !important;
-        padding-left: 0px; 
-        padding-right: 10px;
+        width: 100% !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        flex-wrap: wrap;
     }
     .responsiveFilterRowControls {
         flex-direction: column !important;
@@ -231,7 +234,7 @@ input[type="number"] {
     .historyActions {
         width: auto; /* 讓按鈕組寬度只由內容決定 */
         flex-shrink: 0; /* 防止按鈕被壓縮 */
-        gap: 0px !important;
+        gap: 6px !important;
         /* 在手機上我們想讓按鈕佔用最小空間，並靠右對齊，使用 flex-end */
         justify-content: flex-end;
         top: 35px !important;
@@ -397,6 +400,7 @@ input[type="number"] {
     background-color: transparent;
     color: var(--ifm-color-primary);
 }
+
 
 /* 亮色模式設定 */
 .activeBuy {

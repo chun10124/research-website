@@ -88,7 +88,8 @@ const saveJournalToCloud = async (entries) => {
 
   // 3. 歷史記錄列表的過濾數據 (保持不變)
   const historyFilteredEntries = useMemo(() => {
-    let filtered = journalEntries;
+    // 建立副本以進行排序，避免影響原始資料
+    let filtered = [...journalEntries]; 
 
     // A. 依時間範圍過濾
     const startDate = getStartDate(historyFilterRange);
@@ -109,8 +110,19 @@ const saveJournalToCloud = async (entries) => {
         );
     }
 
+    // C. 核心修正：強制按照日期排序 (由新到舊)
+    filtered.sort((a, b) => {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        if (dateB - dateA !== 0) {
+            return dateB - dateA; // 日期新的在前
+        }
+        // 如果日期相同，則按 timeId (存檔時間) 排序
+        return (b.timeId || 0) - (a.timeId || 0); 
+    });
+
     return filtered;
-  }, [journalEntries, historyFilterRange, historyFilterStock]); 
+  }, [journalEntries, historyFilterRange, historyFilterStock]);
 
 
   // 4. P&L 摘要的計算核心 (保持不變)
@@ -231,11 +243,12 @@ const saveJournalToCloud = async (entries) => {
                 <select 
                     value={pnlFilterRange} 
                     onChange={(e) => setPnlFilterRange(e.target.value)}
-                    style={{ padding: '8px', border: '1px solid #ccc', backgroundColor: 'transparent', color: 'inherit' }}
+                    style={{ padding: '8px', border: '1px solid #eee', backgroundColor: 'transparent', color: 'inherit' }}
                 >
                     <option value="ALL">全部</option>
                     <option value="WEEK">當週</option>
                     <option value="MONTH">當月</option>
+                    <option value="QUARTER">近一季</option>
                     <option value="HALFYEAR">近半年</option>
                     <option value="YEAR">近一年</option>
                 </select>
@@ -316,22 +329,29 @@ const saveJournalToCloud = async (entries) => {
         ...BUTTON_STYLE, 
         color: 'red', 
         borderColor: 'red', 
-        marginLeft: '10px'
     };
     const EDIT_STYLE = {
         ...BUTTON_STYLE,
-        marginRight: '7px',
         color:'orange',
         borderColor:'orange'
     };
     
     return (
-        <div style={{ marginTop: '30px',border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
-          borderRadius: '5px',
-          padding: '15px', }}>
+    <div style={{ 
+        marginTop: '30px', 
+        border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
+        borderRadius: '5px',
+        padding: '15px', 
+        /* 核心組合拳：強制撐開且不准收縮 */
+        width: '100%',
+        minWidth: '100%', 
+        flex: '1 0 auto', 
+        boxSizing: 'border-box',
+        minHeight: '450px'  //加入最小高度，防止沒資料時下方內容直接衝上來
+    }}>
             
             <div className={styles.responsiveFilterRow} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <h3>歷史交易記錄 ({entriesToRender.length} 筆)</h3>
+                <h3 style={{ minWidth: '220px', margin: 0 }}>歷史交易記錄 ({entriesToRender.length} 筆)</h3>
                 <div className={styles.responsiveFilterRowControls} style={{ display: 'flex', gap: '10px' }}>
                     {/* 搜尋輸入框 */}
                     <input
@@ -351,6 +371,7 @@ const saveJournalToCloud = async (entries) => {
                         <option value="ALL">全部時間</option>
                         <option value="WEEK">當週</option>
                         <option value="MONTH">當月</option>
+                        <option value="QUARTER">近一季</option>
                         <option value="HALFYEAR">近半年</option>
                         <option value="YEAR">近一年</option>
                     </select>
@@ -358,9 +379,20 @@ const saveJournalToCloud = async (entries) => {
             </div>
 
             {entriesToRender.length === 0 ? (
-                <p>在選定的篩選條件下沒有交易記錄。</p>
+            <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                width: '100%', 
+                padding: '80px 0',
+                flex: '1 1 100%' // 🚀 告訴瀏覽器：佔滿剩餘寬度，但不准超過父容器
+            }}>
+            <p style={{ margin: 0, color: '#888', fontSize: '1.1rem' }}>
+            在選定的篩選條件下沒有交易記錄。
+                    </p>
+                </div>
             ) : (
-                <ul style={{ listStyleType: 'none', padding: 0 }}>
+            <ul style={{ listStyleType: 'none', padding: 0 }}>
     {entriesToRender.map(entry => (
         // VVVV 修正點：將 li 設為主要的容器，並應用類名 VVVV
         <li key={entry.id} className={styles.historyListItem} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', borderRadius: '5px' }}>

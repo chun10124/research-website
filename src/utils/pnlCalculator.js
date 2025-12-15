@@ -1,25 +1,36 @@
 // ========== II. 時間篩選邏輯 ==========
 export const getStartDate = (range) => {
-    const now = new Date();
+    // 每次都創建一個新的日期對象，避免修改到原始的 now
+    const getNow = () => new Date(); 
     let startDate = null;
-    now.setHours(0, 0, 0, 0); 
 
     switch (range) {
         case 'WEEK':
-            startDate = new Date(now.setDate(now.getDate() - now.getDay())); 
+            // 修正：取得本週第一天 (週日)
+            const d = getNow();
+            startDate = new Date(d.setDate(d.getDate() - d.getDay()));
             break;
         case 'MONTH':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            // 修正：取得本月第一天
+            const m = getNow();
+            startDate = new Date(m.getFullYear(), m.getMonth(), 1);
+            break;
+        case 'QUARTER': 
+            // 🚀 進一季：精確往前推 3 個月
+            const q = getNow();
+            startDate = new Date(q.setMonth(q.getMonth() - 3));
             break;
         case 'HALFYEAR':
-            startDate = new Date(now.setMonth(now.getMonth() - 6));
+            const h = getNow();
+            startDate = new Date(h.setMonth(h.getMonth() - 6));
             break;
         case 'YEAR':
-            startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+            const y = getNow();
+            startDate = new Date(y.setFullYear(y.getFullYear() - 1));
             break;
         case 'ALL':
         default:
-            return null;
+            startDate = null;
     }
     return startDate;
 };
