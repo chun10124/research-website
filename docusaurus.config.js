@@ -30,7 +30,6 @@ const config = {
   organizationName: 'chun10124', // Usually your GitHub org/user name.
   projectName: 'research-website', // Usually your repo name.
   deploymentBranch: 'gh-pages',
-
   onBrokenLinks: 'throw',
 
   // Even if you don't use internationalization, you can use this field to set
@@ -101,7 +100,11 @@ const config = {
             label: '交易日誌', // 導航欄上顯示的名稱
             position: 'left', // 放在左側
           },
-
+          {
+            to: '/stock-test', // 指向您在 src/pages/journal.js 中創建的頁面
+            label: '測試', // 導航欄上顯示的名稱
+            position: 'left', // 放在左側
+          },
         ],
       },
       footer: {

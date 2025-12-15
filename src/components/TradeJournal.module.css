@@ -71,7 +71,7 @@ input[type="number"] {
     flex-direction: row;
     position: absolute; /* 相對於父級 li 進行定位 */
     right: 12px; /* 距離 li 右側 10px */
-    top: 10px;
+    top: 8px;
 }
 
 /* 確保交易詳情區塊在電腦版是水平排列的 */
@@ -160,9 +160,13 @@ input[type="number"] {
         width: 100% !important;
     }
     .responsiveFilterRowControls input,
+
+    /* 交易紀錄區 下拉式選單 */
     .responsiveFilterRowControls select {
         width: 100% !important;
         min-width: 100% !important;
+        background-color: transparent !important;
+        color:#1a1a1a !important;
     }
 
     /* 6. 歷史記錄列表項目中的內容和按鈕 */
@@ -183,7 +187,7 @@ input[type="number"] {
         gap: 0px !important;
         /* 在手機上我們想讓按鈕佔用最小空間，並靠右對齊，使用 flex-end */
         justify-content: flex-end;
-        top: 38px !important;
+        top: 35px !important;
         margin-right: -3px !important;
     }
     
@@ -241,8 +245,12 @@ input[type="number"] {
         margin-bottom: 10px !important; 
         margin-right: 0 !important; 
     }
+
+    /* 損益區 下拉式選單 */
     .pnlSelectContainer {
         margin-top: -5px !important;
+        background-color: transparent !important;
+        color:#1a1a1a !important;
     }
 
     .formInputRow input,
@@ -273,6 +281,7 @@ input[type="number"] {
     background-color: #1a1a1a; /* 獨立設定：深灰背景 */
     color: #e3e3e3;            /* 獨立設定：淺灰字體 */
 }
+
 
 
 [data-theme='dark'] .formInputRow input,
