@@ -192,6 +192,7 @@ input[type="number"] {
     .pnlSelectContainer select{
         background-color: transparent !important;
         color: black !important;
+        border: 1px solid #ccc;
     }
     
     /* 5. 歷史記錄篩選器 (標題/搜尋/下拉選單) */
