@@ -192,7 +192,7 @@ input[type="number"] {
     .pnlSelectContainer select{
         background-color: transparent !important;
         color: black !important;
-        border: 1px solid #ccc !important;
+        border: 1px solid #bbb !important;
     }
     
     /* 5. 歷史記錄篩選器 (標題/搜尋/下拉選單) */
@@ -299,10 +299,8 @@ input[type="number"] {
 
     .formInputRow input,
     .formInputRow input[type="date"] {
-        width: 100% !important; /* 強制佔滿容器寬度 */
         max-width: 100% !important;
         box-sizing: border-box !important; /* 確保 padding 不會撐開寬度 */
-        
         /* 移除瀏覽器預設的內距，確保視覺一致 */
         margin: 0 !important;
         

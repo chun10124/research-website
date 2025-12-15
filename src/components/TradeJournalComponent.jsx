@@ -440,7 +440,7 @@ const saveJournalToCloud = async (entries) => {
   
   // 9. 最終渲染 (保持不變)
   return (
-    <div className={styles.responsiveContainer} style={{ maxWidth: '1000px', margin: '20px auto', padding: '20px' }}>
+    <div className={styles.responsiveContainer} style={{ maxWidth: '800px', margin: '20px auto', padding: '20px' }}>
       
       <h2>{editingId ? '編輯交易記錄' : '交易日誌記錄'}</h2>
 
@@ -458,7 +458,7 @@ const saveJournalToCloud = async (entries) => {
             onChange={handleInputChange}
             placeholder="股票名稱 (e.g., 台積電)"
             required
-            style={{ flex: 1.5, padding: '8px', border: '1px solid #a4a4a4ff' }}
+            style={{ flex: '1 1 auto', minWidth:'0', padding: '8px', border: '1px solid #a4a4a4ff' }}
           />
           <input
             name="code"
@@ -466,7 +466,7 @@ const saveJournalToCloud = async (entries) => {
             onChange={handleInputChange}
             placeholder="代號 (e.g., 2330)"
             required
-            style={{ flex: 1, padding: '8px', border: '1px solid #a4a4a4ff' }}
+            style={{ flex: '1 1 auto', minWidth:'0', padding: '8px', border: '1px solid #a4a4a4ff' }}
           />
           
           <input
@@ -478,7 +478,7 @@ const saveJournalToCloud = async (entries) => {
             required
             min="1" 
             step="1"
-            style={{ flex: 1, padding: '8px', border: '1px solid #a4a4a4ff' }} 
+            style={{ flex: '1 1 auto', minWidth:'0', padding: '8px', border: '1px solid #a4a4a4ff' }} 
           />
           
           <input
@@ -490,7 +490,7 @@ const saveJournalToCloud = async (entries) => {
             placeholder="價格"
             required
             min="0.1" 
-            style={{ flex: 1, padding: '8px', border: '1px solid #a4a4a4ff' }} 
+            style={{ flex: '0 1 auto', padding: '8px', border: '1px solid #a4a4a4ff' }} 
           />
           <input
             name="date"
@@ -498,7 +498,7 @@ const saveJournalToCloud = async (entries) => {
             value={formData.date}
             onChange={handleInputChange}
             required
-            style={{ flex: 1, padding: '8px', border: '1px solid #a4a4a4ff' }}
+            style={{ flex:'3 0 auto', padding: '8px', border: '1px solid #a4a4a4ff' }}
           />
         </div>
         
@@ -559,7 +559,22 @@ const saveJournalToCloud = async (entries) => {
               {editingId ? '更新記錄' : '儲存交易記錄'}
             </button>
             {editingId && (
-                <button type="button" onClick={() => setEditingId(null)} 
+                <button type="button" 
+                onClick={() => {
+                    setEditingId(null); // 1. 結束編輯狀態
+                    // 2. 新增：將輸入框重置為初始狀態
+                    setFormData({
+                        id: '',
+                        code: '',
+                        name: '',
+                        direction: 'BUY',
+                        quantity: '',
+                        price: '',
+                        date: new Date().toISOString().substring(0, 10),
+                        reason: '',
+                    });
+                }}
+                
                 style={{ padding: '10px 20px', backgroundColor: '#6c757d', 
                 color: 'white', border: '1px solid #6c757d', cursor: 'pointer', 
                 borderRadius: '3px' ,width: '120px' ,fontWeight: 'bold', fontSize: '13px'}}>
