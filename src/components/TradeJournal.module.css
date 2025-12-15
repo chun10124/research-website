@@ -95,6 +95,7 @@ input[type="number"] {
     border: 1px solid #ffffff !important;
 }
 
+
 /* --- 手機版響應式設計 (最大寬度 768px) --- */
 @media (max-width: 768px) {
 
@@ -146,6 +147,12 @@ input[type="number"] {
     form > div:nth-child(2) button {
         width: 48% !important;
     }
+
+    /* 損益區 下拉選單 */
+    .pnlSelectContainer{
+        background-color: transparent !important;
+        color: black;
+    }
     
     /* 5. 歷史記錄篩選器 (標題/搜尋/下拉選單) */
     .responsiveFilterRow {
@@ -161,7 +168,7 @@ input[type="number"] {
     }
     .responsiveFilterRowControls input,
 
-    /* 交易紀錄區 下拉式選單 */
+    /* 歷史交易紀錄區 下拉式選單 */
     .responsiveFilterRowControls select {
         width: 100% !important;
         min-width: 100% !important;
@@ -246,12 +253,6 @@ input[type="number"] {
         margin-right: 0 !important; 
     }
 
-    /* 損益區 下拉式選單 */
-    .pnlSelectContainer {
-        margin-top: -5px !important;
-        background-color: transparent !important;
-        color:#1a1a1a !important;
-    }
 
     .formInputRow input,
     .formInputRow input[type="date"] {
