@@ -209,9 +209,14 @@ input[type="number"] {
         width: 100% !important;
         margin-top: 6px !important;
     }
-    .responsiveFilterRowControls input{
+    [data-theme='dark'] .responsiveFilterRowControls input{
         color: #eee !important;
         caret-color: #ffffff !important;
+    }
+
+    .responsiveFilterRowControls input{
+        color: #000000 !important;
+        caret-color: #000000 !important;
     }
 
     /* 歷史交易紀錄區 下拉式選單 */
