@@ -149,9 +149,9 @@ input[type="number"] {
     }
 
     /* 損益區 下拉選單 */
-    .pnlSelectContainer{
+    .pnlSelectContainer select{
         background-color: transparent !important;
-        color: black;
+        color: black !important;
     }
     
     /* 5. 歷史記錄篩選器 (標題/搜尋/下拉選單) */
@@ -252,7 +252,6 @@ input[type="number"] {
         margin-bottom: 10px !important; 
         margin-right: 0 !important; 
     }
-
 
     .formInputRow input,
     .formInputRow input[type="date"] {
