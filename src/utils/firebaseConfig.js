@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc } from 'firebase/firestore'; 
+import { getFirestore, doc, collection } from 'firebase/firestore'; 
 import { getAnalytics } from "firebase/analytics";
 import ExecutionEnvironment from '@docusaurus/ExecutionEnvironment';
 
@@ -21,6 +21,7 @@ const app = initializeApp(firebaseConfig);
 // 初始化 Firestore 服務
 const db = getFirestore(app);
 
+export const STOCK_WATCHLIST_COLLECTION = collection(db, "stockWatchlist");
 // 定義我們儲存日誌的文件路徑和 ID。
 export const JOURNAL_DOC_REF = doc(db, "trade_journals", "my_only_log");
 

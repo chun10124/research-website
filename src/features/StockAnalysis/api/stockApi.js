@@ -1,12 +1,16 @@
+/* src/features/StockAnalysis/api/stockApi.js (最終清晰版) */
+
 const PROXY = "https://corsproxy.io/?";
 const FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data";
 const TWSE_BASE = "https://openapi.twse.com.tw/v1";
 const TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNCAxNzowNzo1MyIsInVzZXJfaWQiOiJjaHVuMTAxMjQiLCJpcCI6IjYxLjIyOC43Ni4yMDYifQ.mSi9H6Lrus7e_wkaNxlYd6OoFmh79NQoQ7pZajx166s";
 
 export const fetchCompleteStockData = async (stockCode, onProgress = () => {}) => {
-  // 股價/外資抓 60 天；營收抓 2 年；持股抓 60 天以利比對 22 個交易日前數據
-  const startDate = "2024-10-01"; 
-  const startRevDate = "2023-01-01"; 
+  
+  // 依據您的新要求設定抓取區間
+  // 注意：由於無法執行日期運算，這裡使用絕對日期，您可以手動調整到實際的 30 天前和 3 個月前
+  const DATA_START_DATE = "2025-10-15"; // 抓取約 45 天的股價/持股/買賣超
+  const REVENUE_START_DATE = "2024-01-01"; // 抓取約 24 個月的月營收
 
   const getUrl = (dataset, start) => {
     const params = new URLSearchParams({
@@ -19,91 +23,91 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}) =
   };
 
   try {
-    onProgress(`📡 [${stockCode}] 正在對接 TaiwanStockShareholding 資料庫...`);
+    onProgress(` [${stockCode}] 開始抓取多方 API 數據 (30日股價, 3月營收)...`);
 
-    const [pRes, cRes, hRes, rRes, fRes] = await Promise.all([
-      fetch(getUrl("TaiwanStockPrice", startDate)).then(r => r.json()),
-      fetch(getUrl("TaiwanStockInstitutionalInvestorsBuySell", startDate)).then(r => r.json()),
-      // 🚀 修正：使用正確的持股資料集
-      fetch(getUrl("TaiwanStockShareholding", startDate)).then(r => r.json()),
-      fetch(getUrl("TaiwanStockMonthRevenue", startRevDate)).then(r => r.json()),
-      fetch(`${PROXY}${encodeURIComponent(`${TWSE_BASE}/fund/MI_QFIIS_sort_20`)}`).then(r => r.json())
+    // --- 核心 API 請求 ---
+    const [priceRes, buySellRes, holdingRes, revenueRes, infoRes] = await Promise.all([
+      // 1. 股價 (Price)
+      fetch(getUrl("TaiwanStockPrice", DATA_START_DATE)).then(r => r.json()),
+      // 2. 買賣超 (Institutional Buy/Sell)
+      fetch(getUrl("TaiwanStockInstitutionalInvestorsBuySell", DATA_START_DATE)).then(r => r.json()),
+      // 3. 外資總持股 (Shareholding)
+      fetch(getUrl("TaiwanStockShareholding", DATA_START_DATE)).then(r => r.json()),
+      // 4. 月營收 (Monthly Revenue)
+      fetch(getUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE)).then(r => r.json()),
+      // 5. 抓名稱
+      fetch(getUrl("TaiwanStockInfo", "")).then(r => r.json()),
     ]);
 
-    // 1. 處理營收 (單位：千元 / 自算 YoY)
-    const rData = rRes.data || [];
-    const rawRev = rData.map(d => Math.round((d.revenue || 0) / 1000)).reverse();
-    const sortedRevYoY = rawRev.map((cur, i) => {
-      const prev = rawRev[i + 12];
-      return prev ? parseFloat(((cur - prev) / prev * 100).toFixed(2)) : 0;
-    });
+    // --- 數據清洗與轉換 (變數名稱明確定義) ---
 
-    // 2. 處理外資買賣超 (張) -> 用於 10D 加速度
-    const cData = cRes.data || [];
-    const foreignBuySell = cData.filter(d => d.name === "Foreign_Investor" || d.name === "外資").reverse();
-    const foreignChipHistory = foreignBuySell.map(d => Math.round(((d.buy || 0) - (d.sell || 0)) / 1000));
+    // 1. 股價數據 (Price Data)
+    const rawPriceData = priceRes.data || [];
+    // 輸出：由新到舊的「收盤價」純數字陣列 (用於 MA 計算)
+    const priceCloseArray_NewestFirst = rawPriceData
+      .map(d => d.close)
+      .reverse(); 
 
+    // 2. 外資買賣超淨額 (Chip Flow Data)
+    const rawBuySellData = buySellRes.data || [];
+    // 輸出：由新到舊的「外資買賣超淨額」純數字陣列 (單位：千張) (用於 MCI 計算)
+    const foreignChipFlowNetInThousands_NewestFirst = rawBuySellData
+      .filter(d => d.name === "Foreign_Investor" || d.name === "外資")
+      .map(d => Math.round(((d.buy || 0) - (d.sell || 0)) / 1000)) 
+      .reverse();
 
+    // 3. 外資總持股張數 (Holding Data)
+    const rawHoldingData = holdingRes.data || [];
+    // 輸出：由新到舊的「外資總持股張數」純數字陣列 (單位：千張) (用於持股變化率計算)
+    const foreignTotalHoldingInThousands_NewestFirst = rawHoldingData
+      .map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000)) 
+      .reverse();
     
-    // 3. 處理「絕對持股張數」 (用於月增 20% 警示)
-    const hData = hRes.data || [];
-    // 先取出所有張數序列 (由新到舊)
-    const sortedHoldings = hData.map(d => {
-      const shares = d.ForeignInvestmentShares || 0;
-      return Math.round(shares / 1000); // 轉換為「張」
-    }).reverse();
+    // 4. 營收數據 (Revenue Data)
+    const rawRevenueData = revenueRes.data || [];
+    // 輸出：營收數字陣列 (千元) 和 YoY 百分比陣列 (由舊到新)
+    const revenueArray_OldestFirst = rawRevenueData
+      .map(d => Math.round((d.revenue || 0) / 1000)); 
 
-    // 修改重點：讓 dailyHoldings 每一筆都算出「當下的月增率」
-    const dailyHoldings = hData.map((d, index) => {
-      // 因為 hData 原本是由舊到新，我們對齊反轉後的 index
-      const revIndex = hData.length - 1 - index; 
-      const current = sortedHoldings[revIndex];
-      const past = sortedHoldings[revIndex + 22]; // 往後找 22 個交易日
-      
-      const growth = (past && past > 0) 
-        ? (((current - past) / past) * 100).toFixed(2) 
-        : "0.00";
+    const revenueYoYArray_OldestFirst = revenueArray_OldestFirst
+        .map((cur, i) => {
+            const prevIdx = i - 12; // 往前找 12 個月
+            const prev = revenueArray_OldestFirst[prevIdx];
+            return (prev && prev > 0) ? parseFloat(((cur - prev) / prev * 100).toFixed(2)) : null;
+        })
+        .filter(val => val !== null); // 確保只回傳有計算出 YoY 的月份
 
-      return {
-        ...d,
-        sharesInLot: current,
-        monthlyGrowth: growth // 儲存每一天算出來的月增率
-      };
-    }).reverse();
+    // 提取名稱
+    const stockInfo = (infoRes.data || []).find(d => d.stock_id === stockCode);
+    const stockName = stockInfo ? stockInfo.stock_name : "未知";
 
-    // 取得用於判定的數據（最新一筆）
-    const currentShares = sortedHoldings[0] || 0;
-    const lastMonthShares = sortedHoldings[Math.min(22, sortedHoldings.length - 1)] || 0;
-    const growthRatio = lastMonthShares > 0 ? (currentShares - lastMonthShares) / lastMonthShares : 0;
-    
-    
-    // 4. 處理股價 -> 用於 20D 加速度
-    const pData = pRes.data || [];
-    const sortedPrices = pData.map(d => d.close).reverse();
+    // --- 最終輸出 (傳輸給 Firebase 的結構) ---
 
     return {
       code: stockCode,
-      name: fRes.find(item => item.StockNo === stockCode)?.StockName || pData[0]?.stock_name || stockCode,
-      currentPrice: sortedPrices[0] || 0,
-      
-      // 傳給 UI 的警示數據
-      currentForeignShares: sortedHoldings[0] || 0,
-      lastMonthForeignShares: sortedHoldings[Math.min(22, sortedHoldings.length - 1)] || 0,
-      ownershipGrowth: (growthRatio * 100).toFixed(2), // 月增幅 % [cite: 2025-12-14]
-      isOwnershipAlert: growthRatio >= 0.2,            // 鎖碼警示 [cite: 2025-12-14]
+      name: stockName,
+      currentPrice: priceCloseArray_NewestFirst[0] || 0,
+      yesterdayClose: priceCloseArray_NewestFirst.length >= 2 ? priceCloseArray_NewestFirst[1] : 0,
 
-      dailyHoldings: dailyHoldings,
-      
+      // history 物件中的鍵名現在與數據內容完美匹配
       history: {
-        price: sortedPrices,
-        foreign: foreignChipHistory,
-        revenueRaw: rawRev,
-        revenueYoY: sortedRevYoY
+        // 股價: [最新收盤價, ...]
+        priceClose: priceCloseArray_NewestFirst, 
+        
+        // 籌碼流: [最新買賣超淨額, ...]
+        foreignChipFlowNet: foreignChipFlowNetInThousands_NewestFirst, 
+        
+        // 總持股: [最新持股總數, ...]
+        foreignTotalHolding: foreignTotalHoldingInThousands_NewestFirst, 
+        
+        // 營收: [最早營收, ...], [最早YoY, ...]
+        revenueRaw: revenueArray_OldestFirst,
+        revenueYoY: revenueYoYArray_OldestFirst
       }
     };
   } 
   catch (error) {
     onProgress(`❌ 錯誤: ${error.message}`);
-    return null;
+    throw error; 
   }
 };

@@ -101,8 +101,8 @@ const config = {
             position: 'left', // 放在左側
           },
           {
-            to: '/stock-test', // 指向您在 src/pages/journal.js 中創建的頁面
-            label: '測試', // 導航欄上顯示的名稱
+            to: '/AnalysisPage', // 指向您在 src/pages/journal.js 中創建的頁面
+            label: '儀表板', // 導航欄上顯示的名稱
             position: 'left', // 放在左側
           },
         ],

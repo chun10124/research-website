@@ -209,14 +209,14 @@ input[type="number"] {
         width: 100% !important;
         margin-top: 6px !important;
     }
-    [data-theme='dark'] .responsiveFilterRowControls input{
-        color: #eee !important;
-        caret-color: #ffffff !important;
-    }
 
+    /* 歷史交易紀錄 搜尋框 顏色 鼠標 打出來的字 */
     .responsiveFilterRowControls input{
-        color: #000000 !important;
-        caret-color: #000000 !important;
+        color: black !important;
+    }
+    
+    [data-theme='dark'] .responsiveFilterRowControls input{
+        color: rgb(255, 255, 255) !important;
     }
 
     /* 歷史交易紀錄區 下拉式選單 */
