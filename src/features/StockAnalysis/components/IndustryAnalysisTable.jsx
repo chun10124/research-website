@@ -80,108 +80,81 @@ const IndustryAnalysisTable = () => {
     });
 
     return (
-        <div style={{ padding: '20px', maxWidth: '1600px', margin: '0 auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em', minWidth: '1400px', tableLayout: 'fixed' }}>
+        <div style={{ padding: '10px', maxWidth: '1600px', margin: '0 auto' }}>
+
+            {/* 🔴 2. 調整表格字體與布局 */}
+            <table style={{ 
+                width: '100%', borderCollapse: 'collapse', 
+                fontSize: '0.82rem', // 🔴 讓字體更精緻
+                minWidth: '1200px', // 🔴 稍微縮小最小寬度限制
+                tableLayout: 'fixed' 
+            }}>
                 <thead>
-                    <tr style={{ backgroundColor: '#f2f2f2' }}>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'55px' }}>代號</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'90px'}}>名稱</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'80px'}}>現價</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'80px'}}>漲跌</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'80px' }}>MA9加速</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'80px' }}>MA21加速</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'80px' }}>營收加速</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'80px' }}>外資週買賣</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'80px' }}>持股月增率</th> 
-                        <th style={{ padding: '8px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'80px'}}>預估EPS</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'80px'}}>目標價</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'80px' }}>潛在漲幅</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'80px' }}>前瞻PE</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'200px' }}>筆記</th>
-                        <th style={{ padding: '8px', border: '1px solid #ddd', width:'80px' }}>狀態</th>
+                    <tr style={{ backgroundColor: '#f8f9fa' }}>
+                        {/* 🔴 3. 重新分配更緊湊的欄寬 */}
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'50px' }}>代號</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'85px'}}>名稱</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>現價</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>漲跌</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA9</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA21</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>營收</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資週</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>持股%</th> 
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px'}}>EPS</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px'}}>目標價</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px' }}>漲幅</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px' }}>前瞻PE</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'180px' }}>筆記</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>狀態</th>
                     </tr>
                 </thead>
                 <tbody>
                     {analysisResults.map(stock => (
-                        <tr key={stock.id}>
-                            <td style={{ padding: '8px', border: '1px solid #ddd', fontWeight: 'bold' }}>{stock.id}</td>
-                            <td style={{ padding: '8px', border: '1px solid #ddd' }}>{stock.name || 'N/A'}</td>
-                            <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{stock.displayPrice}</td>
-                            <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', color: stock.DailyChange > 0 ? 'red' : 'green' }}>
-                                {stock.DailyChange !== null ? `${stock.DailyChange}%` : '0.00%'}
-                            </td>
-
-                            {/* 3. 根據 showColor 決定是否套用 getCurvatureStyle */}
-                            {/* MA9 加速 */}
-                            <td style={{ 
-                                padding: '8px', border: '1px solid #ddd', textAlign: 'center', 
-                                ...getCurvatureStyle(stock.MA9Curvature, showColor) 
-                            }}>{stock.MA9Curvature}</td>
-
-                            {/* MA21 加速 */}
-                            <td style={{ 
-                                padding: '8px', border: '1px solid #ddd', textAlign: 'center', 
-                                ...getCurvatureStyle(stock.MA21Curvature, showColor) 
-                            }}>{stock.MA21Curvature}</td>
-
-                            {/* 營收加速 */}
-                            <td style={{ 
-                                padding: '8px', border: '1px solid #ddd', textAlign: 'center', 
-                                ...getCurvatureStyle(stock.RevenueYoYCurvature, showColor) 
-                            }}>{stock.RevenueYoYCurvature}</td>
+                        <tr key={stock.id} style={{ height: '32px' }}> {/* 🔴 固定行高讓表格整齊 */}
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontWeight: 'bold' }}>{stock.id}</td>
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</td>
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{stock.displayPrice}</td>
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.DailyChange > 0 ? 'red' : 'green' }}>{stock.DailyChange}%</td>
                             
-                            {/* 外資週買賣 - 永遠維持紅綠字 */}
-                            <td style={{ 
-                                padding: '8px', border: '1px solid #ddd', textAlign: 'right', 
-                                color: stock.WeeklyChipFlow > 0 ? 'red' : stock.WeeklyChipFlow < 0 ? 'green' : '#333'
-                            }}>{stock.displayWeeklyFlow}</td>
+                            {/* 加速度指標 (內容維持原樣，Padding 已縮減) */}
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA9Curvature, showColor) }}>{stock.MA9Curvature}</td>
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA21Curvature, showColor) }}>{stock.MA21Curvature}</td>
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.RevenueYoYCurvature, showColor) }}>{stock.RevenueYoYCurvature}</td>
+                            
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right', color: stock.WeeklyChipFlow > 0 ? 'red' : 'green'}}>{stock.displayWeeklyFlow}</td>
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right', color: stock.HoldingGrowth_M > 0 ? 'red' : 'green'}}>{stock.HoldingGrowth_M}%</td>
 
-                            {/* 持股增率 - 永遠維持紅綠字 */}
-                            <td style={{ 
-                                padding: '8px', border: '1px solid #ddd', textAlign: 'right', 
-                                color: stock.HoldingGrowth_M > 0 ? 'red' : stock.HoldingGrowth_M < 0 ? 'green' : '#333'
-                            }}>{stock.HoldingGrowth_M}%</td>
-
-                            <td style={{ padding: '4px', border: '1px solid #ddd' }}>
-                                <EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} style={{fontSize: '14px'}}/>
+                            <td style={{ padding: '2px', border: '1px solid #ddd' }}>
+                                <EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} style={{fontSize:'13px'}}/>
                             </td>
-                            <td style={{ padding: '4px', border: '1px solid #ddd' }}>
-                                <EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} style={{fontSize: '14px'}} />
+                            <td style={{ padding: '2px', border: '1px solid #ddd' }}>
+                                <EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} style={{fontSize:'13px'}} />
                             </td>
-                            <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green' }}>
-                                {stock.potentialUpside !== null ? `${stock.potentialUpside}%` : '--'}
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green' }}>
+                                {stock.potentialUpside}%
                             </td>
-                            <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>{stock.forwardPE}</td>
-                            <td style={{ padding: '4px', border: '1px solid #ddd' }}>
-                                <EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left',fontSize: '14px'}} />
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }}>{stock.forwardPE}</td>
+                            <td style={{ padding: '2px', border: '1px solid #ddd' }}>
+                                <EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left', fontSize:'13px'}} />
                             </td>
-                            <td style={{ padding: '8px', border: '1px solid #ddd', fontSize: '12px' }}>{stock.calculatedStatus}</td>
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontSize: '13px', color: '#999' }}>{stock.calculatedStatus}</td>
                         </tr>
                     ))}
                 </tbody>
             </table>
-            {/* 2. 顏色切換開關 UI */}
-            <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* 調整開關 UI 大小 */}
+            <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
                 <label style={{ 
-                    cursor: 'pointer', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                    padding: '6px 12px',
-                    backgroundColor: showColor ? '#e8f4fd' : '#f5f5f5',
-                    borderRadius: '20px',
-                    transition: 'all 0.3s'
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', 
+                    fontSize: '12px', padding: '4px 10px', backgroundColor: showColor ? '#e8f4fd' : '#f5f5f5',
+                    borderRadius: '15px'
                 }}>
-                    <input 
-                        type="checkbox" 
-                        checked={showColor} 
-                        onChange={() => setShowColor(!showColor)} 
-                        style={{ marginRight: '8px', cursor: 'pointer' }}
-                    />
-                    指標熱力圖顯示：{showColor ? '開啟' : '關閉'}
+                    <input type="checkbox" checked={showColor} onChange={() => setShowColor(!showColor)} style={{ marginRight: '5px' }}/>
+                    熱力圖：{showColor ? '開' : '關'}
                 </label>
             </div>
+
         </div>
     );
 };
