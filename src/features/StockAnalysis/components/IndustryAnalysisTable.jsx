@@ -3,16 +3,39 @@ import { calculateSingleStockIndicators } from '../utils/analysisUtils';
 
 // --- 輔助函式：熱力圖樣式 ---
 const getCurvatureStyle = (val, isShowBg) => {
-    const baseTextColor = val > 0 ? 'red' : val < 0 ? 'green' : '#333';
-    if (!isShowBg || val === 0 || val === null || val === undefined) {
-        return { color: baseTextColor, backgroundColor: 'transparent' };
+    // 1. 定義基礎顏色
+    const isPositive = val > 0;
+    const isNegative = val < 0;
+    const absVal = Math.abs(val);
+    
+    // 基礎文字顏色：紅 (漲/強) / 綠 (跌/弱) / 深灰 (持平)
+    let textColor = isPositive ? '#d63031' : isNegative ? '#27ae60' : '#333';
+    let bgColor = 'transparent';
+    let fontWeight = 'normal';
+
+    if (isShowBg && val !== 0 && val !== null) {
+        // 2. 提高背景飽和度 (基礎 0.15 + 數值加成)，讓顏色更紮實
+        const opacity = Math.min(0.15 + absVal * 0.5, 0.85);
+        bgColor = isPositive 
+            ? `rgba(231, 76, 60, ${opacity})`  // 紅色背景
+            : `rgba(46, 204, 113, ${opacity})`; // 綠色背景
+
+        // 3. 智慧對比色邏輯
+        // 只有當背景透明度超過 0.5 時，才把文字轉為白色，否則維持深紅/深綠字
+        if (opacity > 0.5) {
+            textColor = '#ffffff';
+            fontWeight = 'bold';
+        } else {
+            // 在淡色背景下，加深文字顏色以利閱讀
+            textColor = isPositive ? '#850000' : '#005a00';
+        }
     }
-    const opacity = Math.min(Math.abs(val) * 0.6, 0.6);
-    const bgColor = val > 0 ? `rgba(231, 76, 60, ${opacity})` : `rgba(46, 204, 113, ${opacity})`;
+    
     return { 
         backgroundColor: bgColor,
-        color: Math.abs(val) > 0.4 ? '#fff' : baseTextColor, 
-        fontWeight: Math.abs(val) > 0.5 ? 'bold' : 'normal'
+        color: textColor, 
+        fontWeight: fontWeight,
+        transition: 'all 0.2s' // 增加平滑感
     };
 };
 
@@ -103,7 +126,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 }
             }}
                         style={{ 
-                            padding: '4px 12px', borderRadius: '15px', border: '1px solid #25c2a0',
+                            padding: '4px 12px', borderRadius: '15px', border: '1px solid #64a0ddff',
                             backgroundColor: '#fff', cursor: 'pointer', fontSize: '12px'
                         }}
                     >
@@ -112,9 +135,9 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 ))}
             </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '1200px', tableLayout: 'fixed' }}>
+            <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '1250px', tableLayout: 'fixed' }}>
                 <thead>
-                    <tr style={{ backgroundColor: '#f8f9fa' }}>
+                    <tr style={{ backgroundColor: '#739fe6ff' }}>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'50px' }}>代號</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'80px'}}>名稱</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>產業</th> {/* 🟢 新增欄位 */}
@@ -125,19 +148,19 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA21</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>營收</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資週</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px'}}>EPS</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px'}}>目標價</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px' }}>漲幅</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px' }}>前瞻PE</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'180px' }}>筆記</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>EPS</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>目標價</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>漲幅</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>前瞻PE</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'180px' }}>筆記</th>
                     </tr>
                 </thead>
 
                 {categories.map(cat => (
                     <tbody key={cat}>
                         {/* 🟢 產業分組標題列 */}
-                        <tr id={`cat-${cat}`} style={{ backgroundColor: '#f1f3f5' }}>
-                            <td colSpan="15" style={{ padding: '8px 12px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #25c2a0' }}>
+                        <tr id={`cat-${cat}`} style={{ backgroundColor: '#afd2f5b0' }}>
+                            <td colSpan="15" style={{ padding: '8px 12px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #37c5e4ff' }}>
                                 {cat} (共 {groupedData[cat].length} 檔)
                             </td>
                         </tr>
