@@ -147,14 +147,14 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>PE</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA9</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA21</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>營收</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>月營收</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資週</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資持股</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: 'orange'}}>估EPS</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: 'orange'}}>目標價</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>漲幅</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>前瞻PE</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd'}}>筆記</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd'}}>備註</th>
                     </tr>
                 </thead>
 
