@@ -136,7 +136,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 ))}
             </div>
 
-            <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '1200px', tableLayout: 'fixed' }}>
+            <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', lineHeight: '1.2', minWidth: '1200px', tableLayout: 'fixed' }}>
                 <thead>
                     <tr style={{ backgroundColor: '#739fe6ff' }}>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'50px' }}>代號</th>
