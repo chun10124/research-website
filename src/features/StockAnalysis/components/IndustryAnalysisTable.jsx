@@ -110,22 +110,35 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 {categories.map(cat => (
                     <button 
                         key={cat}
+                        JavaScript
                         onClick={() => {
-                const element = document.getElementById(`cat-${cat}`);
-                if (element) {
-                    // 計算位移（考慮到 Docusaurus 可能有 60px 的頂部選單）
-                    const offset = 80; 
-                    const bodyRect = document.body.getBoundingClientRect().top;
-                    const elementRect = element.getBoundingClientRect().top;
-                    const elementPosition = elementRect - bodyRect;
-                    const offsetPosition = elementPosition - offset;
+                            const element = document.getElementById(`cat-${cat}`);
+                            if (!element) return;
 
-                    window.scrollTo({
-                        top: offsetPosition,
-                        behavior: 'smooth' // 平滑捲動
-                    });
-                }
-            }}
+                            // 🟢 判斷是否為手機版 (寬度小於 768px)
+                            const isMobile = window.innerWidth <= 768;
+
+                            if (isMobile) {
+                                // --- 手機版邏輯：使用原生 scrollIntoView 確保移動 ---
+                                element.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start'
+                                });
+                                
+                            } else {
+                                // --- 電腦版邏輯：維持你原本最順暢的公式 ---
+                                const offset = 85; // 維持原樣
+                                const bodyRect = document.body.getBoundingClientRect().top;
+                                const elementRect = element.getBoundingClientRect().top;
+                                const elementPosition = elementRect - bodyRect;
+                                const offsetPosition = elementPosition - offset;
+
+                                window.scrollTo({
+                                    top: offsetPosition,
+                                    behavior: 'smooth'
+                                });
+                            }
+                        }}
                         style={{ 
                             padding: '4px 12px', borderRadius: '15px', border: '1px solid #64a0ddff',
                             backgroundColor: '#fff', cursor: 'pointer', fontSize: '12px'
@@ -161,7 +174,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 {categories.map(cat => (
                     <tbody key={cat}>
                         {/* 🟢 產業分組標題列 */}
-                        <tr id={`cat-${cat}`} style={{ backgroundColor: '#afd2f5b0' }}>
+                        <tr id={`cat-${cat}`} style={{ backgroundColor: '#afd2f5b0', scrollMarginTop: '80px', WebkitScrollMarginTop: '80px'}}>
                             <td colSpan="16" style={{ padding: '8px 12px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #37c5e4ff' }}>
                                 {cat} (共 {groupedData[cat].length} 檔)
                             </td>
