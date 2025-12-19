@@ -140,7 +140,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 <thead>
                     <tr style={{ backgroundColor: '#739fe6ff' }}>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'50px' }}>代號</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'90px'}}>名稱</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'95px'}}>名稱</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>產業</th> {/* 🟢 新增欄位 */}
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>現價</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>漲跌</th>
