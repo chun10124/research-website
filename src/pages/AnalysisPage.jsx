@@ -69,7 +69,7 @@ const AnalysisPage = () => {
                         borderRadius: '8px',
                         boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
                         marginBottom: '30px',
-                        marginLeft: '-25px',
+                        marginLeft: '-18px',
                         marginTop: '-25px'
                     }}>
                         <IndustryAnalysisTable stocks={stocks} updateStockField={updateStockField} refreshData={refreshData} />

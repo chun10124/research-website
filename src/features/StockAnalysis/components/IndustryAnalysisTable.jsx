@@ -54,7 +54,7 @@ const EditableCell = ({ initialValue, onSave, type = "text", style = {} }) => {
                 const num = isNaN(parseFloat(rawValue)) ? rawValue : parseFloat(rawValue);
                 onSave(num); 
             }}
-            style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', textAlign: 'center', padding: '4px', borderRadius: '4px', ...style }}
+            style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', textAlign: 'center', padding: '4px', borderRadius: '4px', boxSizing: 'border-box', minWidth: '0', ...style }}
         />
     );
 };
@@ -86,6 +86,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
             displayWeeklyFlow: formatNumber(indicators.WeeklyChipFlow, 0),
             displayEPS: formatNumber(eps, 1),
             displayTarget: formatNumber(target, 0),
+            displayHoldingGrowth: indicators.HoldingGrowth_M ? indicators.HoldingGrowth_M : '0',
             forwardPE,
             potentialUpside
         };
@@ -135,11 +136,11 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 ))}
             </div>
 
-            <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '1250px', tableLayout: 'fixed' }}>
+            <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '1200px', tableLayout: 'fixed' }}>
                 <thead>
                     <tr style={{ backgroundColor: '#739fe6ff' }}>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'50px' }}>代號</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'80px'}}>名稱</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'85px'}}>名稱</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>產業</th> {/* 🟢 新增欄位 */}
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>現價</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>漲跌</th>
@@ -148,11 +149,12 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA21</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>營收</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資週</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>EPS</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>目標價</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資持股</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: 'orange'}}>估EPS</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: 'orange'}}>目標價</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>漲幅</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>前瞻PE</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'180px' }}>筆記</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd'}}>筆記</th>
                     </tr>
                 </thead>
 
@@ -160,7 +162,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                     <tbody key={cat}>
                         {/* 🟢 產業分組標題列 */}
                         <tr id={`cat-${cat}`} style={{ backgroundColor: '#afd2f5b0' }}>
-                            <td colSpan="15" style={{ padding: '8px 12px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #37c5e4ff' }}>
+                            <td colSpan="16" style={{ padding: '8px 12px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #37c5e4ff' }}>
                                 {cat} (共 {groupedData[cat].length} 檔)
                             </td>
                         </tr>
@@ -186,10 +188,13 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                                 <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA21Curvature, showColor) }}>{stock.MA21Curvature}</td>
                                 <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.RevenueYoYCurvature, showColor) }}>{stock.RevenueYoYCurvature}</td>
                                 <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right', color: stock.WeeklyChipFlow > 0 ? 'red' : 'green'}}>{stock.displayWeeklyFlow}</td>
-                                <td style={{ padding: '2px', border: '1px solid #ddd' }}>
+                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.HoldingGrowth_M > 0 ? 'red' : 'green' }}>
+                                    {stock.displayHoldingGrowth}%
+                                </td>
+                                <td style={{ padding: '2px', border: '1px solid #ddd', width: '65px'}}>
                                     <EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} style={{fontSize:'13px'}}/>
                                 </td>
-                                <td style={{ padding: '2px', border: '1px solid #ddd' }}>
+                                <td style={{ padding: '2px', border: '1px solid #ddd', width: '65px'}}>
                                     <EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} style={{fontSize:'13px'}} />
                                 </td>
                                 <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green' }}>{stock.potentialUpside}%</td>
