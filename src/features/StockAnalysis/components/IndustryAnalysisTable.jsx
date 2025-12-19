@@ -46,11 +46,23 @@ const EditableCell = ({ initialValue, onSave, type = "text", style = {} }) => {
     );
 };
 
-const IndustryAnalysisTable = () => {
-    const { stocks, loading, updateStockField } = useStockData();
+const IndustryAnalysisTable = ({ 
+    stocks: externalStocks, 
+    updateStockField, 
+    refreshData, 
+    loading: externalLoading 
+}) => {
+    // 🔴 請務必刪除下面這一行！！
+    // const { updateStockField, refreshData, loading } = useStockData(); 
+
     const [showColor, setShowColor] = useState(true);
 
-    if (loading) return <p>載入中... 請稍候</p>;
+    // 🟢 使用從外面傳進來的資料與狀態
+    const stocks = externalStocks || [];
+    const loading = externalLoading || false;
+
+    // 如果還在初始載入且完全沒資料才顯示
+    if (loading && stocks.length === 0) return <p>載入中... 請稍候</p>;
     
     const analysisResults = stocks.map(stock => {
         const indicators = calculateSingleStockIndicators(stock);
@@ -82,25 +94,26 @@ const IndustryAnalysisTable = () => {
     return (
         <div style={{ padding: '10px', maxWidth: '1600px', margin: '0 auto' }}>
 
-            {/* 🔴 2. 調整表格字體與布局 */}
+            {/*  2. 調整表格字體與布局 */}
             <table style={{ 
                 width: '100%', borderCollapse: 'collapse', 
-                fontSize: '0.82rem', // 🔴 讓字體更精緻
-                minWidth: '1200px', // 🔴 稍微縮小最小寬度限制
+                fontSize: '0.82rem', //  讓字體更精緻
+                minWidth: '1200px', //  稍微縮小最小寬度限制
                 tableLayout: 'fixed' 
             }}>
                 <thead>
                     <tr style={{ backgroundColor: '#f8f9fa' }}>
-                        {/* 🔴 3. 重新分配更緊湊的欄寬 */}
+                        {/* 3. 重新分配更緊湊的欄寬 */}
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'50px' }}>代號</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'85px'}}>名稱</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>現價</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>漲跌</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>PE</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA9</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA21</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>營收</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資週</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>持股%</th> 
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資持股</th> 
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px'}}>EPS</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px'}}>目標價</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#e8f4fd', width:'65px' }}>漲幅</th>
@@ -111,32 +124,29 @@ const IndustryAnalysisTable = () => {
                 </thead>
                 <tbody>
                     {analysisResults.map(stock => (
-                        <tr key={stock.id} style={{ height: '32px' }}> {/* 🔴 固定行高讓表格整齊 */}
+                        <tr key={stock.id} style={{ height: '32px' }}>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontWeight: 'bold' }}>{stock.id}</td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{stock.displayPrice}</td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.DailyChange > 0 ? 'red' : 'green' }}>{stock.DailyChange}%</td>
-                            
-                            {/* 加速度指標 (內容維持原樣，Padding 已縮減) */}
+                            <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center'}}>{stock.realTimePE}</td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA9Curvature, showColor) }}>{stock.MA9Curvature}</td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA21Curvature, showColor) }}>{stock.MA21Curvature}</td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.RevenueYoYCurvature, showColor) }}>{stock.RevenueYoYCurvature}</td>
-                            
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right', color: stock.WeeklyChipFlow > 0 ? 'red' : 'green'}}>{stock.displayWeeklyFlow}</td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right', color: stock.HoldingGrowth_M > 0 ? 'red' : 'green'}}>{stock.HoldingGrowth_M}%</td>
-
                             <td style={{ padding: '2px', border: '1px solid #ddd' }}>
-                                <EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} style={{fontSize:'13px'}}/>
+                                <EditableCell initialValue={stock.displayEPS} onSave={async (val) => {await updateStockField(stock.id, 'estimatedEPS', val);await new Promise(r => setTimeout(r, 300));if (refreshData) await refreshData();}} style={{fontSize:'13px'}}/>
                             </td>
                             <td style={{ padding: '2px', border: '1px solid #ddd' }}>
-                                <EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} style={{fontSize:'13px'}} />
+                                <EditableCell initialValue={stock.displayTarget} onSave={async (val) => {await updateStockField(stock.id, 'targetPrice', val);if (refreshData) await refreshData();}} style={{fontSize:'13px'}} />
                             </td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green' }}>
                                 {stock.potentialUpside}%
                             </td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }}>{stock.forwardPE}</td>
                             <td style={{ padding: '2px', border: '1px solid #ddd' }}>
-                                <EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left', fontSize:'13px'}} />
+                                <EditableCell initialValue={stock.notes} onSave={async (val) => {await updateStockField(stock.id, 'notes', val);if (refreshData) await refreshData();}} style={{textAlign: 'left', fontSize:'13px'}} />
                             </td>
                             <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontSize: '13px', color: '#999' }}>{stock.calculatedStatus}</td>
                         </tr>

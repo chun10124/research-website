@@ -103,6 +103,7 @@ export const calculateSingleStockIndicators = (stock) => {
         MA9Curvature,
         MA21Curvature,
         RevenueYoYCurvature,
+        realTimePE: stock.realTimePE || '--',
         calculatedStatus: '更新成功',
     };
 };

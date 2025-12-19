@@ -6,12 +6,14 @@ import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { useDataSync } from '../features/StockAnalysis/hooks/useDataSync';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
 import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable'; 
+import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
 
 const AnalysisPage = () => {
     const [testCode, setTestCode] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
 
-    const { stocks, loading } = useStockData(); 
+    const { stocks, loading, refreshData, updateStockField} = useStockData(); 
+    
     useDataSync(stocks); 
     
     const handleAddStock = async () => {
@@ -21,18 +23,36 @@ const AnalysisPage = () => {
             return;
         }
 
-        setStatusMessage(`🟡 嘗試同步 ${code}...`);
+        setStatusMessage(`🟡 正在初始化 ${code}...`);
         try {
-            await updateAnalysisField(code, { 
+            // 第一步：先在 Firebase 建立基礎文件 (讓格子先在畫面上跑出來)
+            const initialStockObj = { 
+                id: code, // 確保 ID 與代碼一致
                 code: code,
-                name: `代碼 ${code}`,
+                name: `讀取中...`,
                 category: '自選',
                 lastUpdate: 0, 
-                history: { price: [] } 
-            });
-            setStatusMessage(`✅ ${code} 新增成功！`);
+                history: { priceClose: [], foreignChipFlowNet: [], foreignTotalHolding: [], revenueRaw: [], revenueYoY: [] } 
+            };
+            
+            await updateAnalysisField(code, initialStockObj);
+            
+            // 🟢 立刻刷一次畫面，讓使用者看到「讀取中」的格子
+            await refreshData(); 
+
+            setStatusMessage(`正在從 API 抓取 ${code} 的詳細數據...`);
+
+            // 第二步：🟢 強制觸發單個股票的完整同步 (包含股價、籌碼、營收)
+            // 這樣就不需要等 useDataSync 的 6 小時門檻
+            await syncStockSnapshots(initialStockObj); 
+
+            // 第三步：🟢 同步完成後，再拍一次照片，把數據填進格子
+            await refreshData(); 
+
+            setStatusMessage(`✅ ${code} 同步成功！`);
             setTestCode('');
         } catch (error) {
+            console.error("同步失敗:", error);
             setStatusMessage(`❌ 失敗：${error.message}`);
         }
     };
@@ -52,7 +72,7 @@ const AnalysisPage = () => {
                         marginLeft: '-25px',
                         marginTop: '-25px'
                     }}>
-                        <IndustryAnalysisTable />
+                        <IndustryAnalysisTable stocks={stocks} updateStockField={updateStockField} refreshData={refreshData} />
                     </div>
 
                     {/*  2. 輸入區移到最下面 (並進行樣式優化) */}

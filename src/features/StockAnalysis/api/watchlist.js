@@ -1,39 +1,31 @@
 /* src/features/StockAnalysis/api/watchlist.js */
-
-import { doc, setDoc, onSnapshot, query, orderBy } from "firebase/firestore";
-// 確保從您的配置檔案中正確導入 STOCK_WATCHLIST_COLLECTION
+// 🟢 修正導入：移除 onSnapshot，加入 getDocs
+import { doc, setDoc, getDocs, query, orderBy } from "firebase/firestore";
 import { STOCK_WATCHLIST_COLLECTION } from '../../../utils/firebaseConfig'; 
 
 /**
- * 監聽股票觀察清單的變化 (用於表格即時更新)
- * @param {function} callback - 數據更新時回調的函式
- * @returns {function} 取消訂閱函式
+ * 🔴 修改：從監聽改為單次抓取 (fetchWatchlist)
+ * 解決 200 支股票的連線負擔與紅字報錯
  */
-export const subscribeWatchlist = (callback) => {
-  // 按 category 升序排列
+export const fetchWatchlist = async () => {
   const q = query(STOCK_WATCHLIST_COLLECTION, orderBy("category", "asc"));
   
-  return onSnapshot(q, (snapshot) => {
-    try {
-        const data = snapshot.docs.map(doc => ({ 
-            id: doc.id, 
-            ...doc.data() 
-        }));
-        // 將數據傳遞給 useStockData.js
-        callback(data);
-        console.log(`📡 [訂閱] 成功接收 ${data.length} 筆股票數據。`);
-
-    } catch (error) {
-        console.error("❌ Firebase 讀取 (onSnapshot) 數據處理失敗:", error);
-        callback([]);
-    }
-  });
+  try {
+    const snapshot = await getDocs(q); // 🟢 改用 getDocs (一次性請求)
+    const data = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+    }));
+    console.log(`[讀取] 成功從雲端獲取 ${data.length} 筆資料。`);
+    return data;
+  } catch (error) {
+    console.error("❌ Firebase 讀取失敗:", error);
+    return [];
+  }
 };
 
 /**
- * 更新或新增股票分析資料 (用於 StockInputForm 和 API 同步)
- * @param {string} code - 股票代碼 (Document ID)
- * @param {object} data - 要更新的欄位數據
+ * 更新或新增股票分析資料
  */
 export const updateAnalysisField = async (code, data) => {
     try {
@@ -42,7 +34,7 @@ export const updateAnalysisField = async (code, data) => {
             ...data,
             updatedAt: Date.now()
         }, { merge: true });
-        // 成功寫入後，會自動觸發上方的 subscribeWatchlist 讓表格更新
+        console.log(`[${code}] 更新成功`);
     } catch (error) {
         console.error(`❌ [${code}] Firebase 寫入失敗:`, error.message);
         throw error;

@@ -1,49 +1,55 @@
 /* src/features/StockAnalysis/hooks/useStockData.js */
-
 import { useState, useEffect } from 'react';
-// ⚠️ 確保路徑和函式名稱正確
-import { subscribeWatchlist } from '../api/watchlist'; 
+// 🟢 修正導入：改用 fetchWatchlist 與 updateAnalysisField
+import { fetchWatchlist, updateAnalysisField } from '../api/watchlist'; 
 import { db } from '../../../utils/firebaseConfig'; 
-import { doc, updateDoc } from 'firebase/firestore';
-/**
- * Hook: 從 Firebase 實時獲取股票觀察清單數據
- * 確保這裡使用 const export
- */
-export const useStockData = () => { // <--- 這裡必須是 export const
+import { doc } from 'firebase/firestore';
+
+export const useStockData = () => {
     const [stocks, setStocks] = useState([]);
     const [loading, setLoading] = useState(true);
     
-    useEffect(() => {
-        if (typeof window === 'undefined') {
-            setLoading(false);
-            return;
-        }
-
-        const unsubscribe = subscribeWatchlist((data) => {
-            setStocks(data);
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, []); 
-    
-    // 核心功能：更新指定欄位到 Firebase
-    const updateStockField = async (stockId, field, value) => {
+    // 🟢 封裝刷新邏輯
+    const refresh = async () => {
         try {
-            // 修正：將 "stocks" 改為 "stockWatchlist"
-            // 並確保 stockId 是字串（例如 "1101"）
-            const stockRef = doc(db, "stockWatchlist", String(stockId)); 
+            const data = await fetchWatchlist();
+            // 🟢 直接賦值，不要先 setStocks([])
+            // 只要我們傳入的是一個全新的陣列 [...data]，React 就會知道要重算 PE
+            setStocks([...data]); 
+            setLoading(false);
+            console.log("✅ 數據已平滑同步");
             
-            await updateDoc(stockRef, {
-                [field]: value
-            });
-            
-            console.log(`✅ [${stockId}] 更新成功`);
+            console.log("表格數據已成功強制同步");
         } catch (error) {
-            // 這裡如果印出 404 代表路徑還是錯的，請檢查 db 的初始化
-            console.error("❌ Firebase 更新失敗:", error);
+            console.error("刷新失敗:", error);
+            setLoading(false);
         }
     };
 
-    return { stocks, loading, updateStockField };
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        // 🟢 初次進入頁面時抓取一次
+        refresh();
+    }, []); 
+    
+    /**
+     * 核心功能：更新指定欄位
+     * 🟢 修改：存檔後呼叫 refresh()，確保畫面與資料庫同步
+     */
+    const updateStockField = async (stockId, field, value) => {
+        try {
+            // 直接使用 api 裡的 updateAnalysisField 比較乾淨
+            await updateAnalysisField(stockId, { [field]: value });
+            
+            // 🟢 自動同步：寫入成功後立刻重新抓取，不需要手動按更新
+            await refresh(); 
+            
+            console.log(`✅ [${stockId}] 畫面已自動刷新`);
+        } catch (error) {
+            console.error("❌ 更新失敗:", error);
+        }
+    };
+
+    // 額外導出 refresh，讓你有需要時可以手動刷新
+    return { stocks, loading, updateStockField, refreshData: refresh };
 };

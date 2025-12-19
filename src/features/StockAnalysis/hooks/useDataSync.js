@@ -1,55 +1,74 @@
-import { useEffect } from 'react';
+/* src/features/StockAnalysis/hooks/useDataSync.js */
+import { useEffect, useRef } from 'react';
 import { fetchCompleteStockData } from '../api/stockApi';
 import { updateAnalysisField } from '../api/watchlist';
 
 /**
- * 自動同步 Hook：整合最新 API 資料並更新回 Firebase
+ * 智慧同步 Hook
+ * 1. 解決重複啟動問題 (Ref Lock)
+ * 2. 解決連線過於密集導致的報錯 (Staggered Delay)
+ * 3. 解決效能消耗 (Time-based Check)
  */
 export const useDataSync = (stocks) => {
+  const isSyncing = useRef(false);
+
   useEffect(() => {
-    // 判斷是否需要更新：若第一檔股票沒有更新時間，或距離上次更新超過 1 小時
-    const needsUpdate = () => {
-      if (stocks.length === 0) return false;
-      const oneHour = 60 * 60 * 1000;
-      const lastUpdate = stocks[0].lastUpdate || 0;
-      return Date.now() - lastUpdate > oneHour;
+    // 防禦機制：如果正在同步、或根本沒股票，就直接退出
+    if (stocks.length === 0 || isSyncing.current) return;
+
+    const syncAll = async () => {
+      console.log("🚀 [數據同步] 啟動智慧檢查...");
+      isSyncing.current = true;
+
+      // 設定更新門檻：例如 1 小時 (3600000 毫秒)
+      const UPDATE_THRESHOLD = 6 * 60 * 60 * 1000; 
+
+      for (const stock of stocks) {
+        try {
+          const now = Date.now();
+          const lastUpdate = stock.lastUpdate || 0;
+
+          // 🔴 關鍵優化：檢查這檔股票是否真的需要更新
+          // 如果一小時內更新過，就直接跳過，節省 API 配額與時間
+          if (now - lastUpdate < UPDATE_THRESHOLD) {
+            console.log(`⏩ [${stock.code}] ${stock.name} 最近已更新，跳過同步。`);
+            continue;
+          }
+
+          console.log(`🔄 [${stock.code}] ${stock.name} 資料過期，開始同步...`);
+          
+          const latestData = await fetchCompleteStockData(stock.code, (msg) => {
+            // 可選：將進度印在控制台方便除錯
+            console.log(`   > ${msg}`);
+          });
+
+          if (latestData) {
+            // 更新 Firebase
+            await updateAnalysisField(stock.id, {
+              ...latestData,
+              // 保留使用者手動輸入的預估資料，避免被蓋掉
+              estimatedEPS: stock.estimatedEPS || 0,
+              targetPrice: stock.targetPrice || 0,
+              notes: stock.notes || "",
+            });
+            console.log(`✅ [${stock.code}] 更新成功。`);
+          }
+
+          // 🔴 關鍵優化：增加稍微長一點的延遲 (2秒)
+          // 這能解決私人隧道短時間內請求過多導致的 429 或 500 報錯
+          await new Promise(r => setTimeout(r, 2000));
+
+        } catch (e) {
+          console.error(`❌ [${stock.code}] 同步過程中發生錯誤:`, e);
+          // 遇到單一股票錯誤不中斷循環，繼續下一檔
+          continue; 
+        }
+      }
+
+      console.log("🏁 [數據同步] 本輪檢查結束。");
+      isSyncing.current = false;
     };
 
-    if (stocks.length > 0 && needsUpdate()) {
-      const syncAll = async () => {
-        console.log("🚀 [數據同步] 開始批次更新全體股票資料...");
-        
-        for (const stock of stocks) {
-          try {
-            // 1. 呼叫我們寫好的最終版 API
-            const latestData = await fetchCompleteStockData(stock.code, (msg) => console.log(msg));
-
-            if (latestData) {
-              // 2. 將 API 抓到的資料更新回 Firebase
-              // 這裡會更新 currentPrice, history 陣列, 以及外資比例等
-              await updateAnalysisField(stock.id, {
-                ...latestData,
-                // 保留原本的手動欄位，避免覆蓋
-                eps: stock.eps || 0,
-                targetPrice: stock.targetPrice || 0,
-                memo: stock.memo || "",
-                category: stock.category || "未分類"
-              });
-              
-              console.log(`✅ ${stock.name} (${stock.code}) 更新成功`);
-            }
-
-            // 3. 節流機制：每抓一檔休息 1 秒，保護 API 額度與 Proxy 穩定
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-          } catch (error) {
-            console.error(`❌ ${stock.code} 同步失敗:`, error);
-          }
-        }
-        console.log("🏁 [數據同步] 全體更新完成");
-      };
-
-      syncAll();
-    }
-  }, [stocks.length]); // 僅在股票數量變動時重新評估 (或可加入 dependencies 手動觸發)
+    syncAll();
+  }, [stocks.length]); // 僅在股票清單長度變動時觸發，避免頁面重刷就重跑
 };
