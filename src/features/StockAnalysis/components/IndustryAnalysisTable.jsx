@@ -141,7 +141,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         }}
                         style={{ 
                             padding: '4px 12px', borderRadius: '15px', border: '1px solid #64a0ddff',
-                            backgroundColor: '#fff', cursor: 'pointer', fontSize: '12px'
+                            backgroundColor: '#fff', cursor: 'pointer', fontSize: '12px', color: 'black'
                         }}
                     >
                         {cat} ({groupedData[cat].length})
