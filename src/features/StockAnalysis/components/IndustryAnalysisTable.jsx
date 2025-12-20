@@ -163,8 +163,8 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>月營收</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資週</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資持股</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: 'orange'}}>估EPS</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: 'orange'}}>目標價</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#f8bc43ff'}}>估EPS</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#f8bc43ff'}}>目標價</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>漲幅</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>前瞻PE</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd'}}>備註</th>
@@ -181,9 +181,9 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         </tr>
                         
                         {groupedData[cat].map(stock => (
-                            <tr key={stock.id} style={{ height: '32px' }}>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontWeight: 'bold' }}>{stock.id}</td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd' }}>{stock.name}</td>
+                            <tr key={stock.id} style={{ height: '22px' }}>
+                                <td style={{ padding: '2px 4px', border: '1px solid #ddd', fontWeight: 'bold' }}>{stock.id}</td>
+                                <td style={{ padding: '2px 4px', border: '1px solid #ddd' }}>{stock.name}</td>
                                 
                                 {/* 🟢 產業類別編輯：改完會自動跳到對的分組 */}
                                 <td style={{ padding: '2px', border: '1px solid #ddd' }}>
@@ -194,26 +194,26 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                                     />
                                 </td>
 
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{stock.displayPrice}</td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.DailyChange > 0 ? 'red' : 'green' }}>{stock.DailyChange}%</td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center'}}>{stock.realTimePE}</td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA9Curvature, showColor) }}>{stock.MA9Curvature}</td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA21Curvature, showColor) }}>{stock.MA21Curvature}</td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.RevenueYoYCurvature, showColor) }}>{stock.RevenueYoYCurvature}</td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'right', color: stock.WeeklyChipFlow > 0 ? 'red' : 'green'}}>{stock.displayWeeklyFlow}</td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.HoldingGrowth_M > 0 ? 'red' : 'green' }}>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{stock.displayPrice}</td>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.DailyChange > 0 ? 'red' : 'green' }}>{stock.DailyChange}%</td>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center'}}>{stock.realTimePE}</td>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA9Curvature, showColor) }}>{stock.MA9Curvature}</td>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA21Curvature, showColor) }}>{stock.MA21Curvature}</td>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.RevenueYoYCurvature, showColor) }}>{stock.RevenueYoYCurvature}</td>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'right', color: stock.WeeklyChipFlow > 0 ? 'red' : 'green'}}>{stock.displayWeeklyFlow}</td>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.HoldingGrowth_M > 0 ? 'red' : 'green' }}>
                                     {stock.displayHoldingGrowth}%
                                 </td>
                                 <td style={{ padding: '2px', border: '1px solid #ddd', width: '65px'}}>
-                                    <EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} style={{fontSize:'13px'}}/>
+                                    <EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} style={{fontSize:'11.5px'}}/>
                                 </td>
                                 <td style={{ padding: '2px', border: '1px solid #ddd', width: '65px'}}>
-                                    <EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} style={{fontSize:'13px'}} />
+                                    <EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} style={{fontSize:'11.5px'}} />
                                 </td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green' }}>{stock.potentialUpside}%</td>
-                                <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }}>{stock.forwardPE}</td>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green' }}>{stock.potentialUpside}%</td>
+                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center' }}>{stock.forwardPE}</td>
                                 <td style={{ padding: '2px', border: '1px solid #ddd' }}>
-                                    <EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left', fontSize:'13px'}} />
+                                    <EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left', fontSize:'11.5px'}} />
                                 </td>
                             </tr>
                         ))}
