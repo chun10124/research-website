@@ -165,7 +165,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資持股</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#f8bc43ff'}}>估EPS</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#f8bc43ff'}}>目標價</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>漲幅</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>潛在漲幅</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>前瞻PE</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd'}}>備註</th>
                     </tr>
