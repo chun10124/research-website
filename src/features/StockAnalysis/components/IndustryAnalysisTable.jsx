@@ -158,11 +158,11 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>現價</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>漲跌</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px'}}>PE</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA9</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA21</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA10</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>MA20</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>月營收</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資週</th>
-                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資持股</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>外資指標</th>
+                        <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>持股月增</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#f8bc43ff'}}>估EPS</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', backgroundColor: '#f8bc43ff'}}>目標價</th>
                         <th style={{ padding: '4px 6px', border: '1px solid #ddd', width:'65px' }}>潛在漲幅</th>
@@ -173,19 +173,15 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
 
                 {categories.map(cat => (
                     <tbody key={cat}>
-                        {/* 🟢 產業分組標題列 */}
                         <tr id={`cat-${cat}`} style={{ backgroundColor: '#afd2f5b0', scrollMarginTop: '80px', WebkitScrollMarginTop: '80px'}}>
                             <td colSpan="16" style={{ padding: '8px 12px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #37c5e4ff' }}>
                                 {cat} (共 {groupedData[cat].length} 檔)
                             </td>
                         </tr>
-                        
                         {groupedData[cat].map(stock => (
                             <tr key={stock.id} style={{ height: '22px' }}>
                                 <td style={{ padding: '2px 4px', border: '1px solid #ddd', fontWeight: 'bold' }}>{stock.id}</td>
                                 <td style={{ padding: '2px 4px', border: '1px solid #ddd' }}>{stock.name}</td>
-                                
-                                {/* 🟢 產業類別編輯：改完會自動跳到對的分組 */}
                                 <td style={{ padding: '2px', border: '1px solid #ddd' }}>
                                     <EditableCell 
                                         initialValue={stock.category} 
@@ -193,14 +189,19 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                                         style={{fontSize:'12px', color:'#666'}}
                                     />
                                 </td>
-
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{stock.displayPrice}</td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.DailyChange > 0 ? 'red' : 'green' }}>{stock.DailyChange}%</td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center'}}>{stock.realTimePE}</td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA9Curvature, showColor) }}>{stock.MA9Curvature}</td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA21Curvature, showColor) }}>{stock.MA21Curvature}</td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.RevenueYoYCurvature, showColor) }}>{stock.RevenueYoYCurvature}</td>
-                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'right', color: stock.WeeklyChipFlow > 0 ? 'red' : 'green'}}>{stock.displayWeeklyFlow}</td>
+                                <td style={{ 
+                                    padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold',
+                                    backgroundColor: stock.foreignSignal === 'B' ? (stock.foreignBCount === 1 ? '#ff7675' : '#fab1a0') : 'transparent',
+                                    color: stock.foreignSignal === 'B' ? 'white' : '#636e72'
+                                }}> <div>{stock.foreignSignal === 'B' ? `B${stock.foreignBCount}` : 'N'}</div>
+                                    {stock.foreignSignal === 'B' && <div style={{ fontSize: '9px', fontWeight: 'normal', opacity: 0.9 }}>{stock.zScore}x</div>}
+                                </td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.HoldingGrowth_M > 0 ? 'red' : 'green' }}>
                                     {stock.displayHoldingGrowth}%
                                 </td>

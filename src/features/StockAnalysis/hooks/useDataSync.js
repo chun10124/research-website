@@ -2,7 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { fetchCompleteStockData } from '../api/stockApi';
 import { updateAnalysisField } from '../api/watchlist';
-
+import { calculateSingleStockIndicators } from '../utils/analysisUtils';
 /**
  * 智慧同步 Hook
  * 1. 解決重複啟動問題 (Ref Lock)
@@ -20,18 +20,32 @@ export const useDataSync = (stocks) => {
       console.log("🚀 [數據同步] 啟動智慧檢查...");
       isSyncing.current = true;
 
-      // 設定更新門檻：例如 1 小時 (3600000 毫秒)
+      // 設定更新門檻：例如 6 小時
       const UPDATE_THRESHOLD = 6 * 60 * 60 * 1000; 
 
       for (const stock of stocks) {
         try {
-          const now = Date.now();
-          const lastUpdate = stock.lastUpdate || 0;
+          const now = new Date();
+          const lastUpdateTs = stock.lastUpdate || 0;
+          const lastUpdateDate = new Date(lastUpdateTs);
 
-          // 🔴 關鍵優化：檢查這檔股票是否真的需要更新
-          // 如果一小時內更新過，就直接跳過，節省 API 配額與時間
-          if (now - lastUpdate < UPDATE_THRESHOLD) {
-            console.log(`⏩ [${stock.code}] ${stock.name} 最近已更新，跳過同步。`);
+          // 1. 基本檢查：超過 6 小時必過期
+          let isExpired = (now.getTime() - lastUpdateTs) > UPDATE_THRESHOLD;
+
+          // 2. 智慧檢查：是否跨越收盤點 (13:30)
+          // 取得今天的收盤時間點 (13:45 設一點 buffer)
+          const todayMarketClose = new Date();
+          todayMarketClose.setHours(13, 45, 0, 0);
+
+          // 如果現在已經過收盤了，且「最後更新」是在今天收盤之前，強制更新
+          if (now > todayMarketClose && lastUpdateDate < todayMarketClose) {
+            console.log(`📌 [${stock.code}] 跨越收盤節點，強制更新最新收盤價。`);
+            isExpired = true;
+          }
+
+          // 如果沒過期，就跳過
+          if (!isExpired) {
+            console.log(`⏩ [${stock.code}] ${stock.name} 數據尚在效期內，跳過。`);
             continue;
           }
 
@@ -43,13 +57,16 @@ export const useDataSync = (stocks) => {
           });
 
           if (latestData) {
-            // 更新 Firebase
+            // 🔴 這裡一定要確保存入的是最新計算出的策略欄位
+            const indicators = calculateSingleStockIndicators(latestData);
+
             await updateAnalysisField(stock.id, {
-              ...latestData,
-              // 保留使用者手動輸入的預估資料，避免被蓋掉
-              estimatedEPS: stock.estimatedEPS || 0,
-              targetPrice: stock.targetPrice || 0,
-              notes: stock.notes || "",
+                ...latestData,
+                // 確保這些新欄位被存入 Firebase
+                foreignSignal: indicators.foreignSignal,
+                foreignBCount: indicators.foreignBCount,
+                roc10Value: indicators.roc10Value,
+                lastUpdate: Date.now()
             });
             console.log(`✅ [${stock.code}] 更新成功。`);
           }
