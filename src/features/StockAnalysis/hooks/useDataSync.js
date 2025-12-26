@@ -65,7 +65,7 @@ export const useDataSync = (stocks) => {
                 // 確保這些新欄位被存入 Firebase
                 foreignSignal: indicators.foreignSignal,
                 foreignBCount: indicators.foreignBCount,
-                roc10Value: indicators.roc10Value,
+                zScore: indicators.zScore || 0,
                 lastUpdate: Date.now()
             });
             console.log(`✅ [${stock.code}] 更新成功。`);
