@@ -61,7 +61,7 @@ export const calculateForeignForce = (holdings = [], prevBCount = 0) => {
 
     // 2. 計算滾動標準差門檻 (Rolling Threshold): 過去 700 日 [cite: 8, 9]
     const slice700 = rocHistory.slice(1, 701); // 排除今天，計算交易當下過去的標準差 [cite: 5]
-    const mean = slice700.reduce((a, b) => a + b, 0) / 700;
+    const mean = slice700.reduce((a, b) => a + b, 0) / slice700.length;
     const stdDev = Math.sqrt(slice700.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / 700);
 
     const todayROC = rocHistory[0];

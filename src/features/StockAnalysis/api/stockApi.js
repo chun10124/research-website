@@ -55,7 +55,7 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}) =
     // 🔴 2. 移除買賣超 (InstitutionalInvestorsBuySell)
     const [priceRes, holdingRes, revenueRes, infoRes, peRes] = await Promise.all([
       safeFetch(getFinmindUrl("TaiwanStockPrice", DATA_START_DATE)),
-      // 🟢 3. 修改：外資持股改抓三年前開始，確保計算 ROC 與 750 日標準差的精準度
+      // 🟢 3. 修改：外資持股改抓三年前開始，確保計算 ROC 與 700 日標準差的精準度
       safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START)), 
       safeFetch(getFinmindUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE)),
       safeFetch(getFinmindUrl("TaiwanStockInfo", "")),
