@@ -85,7 +85,6 @@ export const calculateForeignForce = (holdings = [], prevBCount = 0) => {
             }
         }
     }
-    
     return {
         signal,
         bCount,
