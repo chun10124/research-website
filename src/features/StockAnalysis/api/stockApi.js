@@ -35,7 +35,7 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}) =
       throw new Error("無效的股票代碼");
   }
 
-  // 🟢 1. 計算三年前的日期 (為了取得策略建議的 750 日標準差門檻)
+  //  1. 計算三年前的日期 (為了取得策略建議的 750 日標準差門檻)
   const today = new Date();
   const threeYearsAgo = new Date();
   threeYearsAgo.setFullYear(today.getFullYear() - 3);
