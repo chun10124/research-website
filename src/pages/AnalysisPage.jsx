@@ -23,7 +23,7 @@ const AnalysisPage = () => {
             return;
         }
 
-        setStatusMessage(`🟡 正在初始化 ${code}...`);
+        setStatusMessage(`正在初始化 ${code}...`);
         try {
             // 第一步：先在 Firebase 建立基礎文件 (讓格子先在畫面上跑出來)
             const initialStockObj = { 
@@ -49,11 +49,11 @@ const AnalysisPage = () => {
             // 第三步：🟢 同步完成後，再拍一次照片，把數據填進格子
             await refreshData(); 
 
-            setStatusMessage(`✅ ${code} 同步成功！`);
+            setStatusMessage(`${code} 同步成功！`);
             setTestCode('');
         } catch (error) {
             console.error("同步失敗:", error);
-            setStatusMessage(`❌ 失敗：${error.message}`);
+            setStatusMessage(`失敗：${error.message}`);
         }
     };
 
