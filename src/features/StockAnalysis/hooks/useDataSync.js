@@ -20,8 +20,8 @@ export const useDataSync = (stocks) => {
       console.log("🚀 [數據同步] 啟動智慧檢查...");
       isSyncing.current = true;
 
-      // 設定更新門檻：例如 5 小時
-      const UPDATE_THRESHOLD = 5 * 60 * 60 * 1000; 
+      // 設定更新門檻：例如 6 小時
+      const UPDATE_THRESHOLD = 6 * 60 * 60 * 1000; 
 
       for (const stock of stocks) {
         try {
