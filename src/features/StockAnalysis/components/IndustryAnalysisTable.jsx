@@ -51,8 +51,12 @@ const EditableCell = ({ initialValue, onSave, type = "text", style = {} }) => {
             onBlur={() => {
                 const rawValue = String(localValue).replace(/,/g, '');
                 if (rawValue.trim() === '') { onSave(null); return; }
-                const num = isNaN(parseFloat(rawValue)) ? rawValue : parseFloat(rawValue);
-                onSave(num); 
+
+
+                const isPureNumber = /^-?\d*\.?\d+$/.test(rawValue);
+                const finalValue = isPureNumber ? parseFloat(rawValue) : rawValue;
+                
+                onSave(finalValue);
             }}
             style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', textAlign: 'center', padding: '4px', borderRadius: '4px', boxSizing: 'border-box', minWidth: '0', ...style }}
         />
