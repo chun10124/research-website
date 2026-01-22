@@ -4,7 +4,7 @@ import { setDoc, onSnapshot } from 'firebase/firestore';
 import { WHITEBOARD_DOC_REF } from '../utils/firebaseConfig';
 import styles from './Whiteboard.module.css';
 
-// 便利貼顏色選項
+// 便利貼顏色
 const NOTE_COLORS = [
   '#FFE5B4', // 淺黃色
   '#E1F5FE', // 淺藍色
