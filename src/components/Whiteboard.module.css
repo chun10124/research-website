@@ -1,0 +1,609 @@
+/* 白板容器 */
+.whiteboardContainer {
+  width: 100%;
+  margin: 0;
+  padding: 20px;
+}
+
+.whiteboardContainer h2 {
+  margin-bottom: 10px;
+  color: var(--ifm-heading-color);
+}
+
+/* 主布局：左右分栏 */
+.mainLayout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+/* 左側欄 */
+.leftSidebar {
+  width: 270px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+/* 自定义滚动条 */
+.leftSidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.leftSidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.leftSidebar::-webkit-scrollbar-thumb {
+  background: var(--ifm-color-emphasis-300);
+  border-radius: 3px;
+}
+
+.leftSidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--ifm-color-emphasis-400);
+}
+
+/* 右側內容區 */
+.rightContent {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 區塊標題 */
+.sectionTitle {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: var(--ifm-heading-color);
+}
+
+/* 標籤區塊 */
+.tagsSection {
+  background-color: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.tagsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tagsList::-webkit-scrollbar {
+  width: 4px;
+}
+
+.tagsList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tagsList::-webkit-scrollbar-thumb {
+  background: var(--ifm-color-emphasis-300);
+  border-radius: 2px;
+}
+
+.tagsList::-webkit-scrollbar-thumb:hover {
+  background: var(--ifm-color-emphasis-400);
+}
+
+.tagButton {
+  padding: 4px 12px;
+  border: 1px solid #deb887;
+  border-radius: 15px;
+  background-color: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tagButton:hover {
+  background-color: var(--ifm-color-emphasis-100);
+  border-color: var(--ifm-color-primary);
+}
+
+.tagButtonActive {
+  background-color: var(--ifm-color-primary);
+  color: white;
+  border-color: var(--ifm-color-primary);
+}
+
+.tagButtonActive:hover {
+  background-color: var(--ifm-color-primary-dark);
+}
+
+/* 筛选区域 */
+.filterSection {
+  background-color: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.searchInput,
+.timeSelect {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  background-color: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.filterInfo {
+  font-size: 0.9em;
+  color: var(--ifm-color-emphasis-600);
+  margin-top: 8px;
+}
+
+/* 表单区域 */
+.formContainer {
+  background-color: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.formRow {
+  margin-bottom: 15px;
+}
+
+.formRow:last-child {
+  margin-bottom: 0;
+}
+
+.contentInput {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  background-color: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.tagsInput {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  background-color: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 14px;
+}
+
+.colorPicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.colorPicker label {
+  font-size: 14px;
+  color: var(--ifm-font-color-base);
+  white-space: nowrap;
+}
+
+.colorOptions {
+  display: flex;
+  gap: 8px;
+}
+
+.colorOption {
+  width: 32px;
+  height: 32px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.colorOption:hover {
+  transform: scale(1.1);
+  border-color: var(--ifm-color-emphasis-600);
+}
+
+.colorSelected {
+  border-color: var(--ifm-color-primary) !important;
+  box-shadow: 0 0 0 2px var(--ifm-color-primary-light);
+}
+
+.formActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.formActions button {
+  flex: 1;
+  min-width: 80px;
+}
+
+.submitBtn,
+.cancelBtn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.submitBtn {
+  background-color: var(--ifm-color-primary);
+  color: white;
+}
+
+.submitBtn:hover {
+  background-color: var(--ifm-color-primary-dark);
+}
+
+.cancelBtn {
+  background-color: var(--ifm-color-emphasis-200);
+  color: var(--ifm-font-color-base);
+}
+
+.cancelBtn:hover {
+  background-color: var(--ifm-color-emphasis-300);
+}
+
+/* 便利贴网格 */
+.notesGrid {
+  display: grid;
+  /* 移除 1fr，改用固定寬度 320px */
+  /* 這樣單元格就會剛好等於便利貼寬度，不會有多餘空間 */
+  grid-template-columns: repeat(auto-fill, 270px); 
+  
+  /* 這裡設定你最終想要的物理間距 */
+  gap: 20px 20px; /* 上下 16px，左右 8px (調小一點) */
+  
+  justify-content: start; 
+  align-items: start;
+  width: 100%;
+}
+
+/* 便利贴卡片 */
+.note {
+  width: 100%; 
+  
+  padding: 18px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  
+  /* 保持你喜歡的高度與比例 */
+  min-height: 120px;
+  max-height: 250px;
+  aspect-ratio: 1 / 0.9;
+  
+  margin: 0; /* 務必確保 margin 是 0 */
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.note:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.noteHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.noteTime {
+  font-size: 0.85em;
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 500;
+}
+
+.noteActions {
+  display: flex;
+  gap: 5px;
+}
+
+.editBtn,
+.deleteBtn,
+.completeBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  opacity: 0.7;
+}
+
+.editBtn:hover,
+.deleteBtn:hover,
+.completeBtn:hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.completeBtn {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  font-size: 20px;
+  color: #27ae60;
+  font-weight: bold;
+  padding: 6px 10px;
+  border-radius: 50%;
+  background-color: rgba(39, 174, 96, 0.1);
+  opacity: 0.8;
+}
+
+.editBtn {
+  font-size: 18px;
+  color: #f39c12;
+  font-weight: bold;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: rgba(243, 156, 18, 0.1);
+  opacity: 0.8;
+}
+
+.editBtn:hover {
+  background-color: rgba(243, 156, 18, 0.2);
+  opacity: 1;
+}
+
+.deleteBtn {
+  font-size: 18px;
+  color: #e74c3c;
+  font-weight: bold;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: rgba(231, 76, 60, 0.1);
+  opacity: 0.8;
+}
+
+.deleteBtn:hover {
+  background-color: rgba(231, 76, 60, 0.2);
+  opacity: 1;
+}
+
+.completeBtn:hover {
+  background-color: rgba(39, 174, 96, 0.2);
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.noteContent {
+  flex: 1;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  color: rgba(0, 0, 0, 0.8);
+  margin-bottom: 10px;
+}
+
+.noteTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.tag {
+  display: inline-block;
+  padding: 4px 8px;
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  font-size: 0.75em;
+  color: rgba(0, 0, 0, 0.7);
+  font-weight: 500;
+}
+
+.highlight {
+  background-color: #ffd700 !important;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 0 2px rgba(255, 255, 255, 0.3);
+  color: #000 !important;
+  display: inline-block;
+  position: relative;
+  z-index: 10;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.emptyState {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--ifm-color-emphasis-600);
+  font-size: 1.1em;
+}
+
+/* 暗色模式适配 */
+[data-theme='dark'] .tagButton {
+  background-color: var(--ifm-background-color);
+  border-color: #deb887;
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .tagButton:hover {
+  background-color: var(--ifm-color-emphasis-200);
+  border-color: var(--ifm-color-primary);
+}
+
+[data-theme='dark'] .tagButtonActive {
+  background-color: var(--ifm-color-primary);
+  color: white;
+  border-color: var(--ifm-color-primary);
+}
+
+[data-theme='dark'] .tagButtonActive:hover {
+  background-color: var(--ifm-color-primary-dark);
+}
+
+[data-theme='dark'] .noteTime {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+[data-theme='dark'] .noteContent {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme='dark'] .noteHeader {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='dark'] .noteTags {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='dark'] .tag {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+[data-theme='dark'] .highlight {
+  background-color: #f57f17;
+  color: #000;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] .editBtn:hover,
+[data-theme='dark'] .deleteBtn:hover,
+[data-theme='dark'] .completeBtn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='dark'] .completeBtn {
+  color: #2ecc71;
+  background-color: rgba(46, 204, 113, 0.15);
+}
+
+[data-theme='dark'] .completeBtn:hover {
+  background-color: rgba(46, 204, 113, 0.25);
+}
+
+/* 已完成按鈕 */
+.completedBtn {
+  padding: 10px 20px;
+  background-color: var(--ifm-color-primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.completedBtn:hover {
+  background-color: var(--ifm-color-primary-dark);
+  transform: translateY(-1px);
+}
+
+/* 返回按鈕 */
+.backBtn {
+  padding: 10px 20px;
+  background-color: var(--ifm-color-emphasis-200);
+  color: var(--ifm-font-color-base);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.backBtn:hover {
+  background-color: var(--ifm-color-emphasis-300);
+}
+
+/* 已完成的便利貼樣式 */
+.completedNote {
+  opacity: 0.85;
+  position: relative;
+}
+
+.completedNote::before {
+  content: '✓ 已完成';
+  position: absolute;
+  bottom: 18px;
+  right: 18px;
+  background-color: rgba(39, 174, 96, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.7em;
+  font-weight: 600;
+  z-index: 5;
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+  .mainLayout {
+    flex-direction: column;
+  }
+
+  .leftSidebar {
+    width: 100%;
+    position: static;
+    max-height: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+  }
+
+  .tagsSection,
+  .filterSection,
+  .formContainer {
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .whiteboardContainer {
+    padding: 15px;
+  }
+
+  .leftSidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .notesGrid {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .formActions {
+    flex-direction: column;
+  }
+
+  .formActions button {
+    width: 100%;
+  }
+}

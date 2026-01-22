@@ -33,6 +33,7 @@ export const db = initializeFirestore(app, {
 // 導出集合與文件路徑
 export const STOCK_WATCHLIST_COLLECTION = collection(db, "stockWatchlist");
 export const JOURNAL_DOC_REF = doc(db, "trade_journals", "my_only_log");
+export const WHITEBOARD_DOC_REF = doc(db, "whiteboard", "my_whiteboard");
 
 // Analytics 初始化
 let analytics;
