@@ -186,7 +186,14 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                                 <td style={{ padding: '2px 4px', border: '1px solid #ddd' }}>{stock.name}</td>
                                 <td style={{ padding: '2px', border: '1px solid #ddd' }}><EditableCell initialValue={stock.category} onSave={(val) => updateStockField(stock.id, 'category', val)} style={{fontSize:'12px', color:'#666'}}/></td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'right' }}>{stock.displayPrice}</td>
-                                <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', color: stock.DailyChange > 0 ? 'red' : 'green' }}>{stock.DailyChange}%</td>
+                                <td style={{ 
+                                    padding: '2px 6px', 
+                                    border: '1px solid #ddd', 
+                                    textAlign: 'center', 
+                                    color: stock.DailyChange > 9 ? 'white' : stock.DailyChange < -9 ? 'white' : (stock.DailyChange > 0 ? 'red' : 'green'),
+                                    backgroundColor: stock.DailyChange > 9 ? 'rgba(231, 76, 60, 0.6)' : stock.DailyChange < -9 ? 'rgba(46, 204, 113, 0.6)' : 'transparent',
+                                    fontWeight: (stock.DailyChange > 9 || stock.DailyChange < -9) ? 'bold' : 'normal'
+                                }}>{stock.DailyChange}%</td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center'}}>{stock.realTimePE}</td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA9Curvature, showColor) }}>{stock.MA9Curvature}</td>
                                 <td style={{ padding: '2px 6px', border: '1px solid #ddd', textAlign: 'center', ...getCurvatureStyle(stock.MA21Curvature, showColor) }}>{stock.MA21Curvature}</td>
