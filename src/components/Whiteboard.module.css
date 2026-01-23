@@ -272,7 +272,7 @@
   display: grid;
   /* 移除 1fr，改用固定寬度 320px */
   /* 這樣單元格就會剛好等於便利貼寬度，不會有多餘空間 */
-  grid-template-columns: repeat(auto-fill, 270px); 
+  grid-template-columns: repeat(auto-fill, 250px); 
   
   /* 這裡設定你最終想要的物理間距 */
   gap: 20px 20px; /* 上下 16px，左右 8px (調小一點) */
