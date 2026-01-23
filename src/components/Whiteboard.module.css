@@ -267,7 +267,7 @@
   background-color: var(--ifm-color-emphasis-300);
 }
 
-/* 便利贴网格 */
+/* 便利貼网格 */
 .notesGrid {
   display: grid;
   /* 移除 1fr，改用固定寬度 320px */
