@@ -26,6 +26,7 @@ function WhiteboardComponent() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [timeFilter, setTimeFilter] = useState('ALL');
+  const [expandedNoteId, setExpandedNoteId] = useState(null); // 展開的便利貼ID
 
   // 從 Firebase 載入資料
   useEffect(() => {
@@ -407,10 +408,18 @@ function WhiteboardComponent() {
           </div>
         </div>
 
+        {/* 背景遮罩 */}
+        {expandedNoteId && (
+          <div 
+            className={styles.overlay}
+            onClick={() => setExpandedNoteId(null)}
+          />
+        )}
+
         {/* 右側便利貼網格 */}
         <div className={styles.rightContent}>
           <div className={styles.notesGrid}>
-        {filteredNotes.length === 0 ? (
+          {filteredNotes.length === 0 ? (
           <div className={styles.emptyState}>
             {notes.length === 0 ? '還沒有便利貼，建立第一張吧！' : '沒有匹配的便利貼'}
           </div>
@@ -418,21 +427,31 @@ function WhiteboardComponent() {
           filteredNotes.map(note => (
             <div
               key={note.id}
-              className={styles.note}
+              className={`${styles.note} ${expandedNoteId === note.id ? styles.noteExpanded : ''}`}
               style={{ backgroundColor: note.color || NOTE_COLORS[0] }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedNoteId(expandedNoteId === note.id ? null : note.id);
+              }}
             >
               <div className={styles.noteHeader}>
                 <span className={styles.noteTime}>{formatTime(note.createdAt)}</span>
                 <div className={styles.noteActions}>
                   <button
-                    onClick={() => handleEdit(note)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit(note);
+                    }}
                     className={styles.editBtn}
                     title="編輯"
                   >
                     ✎
                   </button>
                   <button
-                    onClick={() => handleDelete(note.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(note.id);
+                    }}
                     className={styles.deleteBtn}
                     title="刪除"
                   >
@@ -457,7 +476,10 @@ function WhiteboardComponent() {
               )}
               {/* 完成按鈕（右下角） */}
               <button
-                onClick={() => handleComplete(note.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleComplete(note.id);
+                }}
                 className={styles.completeBtn}
                 title="標記為完成"
               >

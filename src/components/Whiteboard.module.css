@@ -299,11 +299,44 @@
   display: flex;
   flex-direction: column;
   position: relative;
+  cursor: pointer;
 }
 
 .note:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 展開的便利貼 */
+.noteExpanded {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 1000 !important;
+  max-height: 80vh !important;
+  width: 500px !important;
+  max-width: 90vw !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+  overflow-y: auto;
+  aspect-ratio: unset !important;
+  font-size: 16px;
+}
+
+.noteExpanded:hover {
+  transform: translate(-50%, -50%) !important;
+}
+
+/* 背景遮罩 */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  backdrop-filter: blur(2px);
 }
 
 .noteHeader {
@@ -402,6 +435,22 @@
   line-height: 1.6;
   color: rgba(0, 0, 0, 0.8);
   margin-bottom: 10px;
+  
+  /* 預設狀態：顯示省略號 */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+}
+
+/* 展開狀態：顯示完整文字 */
+.noteExpanded .noteContent {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+  display: block;
 }
 
 .noteTags {
