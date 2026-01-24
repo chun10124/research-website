@@ -19,7 +19,7 @@
 
 /* 左側欄 */
 .leftSidebar {
-  width: 270px;
+  width: 220px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -148,6 +148,40 @@
   font-size: 0.9em;
   color: var(--ifm-color-emphasis-600);
   margin-top: 8px;
+}
+
+/* 新增按鈕 - 浮動右下角 */
+.addNoteBtn {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  background: #deb887;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 28px;
+  font-weight: 300;
+  cursor: pointer;
+  transition: all 0.2s;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(222, 184, 135, 0.4);
+  z-index: 100;
+}
+
+.addNoteBtn:hover {
+  background: #d4a574;
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(222, 184, 135, 0.5);
+}
+
+.addNoteBtn:active {
+  transform: scale(1.05);
 }
 
 /* 表单区域 */
@@ -339,6 +373,131 @@
   backdrop-filter: blur(2px);
 }
 
+/* 編輯表單 */
+.editingForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+}
+
+.editTextarea {
+  flex: 1;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 16px;
+  line-height: 1.6;
+  resize: none;
+  font-family: inherit;
+  min-height: 280px;
+}
+
+.editTextarea:focus {
+  outline: none;
+}
+
+.editTextarea::placeholder {
+  color: rgba(0, 0, 0, 0.3);
+}
+
+.editTagsInput {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.3);
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.8);
+  transition: background 0.2s;
+}
+
+.editTagsInput:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.editTagsInput::placeholder {
+  color: rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+}
+
+.editColorPicker {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  justify-content: center;
+  border: none;
+}
+
+.editColorPicker .colorOption {
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(0, 0, 0, 0.15);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.editColorPicker .colorOption:hover {
+  transform: scale(1.1);
+  border-color: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.editColorPicker .colorSelected {
+  border-color: rgba(0, 0, 0, 0.6) !important;
+  border-width: 3px !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 3px 8px rgba(0, 0, 0, 0.2);
+  transform: scale(1.05);
+}
+
+.editActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.saveBtn,
+.editActions .cancelBtn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.saveBtn {
+  background: #4caf50;
+  color: white;
+}
+
+.saveBtn:hover {
+  background: #45a049;
+  box-shadow: 0 3px 6px rgba(76, 175, 80, 0.3);
+  transform: translateY(-1px);
+}
+
+.editActions .cancelBtn {
+  background: rgba(0, 0, 0, 0.1);
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.editActions .cancelBtn:hover {
+  background: rgba(0, 0, 0, 0.15);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
 .noteHeader {
   display: flex;
   justify-content: space-between;
@@ -429,8 +588,9 @@
 }
 
 .noteContent {
-  flex: 0 1 auto; /* 允許縮小但不過度擴展 */
+  flex: 0 1 auto;
   word-wrap: break-word;
+  white-space: pre-wrap;
   line-height: 1.6;
   color: rgba(0, 0, 0, 0.8);
   
@@ -659,4 +819,39 @@
   .formActions button {
     width: 100%;
   }
+}
+
+/* Dark mode */
+[data-theme='dark'] .addNoteBtn {
+  background: #c9a26a;
+}
+
+[data-theme='dark'] .addNoteBtn:hover {
+  background: #b8915a;
+}
+
+[data-theme='dark'] .editTextarea {
+  color: rgba(0, 0, 0, 0.85);
+}
+
+[data-theme='dark'] .editTextarea::placeholder {
+  color: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .editTagsInput {
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(0, 0, 0, 0.85);
+}
+
+[data-theme='dark'] .editTagsInput:focus {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .editTagsInput::placeholder {
+  color: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .editColorPicker {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(0, 0, 0, 0.25);
 }

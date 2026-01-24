@@ -16,17 +16,11 @@ const NOTE_COLORS = [
 
 function WhiteboardComponent() {
   const [notes, setNotes] = useState([]);
-  const [formData, setFormData] = useState({
-    id: '',
-    content: '',
-    tags: '',
-    color: NOTE_COLORS[0],
-  });
-  const [editingId, setEditingId] = useState(null);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [timeFilter, setTimeFilter] = useState('ALL');
   const [expandedNoteId, setExpandedNoteId] = useState(null); // 展開的便利貼ID
+  const [editingNote, setEditingNote] = useState(null); // 正在編輯的便利貼
 
   // 從 Firebase 載入資料
   useEffect(() => {
@@ -124,55 +118,57 @@ function WhiteboardComponent() {
     return filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }, [notes, searchKeyword, selectedTag, timeFilter]);
 
-  // 處理表單輸入
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  // 新增便利貼
+  const handleAddNote = () => {
+    const newNote = {
+      id: uuidv4(),
+      content: '',
+      tags: '',
+      color: NOTE_COLORS[0],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setEditingNote(newNote);
+    setExpandedNoteId(newNote.id);
   };
 
-  // 提交表單
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-    
-    if (!formData.content.trim()) {
+  // 保存編輯
+  const handleSaveNote = () => {
+    if (!editingNote.content.trim()) {
       alert('請輸入便利貼內容！');
       return;
     }
 
-    // 將標籤用空白分隔，多個空白合併為一個
-    const tagsStr = formData.tags.trim().split(/\s+/).filter(t => t).join(' ');
-    
+    const tagsStr = editingNote.tags.trim().split(/\s+/).filter(t => t).join(' ');
     const noteToSave = {
-      ...formData,
+      ...editingNote,
       tags: tagsStr,
-      createdAt: editingId 
-        ? notes.find(n => n.id === editingId)?.createdAt || Date.now()
-        : Date.now(),
       updatedAt: Date.now(),
     };
 
     let updatedNotes;
-    if (editingId) {
+    const existingNote = notes.find(n => n.id === editingNote.id);
+    
+    if (existingNote) {
       updatedNotes = notes.map(note =>
-        note.id === editingId ? { ...noteToSave, id: editingId } : note
+        note.id === editingNote.id ? noteToSave : note
       );
-      setEditingId(null);
     } else {
-      const newNote = {
-        ...noteToSave,
-        id: uuidv4(),
-      };
-      updatedNotes = [newNote, ...notes];
+      updatedNotes = [noteToSave, ...notes];
     }
 
     saveNotesToCloud(updatedNotes);
     
-    setFormData({
-      id: '',
-      content: '',
-      tags: '',
-      color: NOTE_COLORS[0],
-    });
+    // 清除编辑和展开状态
+    setEditingNote(null);
+    setExpandedNoteId(null);
+  };
+
+  // 取消編輯
+  const handleCancelEdit = () => {
+    // 清除编辑和展开状态
+    setEditingNote(null);
+    setExpandedNoteId(null);
   };
 
   // 刪除便利貼
@@ -180,27 +176,30 @@ function WhiteboardComponent() {
     if (window.confirm('確定要刪除這張便利貼嗎？')) {
       const updatedNotes = notes.filter(note => note.id !== id);
       saveNotesToCloud(updatedNotes);
+      
+      // 如果删除的是正在编辑的便利贴，清除编辑状态
+      if (editingNote && editingNote.id === id) {
+        setEditingNote(null);
+        setExpandedNoteId(null);
+      }
     }
   };
 
   // 完成便利貼
   const handleComplete = (id) => {
-    const updatedNotes = notes.map(note =>
-      note.id === id ? { ...note, completed: true, completedAt: Date.now() } : note
-    );
-    saveNotesToCloud(updatedNotes);
+    if (window.confirm('確定要標記為完成嗎？完成後將移至已完成頁面。')) {
+      const updatedNotes = notes.map(note =>
+        note.id === id ? { ...note, completed: true, completedAt: Date.now() } : note
+      );
+      saveNotesToCloud(updatedNotes);
+    }
   };
 
 
   // 編輯便利貼
   const handleEdit = (note) => {
-    setFormData({
-      id: note.id,
-      content: note.content,
-      tags: note.tags || '',
-      color: note.color || NOTE_COLORS[0],
-    });
-    setEditingId(note.id);
+    setEditingNote({ ...note });
+    setExpandedNoteId(note.id);
   };
 
   // 格式化時間
@@ -277,7 +276,7 @@ function WhiteboardComponent() {
   return (
     <div className={styles.whiteboardContainer}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <h2>{editingId ? '編輯便利貼' : '白板'}</h2>
+        <h2>白板</h2>
         {completedCount > 0 && (
           <button
             onClick={() => {
@@ -293,70 +292,6 @@ function WhiteboardComponent() {
       <div className={styles.mainLayout}>
         {/* 左側欄 */}
         <div className={styles.leftSidebar}>
-          {/* 表單區域 */}
-          <form onSubmit={handleFormSubmit} className={styles.formContainer}>
-            <h3 className={styles.sectionTitle}>{editingId ? '編輯便利貼' : '新增便利貼'}</h3>
-            <div className={styles.formRow}>
-              <textarea
-                name="content"
-                value={formData.content}
-                onChange={handleInputChange}
-                placeholder="輸入便利貼內容..."
-                required
-                rows="4"
-                className={styles.contentInput}
-              />
-            </div>
-            <div className={styles.formRow}>
-              <input
-                type="text"
-                name="tags"
-                value={formData.tags}
-                onChange={handleInputChange}
-                placeholder="標籤（用空格分隔）"
-                className={styles.tagsInput}
-              />
-            </div>
-            <div className={styles.formRow}>
-              <div className={styles.colorPicker}>
-                <label>顏色：</label>
-                <div className={styles.colorOptions}>
-                  {NOTE_COLORS.map(color => (
-                    <button
-                      key={color}
-                      type="button"
-                      className={`${styles.colorOption} ${formData.color === color ? styles.colorSelected : ''}`}
-                      style={{ backgroundColor: color }}
-                      onClick={() => setFormData(prev => ({ ...prev, color }))}
-                      title={color}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className={styles.formActions}>
-              <button type="submit" className={styles.submitBtn}>
-                {editingId ? '更新' : '新增'}
-              </button>
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingId(null);
-                    setFormData({
-                      id: '',
-                      content: '',
-                      tags: '',
-                      color: NOTE_COLORS[0],
-                    });
-                  }}
-                  className={styles.cancelBtn}
-                >
-                  取消
-                </button>
-              )}
-            </div>
-          </form>
 
           {/* 標籤列表 */}
           <div className={styles.tagsSection}>
@@ -412,7 +347,10 @@ function WhiteboardComponent() {
         {expandedNoteId && (
           <div 
             className={styles.overlay}
-            onClick={() => setExpandedNoteId(null)}
+            onClick={() => {
+              setExpandedNoteId(null);
+              setEditingNote(null);
+            }}
           />
         )}
 
@@ -424,73 +362,172 @@ function WhiteboardComponent() {
             {notes.length === 0 ? '還沒有便利貼，建立第一張吧！' : '沒有匹配的便利貼'}
           </div>
         ) : (
-          filteredNotes.map(note => (
-            <div
-              key={note.id}
-              className={`${styles.note} ${expandedNoteId === note.id ? styles.noteExpanded : ''}`}
-              style={{ backgroundColor: note.color || NOTE_COLORS[0] }}
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpandedNoteId(expandedNoteId === note.id ? null : note.id);
-              }}
-            >
-              <div className={styles.noteHeader}>
-                <span className={styles.noteTime}>{formatTime(note.createdAt)}</span>
-                <div className={styles.noteActions}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEdit(note);
-                    }}
-                    className={styles.editBtn}
-                    title="編輯"
-                  >
-                    ✎
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(note.id);
-                    }}
-                    className={styles.deleteBtn}
-                    title="刪除"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-              <div className={styles.noteContent}>
-                {highlightKeyword(note.content, searchKeyword)}
-              </div>
-              {note.tags && (
-                <div className={styles.noteTags}>
-                  {note.tags.split(/\s+/).filter(t => t).map((tag, idx) => {
-                    const tagHighlighted = highlightKeyword(tag, searchKeyword);
-                    return (
-                      <span key={idx} className={styles.tag}>
-                        {tagHighlighted}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-              {/* 完成按鈕（右下角） */}
-              <button
+          <>
+            {filteredNotes.map(note => (
+              <div
+                key={note.id}
+                className={`${styles.note} ${expandedNoteId === note.id ? styles.noteExpanded : ''}`}
+                style={{ backgroundColor: note.color || NOTE_COLORS[0] }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleComplete(note.id);
+                  // 點擊便利貼就進入編輯模式
+                  if (!editingNote || editingNote.id !== note.id) {
+                    handleEdit(note);
+                  }
                 }}
-                className={styles.completeBtn}
-                title="標記為完成"
               >
-                ✓
-              </button>
-            </div>
-          ))
+                {editingNote && editingNote.id === note.id ? (
+                  /* 編輯模式 */
+                  <div className={styles.editingForm} onClick={(e) => e.stopPropagation()}>
+                    <div className={styles.noteHeader}>
+                      <span className={styles.noteTime}>{formatTime(note.createdAt)}</span>
+                      <div className={styles.noteActions}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(note.id);
+                          }}
+                          className={styles.deleteBtn}
+                          title="刪除"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                    <textarea
+                      value={editingNote.content}
+                      onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
+                      placeholder="輸入便利貼內容..."
+                      className={styles.editTextarea}
+                      autoFocus
+                    />
+                    <input
+                      type="text"
+                      value={editingNote.tags}
+                      onChange={(e) => setEditingNote({ ...editingNote, tags: e.target.value })}
+                      placeholder="標籤（空格分隔）"
+                      className={styles.editTagsInput}
+                    />
+                    <div className={styles.editColorPicker}>
+                      {NOTE_COLORS.map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`${styles.colorOption} ${editingNote.color === color ? styles.colorSelected : ''}`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => setEditingNote({ ...editingNote, color })}
+                        />
+                      ))}
+                    </div>
+                    <div className={styles.editActions}>
+                      <button onClick={handleSaveNote} className={styles.saveBtn}>保存</button>
+                      <button onClick={handleCancelEdit} className={styles.cancelBtn}>取消</button>
+                    </div>
+                  </div>
+                ) : (
+                  /* 顯示模式 */
+                  <>
+                    <div className={styles.noteHeader}>
+                      <span className={styles.noteTime}>{formatTime(note.createdAt)}</span>
+                      <div className={styles.noteActions}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(note.id);
+                          }}
+                          className={styles.deleteBtn}
+                          title="刪除"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                    <div className={styles.noteContent}>
+                      {highlightKeyword(note.content, searchKeyword)}
+                    </div>
+                    {note.tags && (
+                      <div className={styles.noteTags}>
+                        {note.tags.split(/\s+/).filter(t => t).map((tag, idx) => {
+                          const tagHighlighted = highlightKeyword(tag, searchKeyword);
+                          return (
+                            <span key={idx} className={styles.tag}>
+                              {tagHighlighted}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleComplete(note.id);
+                      }}
+                      className={styles.completeBtn}
+                      title="標記為完成"
+                    >
+                      ✓
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+            {/* 新增中的便利貼 */}
+            {editingNote && !notes.find(n => n.id === editingNote.id) && (
+              <div
+                className={`${styles.note} ${styles.noteExpanded}`}
+                style={{ backgroundColor: editingNote.color }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className={styles.editingForm}>
+                  <div className={styles.noteHeader}>
+                    <span className={styles.noteTime}>新便利貼</span>
+                  </div>
+                  <textarea
+                    value={editingNote.content}
+                    onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
+                    placeholder="輸入便利貼內容..."
+                    className={styles.editTextarea}
+                    autoFocus
+                  />
+                  <input
+                    type="text"
+                    value={editingNote.tags}
+                    onChange={(e) => setEditingNote({ ...editingNote, tags: e.target.value })}
+                    placeholder="標籤（空格分隔）"
+                    className={styles.editTagsInput}
+                  />
+                  <div className={styles.editColorPicker}>
+                    {NOTE_COLORS.map(color => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={`${styles.colorOption} ${editingNote.color === color ? styles.colorSelected : ''}`}
+                        style={{ backgroundColor: color }}
+                        onClick={() => setEditingNote({ ...editingNote, color })}
+                      />
+                    ))}
+                  </div>
+                  <div className={styles.editActions}>
+                    <button onClick={handleSaveNote} className={styles.saveBtn}>保存</button>
+                    <button onClick={handleCancelEdit} className={styles.cancelBtn}>取消</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
           )}
           </div>
         </div>
       </div>
+
+      {/* 新增按鈕（浮動在右下角） */}
+      <button
+        onClick={handleAddNote}
+        className={styles.addNoteBtn}
+        title="新增便利貼"
+      >
+        +
+      </button>
     </div>
   );
 }
