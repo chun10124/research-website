@@ -429,20 +429,21 @@
 }
 
 .noteContent {
-  flex: 1;
+  flex: 0 1 auto; /* 允許縮小但不過度擴展 */
   word-wrap: break-word;
-  white-space: pre-wrap;
   line-height: 1.6;
   color: rgba(0, 0, 0, 0.8);
-  margin-bottom: 10px;
   
-  /* 預設狀態：顯示省略號 */
+  /* 文字過長時顯示省略號 */
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 4;
   line-clamp: 4;
   -webkit-box-orient: vertical;
   text-overflow: ellipsis;
+  min-height: 0;
+  max-height: calc(1.6em * 4); /* 限制最大高度為4行 */
+  margin-bottom: 8px;
 }
 
 /* 展開狀態：顯示完整文字 */
@@ -451,6 +452,8 @@
   line-clamp: unset;
   overflow: visible;
   display: block;
+  white-space: pre-wrap;
+  max-height: none;
 }
 
 .noteTags {
@@ -460,6 +463,7 @@
   margin-top: auto;
   padding-top: 8px;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0; /* 防止被壓縮 */
 }
 
 .tag {

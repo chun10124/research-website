@@ -18,6 +18,7 @@ function CompletedNotesComponent() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [timeFilter, setTimeFilter] = useState('ALL');
+  const [expandedNoteId, setExpandedNoteId] = useState(null); // 展開的便利貼ID
 
   // 從 Firebase 載入資料
   useEffect(() => {
@@ -255,6 +256,14 @@ function CompletedNotesComponent() {
           </div>
         </div>
 
+        {/* 背景遮罩 */}
+        {expandedNoteId && (
+          <div 
+            className={styles.overlay}
+            onClick={() => setExpandedNoteId(null)}
+          />
+        )}
+
         {/* 右側便利貼網格 */}
         <div className={styles.rightContent}>
           <div className={styles.notesGrid}>
@@ -266,8 +275,12 @@ function CompletedNotesComponent() {
               filteredNotes.map(note => (
                 <div
                   key={note.id}
-                  className={`${styles.note} ${styles.completedNote}`}
+                  className={`${styles.note} ${styles.completedNote} ${expandedNoteId === note.id ? styles.noteExpanded : ''}`}
                   style={{ backgroundColor: note.color || NOTE_COLORS[0] }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedNoteId(expandedNoteId === note.id ? null : note.id);
+                  }}
                 >
                   <div className={styles.noteHeader}>
                     <span className={styles.noteTime}>
@@ -275,7 +288,10 @@ function CompletedNotesComponent() {
                     </span>
                     <div className={styles.noteActions}>
                       <button
-                        onClick={() => handleDelete(note.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(note.id);
+                        }}
                         className={styles.deleteBtn}
                         title="刪除"
                       >
