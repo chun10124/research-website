@@ -306,7 +306,7 @@
   display: grid;
   /* 移除 1fr，改用固定寬度 320px */
   /* 這樣單元格就會剛好等於便利貼寬度，不會有多餘空間 */
-  grid-template-columns: repeat(auto-fill, 250px); 
+  grid-template-columns: repeat(auto-fill, 220px); 
   
   /* 這裡設定你最終想要的物理間距 */
   gap: 20px 20px; /* 上下 16px，左右 8px (調小一點) */
@@ -320,8 +320,8 @@
 .note {
   width: 100%; 
   
-  padding: 18px;
-  border-radius: 8px;
+  padding: 12px;
+  border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   
   /* 保持你喜歡的高度與比例 */
@@ -348,9 +348,9 @@
   left: 50% !important;
   transform: translate(-50%, -50%) !important;
   z-index: 1000 !important;
-  max-height: 80vh !important;
+  max-height: calc(100vh - 40px) !important;
   width: 500px !important;
-  max-width: 90vw !important;
+  max-width: calc(100vw - 40px) !important;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
   overflow-y: auto;
   aspect-ratio: unset !important;
@@ -379,6 +379,7 @@
   flex-direction: column;
   gap: 10px;
   height: 100%;
+  max-height: calc(100vh - 100px);
 }
 
 .editTextarea {
@@ -392,7 +393,8 @@
   line-height: 1.6;
   resize: none;
   font-family: inherit;
-  min-height: 280px;
+  min-height: 200px;
+  max-height: calc(100vh - 300px);
 }
 
 .editTextarea:focus {
@@ -502,20 +504,20 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .noteTime {
-  font-size: 0.85em;
+  font-size: 0.75em;
   color: rgba(0, 0, 0, 0.6);
   font-weight: 500;
 }
 
 .noteActions {
   display: flex;
-  gap: 5px;
+  gap: 4px;
 }
 
 .editBtn,
@@ -524,7 +526,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
   padding: 4px 6px;
   border-radius: 4px;
   transition: background-color 0.2s;
@@ -540,22 +542,28 @@
 
 .completeBtn {
   position: absolute;
-  bottom: 10px;
-  right: 10px;
-  font-size: 20px;
-  color: #27ae60;
-  font-weight: bold;
-  padding: 6px 10px;
+  bottom: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background-color: rgba(39, 174, 96, 0.1);
-  opacity: 0.8;
+  background-color: rgba(76, 175, 80, 0.9);
+  color: white;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  opacity: 1;
+  font-weight: normal;
+  padding: 0;
 }
 
 .editBtn {
-  font-size: 18px;
+  font-size: 14px;
   color: #f39c12;
   font-weight: bold;
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: 4px;
   background-color: rgba(243, 156, 18, 0.1);
   opacity: 0.8;
@@ -567,10 +575,10 @@
 }
 
 .deleteBtn {
-  font-size: 18px;
+  font-size: 14px;
   color: #e74c3c;
   font-weight: bold;
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: 4px;
   background-color: rgba(231, 76, 60, 0.1);
   opacity: 0.8;
@@ -591,8 +599,9 @@
   flex: 0 1 auto;
   word-wrap: break-word;
   white-space: pre-wrap;
-  line-height: 1.6;
+  line-height: 1.5;
   color: rgba(0, 0, 0, 0.8);
+  font-size: 0.9em;
   
   /* 文字過長時顯示省略號 */
   overflow: hidden;
@@ -602,8 +611,8 @@
   -webkit-box-orient: vertical;
   text-overflow: ellipsis;
   min-height: 0;
-  max-height: calc(1.6em * 4); /* 限制最大高度為4行 */
-  margin-bottom: 8px;
+  max-height: calc(1.5em * 4); /* 限制最大高度為4行 */
+  margin-bottom: 6px;
 }
 
 /* 展開狀態：顯示完整文字 */
@@ -619,19 +628,19 @@
 .noteTags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
   flex-shrink: 0; /* 防止被壓縮 */
 }
 
 .tag {
   display: inline-block;
-  padding: 4px 8px;
+  padding: 3px 6px;
   background-color: rgba(0, 0, 0, 0.1);
-  border-radius: 12px;
-  font-size: 0.75em;
+  border-radius: 10px;
+  font-size: 0.7em;
   color: rgba(0, 0, 0, 0.7);
   font-weight: 500;
 }
