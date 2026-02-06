@@ -110,6 +110,11 @@ const config = {
             label: '白板', // 導航欄上顯示的名稱
             position: 'left', // 放在左側
           },
+          {
+            to: '/mindmap', // 指向心智圖頁面
+            label: '心智圖', // 導航欄上顯示的名稱
+            position: 'left', // 放在左側
+          },
         ],
       },
       footer: {

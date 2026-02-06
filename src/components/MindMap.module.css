@@ -1,0 +1,472 @@
+/* 心智圖列表容器 */
+.mindMapListContainer {
+  width: 100%;
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.listTitle {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--ifm-heading-color);
+}
+
+.searchContainer {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+.searchInput {
+  width: 200px;
+  padding: 6px 12px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 4px;
+  background-color: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--ifm-color-primary);
+}
+
+.emptyState {
+  grid-column: 1 / -1;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ifm-color-emphasis-600);
+  font-size: 14px;
+}
+
+.mindMapList {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px 20px;
+  margin-bottom: 20px;
+}
+
+.mindMapItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+
+.mindMapLink {
+  flex: 1;
+  color: var(--ifm-color-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--ifm-color-primary);
+  text-underline-offset: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.mindMapLink:hover {
+  color: var(--ifm-color-primary-dark);
+  text-decoration-color: var(--ifm-color-primary-dark);
+}
+
+.contextMenu {
+  background-color: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.contextMenuItem {
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--ifm-font-color-base);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.contextMenuItem:hover {
+  background-color: var(--ifm-color-emphasis-100);
+}
+
+.contextMenuItem:active {
+  background-color: var(--ifm-color-emphasis-200);
+}
+
+.addButton {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background-color: var(--ifm-color-primary);
+  color: white;
+  font-size: 32px;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s;
+  line-height: 1;
+  z-index: 1000;
+}
+
+.addButton:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.addButton:active {
+  transform: scale(1.05);
+}
+
+/* 節點操作按鈕容器 */
+.nodeActions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  position: absolute;
+  right: -50px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: auto;
+  z-index: 10;
+}
+
+/* 節點上的加號按鈕 */
+.nodeAddButton {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  background-color: var(--ifm-color-primary);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.nodeAddButton:hover {
+  background-color: var(--ifm-color-primary-dark);
+  transform: scale(1.1);
+}
+
+/* 節點上的刪除按鈕 */
+.nodeDeleteButton {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  background-color: var(--ifm-color-danger);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.nodeDeleteButton:hover {
+  background-color: #c92a2a;
+  transform: scale(1.1);
+}
+
+.newMindMapForm {
+  position: fixed;
+  bottom: 100px;
+  right: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background-color: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 250px;
+}
+
+.newMindMapInput {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  background-color: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 14px;
+}
+
+.newMindMapInput:focus {
+  outline: none;
+  border-color: var(--ifm-color-primary);
+}
+
+.newMindMapActions {
+  display: flex;
+  gap: 10px;
+}
+
+.createButton,
+.cancelButton {
+  flex: 1;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.createButton {
+  background-color: var(--ifm-color-primary);
+  color: white;
+}
+
+.createButton:hover {
+  background-color: var(--ifm-color-primary-dark);
+}
+
+.cancelButton {
+  background-color: var(--ifm-color-emphasis-200);
+  color: var(--ifm-font-color-base);
+}
+
+.cancelButton:hover {
+  background-color: var(--ifm-color-emphasis-300);
+}
+
+/* 心智圖編輯器容器 */
+.mindMapContainer {
+  width: 100%;
+  height: calc(100vh - var(--ifm-navbar-height));
+  max-height: calc(100vh - var(--ifm-navbar-height));
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow: hidden;
+  background-color: var(--ifm-background-color);
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* 心智圖畫布 */
+.mindMapCanvas {
+  flex: 1;
+  position: relative;
+  background-color: var(--ifm-background-color);
+  border-radius: 8px;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.mindMapCanvas:active {
+  cursor: grabbing;
+}
+
+/* 邊界提示（可選的視覺輔助） */
+.mindMapCanvas::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 20px solid transparent;
+  pointer-events: none;
+  z-index: 1;
+  box-sizing: border-box;
+}
+
+/* 節點容器（用於應用 pan transform） */
+.nodesContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.connectionsLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.connectionLine {
+  stroke: var(--ifm-color-emphasis-400);
+  stroke-width: 2;
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* 節點 - 極簡方塊樣式 */
+.node {
+  position: absolute;
+  background-color: var(--ifm-background-surface-color);
+  border: 2px solid var(--ifm-color-emphasis-400);
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: move;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 45px;
+  transition: border-color 0.2s;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.node:hover {
+  border-color: var(--ifm-color-primary);
+}
+
+.node:hover .nodeActions {
+  opacity: 1;
+}
+
+.nodeText {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ifm-font-color-base);
+  text-align: left;
+  word-wrap: break-word;
+  flex: 1;
+  user-select: none;
+}
+
+.nodeInput {
+  width: 100%;
+  padding: 4px 8px;
+  border: 2px solid var(--ifm-color-primary);
+  border-radius: 4px;
+  background-color: white;
+  color: var(--ifm-font-color-base);
+  font-size: 14px;
+  outline: none;
+}
+
+
+/* 暗色模式適配 */
+[data-theme='dark'] .mindMapLink {
+  color: var(--ifm-color-primary);
+}
+
+[data-theme='dark'] .mindMapLink:hover {
+  color: var(--ifm-color-primary-dark);
+}
+
+[data-theme='dark'] .nodeInput {
+  background-color: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .connectionLine {
+  stroke: var(--ifm-color-emphasis-500);
+}
+
+/* 懸浮按鈕組 */
+.floatingActions {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
+}
+
+.floatingButton {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background-color: var(--ifm-color-primary);
+  color: white;
+  font-size: 24px;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.floatingButton:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.floatingButton:active {
+  transform: scale(1.05);
+}
+
+.backFloatingButton {
+  background-color: var(--ifm-color-emphasis-600);
+  font-size: 20px;
+}
+
+.backFloatingButton:hover {
+  background-color: var(--ifm-color-emphasis-700);
+}
+
+.deleteFloatingButton {
+  background-color: var(--ifm-color-danger);
+  font-size: 20px;
+}
+
+.deleteFloatingButton:hover {
+  background-color: #c92a2a;
+}
+
+/* 暗色模式適配 */
+[data-theme='dark'] .floatingButton {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .floatingButton:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
