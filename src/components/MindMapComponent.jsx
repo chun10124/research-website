@@ -155,8 +155,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
           text: '中心主題',
           x: 100,
           y: 300,
-          width: 120,
-          height: 45,
+          width: calculateNodeWidth('中心主題'),
+          height: 50,
         };
         const initialNodes = [initialNode];
         const initialConnections = [];
@@ -294,16 +294,20 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
   // 計算節點寬度（根據文字內容）
   const calculateNodeWidth = (text) => {
-    const minWidth = 120;
-    const maxWidth = 400;
-    const charWidth = 8; // 每個字符大約的寬度
+    const charWidth = 14; // 每個字符大約的寬度
     const padding = 24; // 左右 padding
+    const maxChars = 10; // 十個字才換行
+    const minChars = 4; // 最小寬度約容納四個字
     
-    // 計算文字寬度
-    const textWidth = text.length * charWidth;
-    const calculatedWidth = Math.max(minWidth, Math.min(maxWidth, textWidth + padding));
+    // 如果不到十個字，根據實際字數計算寬度（不換行），但不小於四個字寬度
+    if (text.length < maxChars) {
+      const textWidth = Math.max(minChars * charWidth, text.length * charWidth);
+      return textWidth + padding;
+    }
     
-    return calculatedWidth;
+    // 十個字或以上，使用固定寬度（允許換行）
+    const fixedWidth = maxChars * charWidth + padding;
+    return fixedWidth;
   };
 
   // 檢測兩個節點是否重疊
@@ -480,8 +484,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       text: '新節點',
       x,
       y,
-      width: 120,
-      height: 45,
+      width: calculateNodeWidth('新節點'),
+      height: 50,
     };
 
     const newConnection = {
@@ -778,7 +782,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       text: '新節點',
       x: constrainedPos.x,
       y: constrainedPos.y,
-      width: nodeWidth,
+      width: calculateNodeWidth('新節點'),
       height: nodeHeight,
     };
 
@@ -956,7 +960,13 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
               />
             ) : (
               <>
-                <div className={styles.nodeText}>{node.text}</div>
+                <div
+                  className={`${styles.nodeText} ${node.text.length < 10 ? styles.nodeTextNoWrap : ''}`}
+                >
+                  {node.text.length > 10 
+                    ? node.text.substring(0, 10) + '\n' + node.text.substring(10)
+                    : node.text}
+                </div>
                 {hoveredNode === node.id && (
                   <div className={styles.nodeActions}>
                     <button

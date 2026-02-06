@@ -352,7 +352,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 45px;
+  min-height: 50px;
+  height: auto;
   transition: border-color 0.2s;
   overflow: visible;
   box-sizing: border-box;
@@ -368,23 +369,35 @@
 
 .nodeText {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--ifm-font-color-base);
-  text-align: left;
+  text-align: center;
+  white-space: pre-wrap;
   word-wrap: break-word;
   flex: 1;
   user-select: none;
+  overflow-wrap: break-word;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+/* 少於十個字時強制不換行 */
+.nodeTextNoWrap {
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
 }
 
 .nodeInput {
   width: 100%;
   padding: 4px 8px;
-  border: 2px solid var(--ifm-color-primary);
-  border-radius: 4px;
-  background-color: white;
+  border: none;
+  background: transparent;
   color: var(--ifm-font-color-base);
   font-size: 14px;
+  font-weight: 600;
   outline: none;
+  text-align: center;
 }
 
 
@@ -398,7 +411,7 @@
 }
 
 [data-theme='dark'] .nodeInput {
-  background-color: var(--ifm-background-color);
+  background: transparent;
   color: var(--ifm-font-color-base);
 }
 
