@@ -949,16 +949,18 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
             pinchRafRef.current = requestAnimationFrame(() => {
               pinchRafRef.current = null;
               const pending = pendingPinchRef.current;
-              if (pending && pinchStartRef.current) {
+              if (pending) {
                 setZoom(pending.zoom);
                 setPanOffset({ x: pending.panX, y: pending.panY });
-                pinchStartRef.current = {
-                  ...pinchStartRef.current,
-                  zoom: pending.zoom,
-                  panX: pending.panX,
-                  panY: pending.panY,
-                  distance: pending.distance,
-                };
+                if (pinchStartRef.current) {
+                  pinchStartRef.current = {
+                    ...pinchStartRef.current,
+                    zoom: pending.zoom,
+                    panX: pending.panX,
+                    panY: pending.panY,
+                    distance: pending.distance,
+                  };
+                }
                 pendingPinchRef.current = null;
               }
             });
