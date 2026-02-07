@@ -414,10 +414,14 @@
   white-space: pre-wrap;
   word-wrap: break-word;
   flex: 1;
+  min-width: 0;
   user-select: none;
   overflow-wrap: break-word;
   line-height: 1.2;
   word-break: break-all;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 /* 少於十個字時強制不換行 */
