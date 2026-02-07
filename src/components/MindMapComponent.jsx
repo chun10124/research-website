@@ -901,11 +901,6 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   // 觸控：結束
   const handleTouchEnd = (e) => {
     if (e.touches.length === 0) {
-      if (pinchRafRef.current) {
-        cancelAnimationFrame(pinchRafRef.current);
-        pinchRafRef.current = null;
-      }
-      pendingPinchRef.current = null;
       pinchStartRef.current = null;
       if (e.changedTouches && e.changedTouches[0]) {
         const syn = {
