@@ -164,7 +164,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     const unsubscribe = onSnapshot(docRef, async (docSnapshot) => {
       if (docSnapshot.exists()) {
         const data = docSnapshot.data();
-        setNodes(data.nodes || []);
+        const NODE_HEIGHT = 28;
+        setNodes((data.nodes || []).map(n => ({ ...n, height: NODE_HEIGHT })));
         setConnections(data.connections || []);
       } else {
         // 初始化新心智圖（從最左邊開始）
@@ -174,7 +175,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
           x: 100,
           y: 300,
           width: calculateNodeWidth('中心主題'),
-          height: 50,
+          height: 28,
         };
         const initialNodes = [initialNode];
         const initialConnections = [];
@@ -313,7 +314,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   // 計算節點寬度（根據文字內容）
   const calculateNodeWidth = (text) => {
     const charWidth = 14; // 每個字符大約的寬度
-    const padding = 24; // 左右 padding
+    const padding = 18; // 左右 padding
     const maxChars = 10; // 十個字才換行
     const minChars = 4; // 最小寬度約容納四個字
     
@@ -355,32 +356,31 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     return overlapDistance;
   };
 
-  // 自動分離重疊的節點
+  // 自動分離節點：間距 < minSpacing 就彈開到 minSpacing（含拖曳中）
   const separateOverlappingNodes = (nodesToUpdate) => {
-    const minSpacing = 4; // 節點之間的最小間距
+    const minSpacing = 7; // 節點之間的最小間距（px）
     let updatedNodes = [...nodesToUpdate];
     let hasChanges = true;
     let iterations = 0;
     const maxIterations = 50; // 防止無限循環
 
-    // 迭代調整直到沒有重疊
     while (hasChanges && iterations < maxIterations) {
       hasChanges = false;
       iterations++;
 
-      // 按 y 座標排序節點
       const sortedNodes = [...updatedNodes].sort((a, b) => a.y - b.y);
 
       for (let i = 0; i < sortedNodes.length; i++) {
         for (let j = i + 1; j < sortedNodes.length; j++) {
           const node1 = sortedNodes[i];
           const node2 = sortedNodes[j];
+          const horizontalOverlap = !(node1.x + node1.width < node2.x || node2.x + node2.width < node1.x);
+          if (!horizontalOverlap) continue;
 
-          // 檢查是否重疊
-          if (checkOverlap(node1, node2)) {
-            // 計算需要移動的距離
-            const overlapDist = getOverlapDistance(node1, node2);
-            const moveDistance = overlapDist + minSpacing;
+          // 垂直間距 = node2 頂 - node1 底；小於 minSpacing 就彈開
+          const gap = node2.y - (node1.y + node1.height);
+          if (gap < minSpacing) {
+            const moveDistance = minSpacing - gap;
 
             // 移動下方的節點（node2）向下
             const node2Index = updatedNodes.findIndex(n => n.id === node2.id);
@@ -446,10 +446,10 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
   // 計算新節點的最佳位置（所有子節點都在右側，垂直排列，同層級對齊）
   const calculateNewNodePosition = (parentNode, childNodes) => {
-    const spacing = 80;
-    const verticalSpacing = 40;
+    const spacing = 56;
+    const verticalSpacing = 20;
     const nodeWidth = 120;
-    const nodeHeight = 45;
+    const nodeHeight = 28;
 
     // 所有子節點都在父節點的右側
     const direction = 'right';
@@ -503,7 +503,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       x,
       y,
       width: calculateNodeWidth('新節點'),
-      height: 50,
+      height: 28,
     };
 
     const newConnection = {
@@ -528,7 +528,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     // 如果點擊的是節點、加號按鈕或刪除按鈕，不處理背景點擊
     if (e.target.closest(`.${styles.node}`) || 
         e.target.closest(`.${styles.nodeAddButton}`) || 
-        e.target.closest(`.${styles.nodeDeleteButton}`)) {
+        e.target.closest(`.${styles.nodeDeleteButton}`) ||
+        e.target.closest(`.${styles.nodeLeftAction}`)) {
       return;
     }
     
@@ -557,7 +558,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   // 開始拖動節點
   const handleNodeMouseDown = (e, node) => {
     // 如果點擊的是加號按鈕或刪除按鈕，不拖動
-    if (e.target.closest(`.${styles.nodeAddButton}`) || e.target.closest(`.${styles.nodeDeleteButton}`)) {
+    if (e.target.closest(`.${styles.nodeAddButton}`) || e.target.closest(`.${styles.nodeDeleteButton}`) || e.target.closest(`.${styles.nodeLeftAction}`)) {
       return;
     }
     
@@ -651,7 +652,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         const allMovingNodeIds = new Set([draggingNode, ...descendantIds]);
 
         // 更新父節點和所有子節點的位置
-        const updatedNodes = nodes.map(node => {
+        let updatedNodes = nodes.map(node => {
           if (allMovingNodeIds.has(node.id)) {
             const newX = node.x + deltaX;
             const newY = node.y + deltaY;
@@ -740,34 +741,82 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     setEditingNode(null);
   };
 
-  // 刪除節點
+  // 刪除節點（只刪此格，子節點改連到上一層父節點，保留不刪）
   const handleDeleteNode = (nodeId) => {
-    // 找出所有需要刪除的節點（包括子節點）
-    const nodesToDelete = new Set([nodeId]);
-    const findChildren = (parentId) => {
-      connections
-        .filter(conn => conn.from === parentId)
-        .forEach(conn => {
-          nodesToDelete.add(conn.to);
-          findChildren(conn.to); // 遞迴查找子節點的子節點
-        });
-    };
-    findChildren(nodeId);
+    const parentConn = connections.find(conn => conn.to === nodeId);
+    const parentId = parentConn ? parentConn.from : null;
+    const directChildConns = connections.filter(conn => conn.from === nodeId);
 
-    // 刪除節點和相關連接
-    const updatedNodes = nodes.filter(node => !nodesToDelete.has(node.id));
+    // 只刪除這個節點
+    const updatedNodes = nodes.filter(node => node.id !== nodeId);
+
+    // 移除「進出此節點」的連接
+    let updatedConnections = connections.filter(
+      conn => conn.from !== nodeId && conn.to !== nodeId
+    );
+
+    // 子節點改連到父節點（若無父節點則子節點變成獨立根，不補連接）
+    directChildConns.forEach(conn => {
+      if (parentId !== null) {
+        updatedConnections.push({
+          id: uuidv4(),
+          from: parentId,
+          to: conn.to,
+          direction: conn.direction || 'right',
+        });
+      }
+    });
+
+    setNodes(updatedNodes);
+    setConnections(updatedConnections);
+    saveToFirebase(updatedNodes, updatedConnections);
+
+    if (editingNode === nodeId) {
+      setEditingNode(null);
+    }
+  };
+
+  // 在「父節點 → 此子節點」之間插入新節點
+  const handleInsertBeforeNode = (childNode) => {
+    const parentNode = getParentNode(childNode.id);
+    if (!parentNode) return;
+
+    const spacing = 56;
+    const newWidth = calculateNodeWidth('新節點');
+    const newX = parentNode.x + parentNode.width + spacing;
+    const newY = childNode.y;
+
+    const newNode = {
+      id: uuidv4(),
+      text: '新節點',
+      x: newX,
+      y: newY,
+      width: newWidth,
+      height: 28,
+    };
+
+    const descendantIds = getAllDescendants(childNode.id);
+    const moveIds = new Set([childNode.id, ...descendantIds]);
+    const shift = spacing + newWidth;
+
+    const updatedNodes = nodes.map(node =>
+      moveIds.has(node.id) ? { ...node, x: node.x + shift } : node
+    );
+    updatedNodes.push(newNode);
+
+    const connToChild = connections.find(conn => conn.from === parentNode.id && conn.to === childNode.id);
     const updatedConnections = connections.filter(
-      conn => !nodesToDelete.has(conn.from) && !nodesToDelete.has(conn.to)
+      conn => !(conn.from === parentNode.id && conn.to === childNode.id)
+    );
+    updatedConnections.push(
+      { id: uuidv4(), from: parentNode.id, to: newNode.id, direction: 'right' },
+      { id: uuidv4(), from: newNode.id, to: childNode.id, direction: connToChild?.direction || 'right' }
     );
 
     setNodes(updatedNodes);
     setConnections(updatedConnections);
     saveToFirebase(updatedNodes, updatedConnections);
-    
-    // 如果刪除的是正在編輯的節點，清除編輯狀態
-    if (nodesToDelete.has(editingNode)) {
-      setEditingNode(null);
-    }
+    setEditingNode(newNode.id);
   };
 
   // 在畫布左側新增節點（作為新的起始節點）
@@ -776,7 +825,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     if (!canvasElement) return;
 
     const nodeWidth = 120;
-    const nodeHeight = 45;
+    const nodeHeight = 28;
 
     // 找到最左邊的節點
     const leftmostNode = nodes.reduce((leftmost, node) => {
@@ -874,7 +923,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         stopPropagation: () => e.stopPropagation(),
       };
       const nodeEl = e.target.closest(`.${styles.node}`);
-      if (nodeEl && !e.target.closest(`.${styles.nodeAddButton}`) && !e.target.closest(`.${styles.nodeDeleteButton}`)) {
+      if (nodeEl && !e.target.closest(`.${styles.nodeAddButton}`) && !e.target.closest(`.${styles.nodeDeleteButton}`) && !e.target.closest(`.${styles.nodeLeftAction}`)) {
         const nodeId = nodeEl.getAttribute('data-node-id');
         const node = nodes.find(n => n.id === nodeId);
         if (node) {
@@ -1085,6 +1134,21 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
               onMouseEnter={() => setHoveredNode(node.id)}
               onMouseLeave={() => setHoveredNode(null)}
             >
+            {getParentNode(node.id) && hoveredNode === node.id && (
+              <div className={styles.nodeLeftAction}>
+                <button
+                  type="button"
+                  className={styles.nodeInsertBeforeButton}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleInsertBeforeNode(node);
+                  }}
+                  title="在此節點前插入"
+                >
+                  ◀
+                </button>
+              </div>
+            )}
             {editingNode === node.id ? (
               <input
                 type="text"
