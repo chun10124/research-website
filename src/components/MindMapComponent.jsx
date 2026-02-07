@@ -838,16 +838,15 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const handleTouchStart = (e) => {
     if (e.touches.length === 2) {
       e.preventDefault();
-      const rect = e.currentTarget.getBoundingClientRect();
       const t0 = e.touches[0];
       const t1 = e.touches[1];
       const distance = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
-      const centerX = (t0.clientX + t1.clientX) / 2 - rect.left;
-      const centerY = (t0.clientY + t1.clientY) / 2 - rect.top;
+      const centerClientX = (t0.clientX + t1.clientX) / 2;
+      const centerClientY = (t0.clientY + t1.clientY) / 2;
       pinchStartRef.current = {
         distance,
-        centerX,
-        centerY,
+        centerClientX,
+        centerClientY,
         zoom,
         panX: panOffset.x,
         panY: panOffset.y,
@@ -879,23 +878,10 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     }
   };
 
-  // 觸控：移動
+  // 觸控：移動（雙指縮放僅在 document 的 touchmove 更新，避免重複 setState 造成跳動）
   const handleTouchMove = (e) => {
     if (e.touches.length === 2 && pinchStartRef.current) {
       e.preventDefault();
-      const rect = e.currentTarget.getBoundingClientRect();
-      const t0 = e.touches[0];
-      const t1 = e.touches[1];
-      const newDistance = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
-      const start = pinchStartRef.current;
-      const scale = newDistance / start.distance;
-      const newZoom = Math.max(0.5, Math.min(3, start.zoom * scale));
-      const centerCanvasX = (start.centerX - start.panX) / start.zoom;
-      const centerCanvasY = (start.centerY - start.panY) / start.zoom;
-      const newPanX = start.centerX - centerCanvasX * newZoom;
-      const newPanY = start.centerY - centerCanvasY * newZoom;
-      setZoom(newZoom);
-      setPanOffset({ x: newPanX, y: newPanY });
       return;
     }
     if (e.touches.length === 1) {
@@ -939,16 +925,18 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       } else if (e.touches.length === 2 && pinchStartRef.current && canvas) {
           e.preventDefault();
           const rect = canvas.getBoundingClientRect();
+          const centerX = pinchStartRef.current.centerClientX - rect.left;
+          const centerY = pinchStartRef.current.centerClientY - rect.top;
           const t0 = e.touches[0];
           const t1 = e.touches[1];
           const newDistance = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
           const start = pinchStartRef.current;
           const scale = newDistance / start.distance;
           const newZoom = Math.max(0.5, Math.min(3, start.zoom * scale));
-          const centerCanvasX = (start.centerX - start.panX) / start.zoom;
-          const centerCanvasY = (start.centerY - start.panY) / start.zoom;
+          const centerCanvasX = (centerX - start.panX) / start.zoom;
+          const centerCanvasY = (centerY - start.panY) / start.zoom;
           setZoom(newZoom);
-          setPanOffset({ x: start.centerX - centerCanvasX * newZoom, y: start.centerY - centerCanvasY * newZoom });
+          setPanOffset({ x: centerX - centerCanvasX * newZoom, y: centerY - centerCanvasY * newZoom });
       }
     };
     const onTouchEnd = (e) => {
