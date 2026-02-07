@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { setDoc, onSnapshot, doc } from 'firebase/firestore';
 import { MINDMAP_DOC_REF, db } from '../utils/firebaseConfig';
@@ -18,9 +18,22 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [clickStartPos, setClickStartPos] = useState(null);
   const [hasAutoCentered, setHasAutoCentered] = useState(false);
+  const pinchStartRef = useRef(null);
+  const canvasRef = useRef(null);
 
   // 邊界距離（px）
   const BOUNDARY_MARGIN = 20;
+
+  // 從滑鼠或觸控取得 clientX, clientY
+  const getClientCoords = (e) => {
+    if (e.touches && e.touches.length > 0) {
+      return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+    }
+    if (e.changedTouches && e.changedTouches.length > 0) {
+      return { clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY };
+    }
+    return { clientX: e.clientX, clientY: e.clientY };
+  };
 
   // 編輯器頁面：禁用滾動和隱藏 footer
   useEffect(() => {
@@ -506,6 +519,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
   // 開始拖動背景
   const handleCanvasMouseDown = (e) => {
+    const { clientX, clientY } = getClientCoords(e);
     // 如果點擊的是節點、加號按鈕或刪除按鈕，不處理背景點擊
     if (e.target.closest(`.${styles.node}`) || 
         e.target.closest(`.${styles.nodeAddButton}`) || 
@@ -521,17 +535,17 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     // 記錄點擊位置，用於判斷是點擊還是拖動
     const rect = e.currentTarget.getBoundingClientRect();
     setClickStartPos({
-      x: e.clientX,
-      y: e.clientY,
-      canvasX: (e.clientX - rect.left - panOffset.x) / zoom,
-      canvasY: (e.clientY - rect.top - panOffset.y) / zoom,
+      x: clientX,
+      y: clientY,
+      canvasX: (clientX - rect.left - panOffset.x) / zoom,
+      canvasY: (clientY - rect.top - panOffset.y) / zoom,
     });
 
     e.preventDefault();
     setIsPanning(true);
     setPanStart({
-      x: e.clientX - panOffset.x,
-      y: e.clientY - panOffset.y,
+      x: clientX - panOffset.x,
+      y: clientY - panOffset.y,
     });
   };
 
@@ -545,13 +559,14 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     e.stopPropagation();
     e.preventDefault();
     
+    const { clientX, clientY } = getClientCoords(e);
     const canvasElement = e.currentTarget.closest(`.${styles.mindMapCanvas}`);
     const canvasRect = canvasElement.getBoundingClientRect();
     
     setDraggingNode(node.id);
     setDragOffset({
-      x: e.clientX - canvasRect.left - node.x * zoom - panOffset.x,
-      y: e.clientY - canvasRect.top - node.y * zoom - panOffset.y,
+      x: clientX - canvasRect.left - node.x * zoom - panOffset.x,
+      y: clientY - canvasRect.top - node.y * zoom - panOffset.y,
     });
   };
 
@@ -572,19 +587,20 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
   // 拖動處理（節點或背景）
   const handleMouseMove = (e) => {
+    const { clientX, clientY } = getClientCoords(e);
     if (isPanning) {
       // 拖動背景
       const newPanOffset = {
-        x: e.clientX - panStart.x,
-        y: e.clientY - panStart.y,
+        x: clientX - panStart.x,
+        y: clientY - panStart.y,
       };
       setPanOffset(newPanOffset);
     } else if (draggingNode) {
       // 拖動節點（包括所有子節點）
       const canvasElement = e.currentTarget;
       const canvasRect = canvasElement.getBoundingClientRect();
-      const rawX = (e.clientX - canvasRect.left - dragOffset.x - panOffset.x) / zoom;
-      const rawY = (e.clientY - canvasRect.top - dragOffset.y - panOffset.y) / zoom;
+      const rawX = (clientX - canvasRect.left - dragOffset.x - panOffset.x) / zoom;
+      const rawY = (clientY - canvasRect.top - dragOffset.y - panOffset.y) / zoom;
 
       const draggingNodeData = nodes.find(n => n.id === draggingNode);
       if (draggingNodeData) {
@@ -650,6 +666,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
   // 結束拖動
   const handleMouseUp = (e) => {
+    const coords = e ? getClientCoords(e) : null;
     if (draggingNode) {
       // 對齊同層級的節點
       let updatedNodes = [...nodes];
@@ -663,11 +680,11 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       setDraggingNode(null);
     }
     
-    if (isPanning && clickStartPos && e) {
+    if (isPanning && clickStartPos && coords) {
       // 判斷是點擊還是拖動（移動距離小於 5px 視為點擊）
       const moveDistance = Math.sqrt(
-        Math.pow(e.clientX - clickStartPos.x, 2) + 
-        Math.pow(e.clientY - clickStartPos.y, 2)
+        Math.pow(coords.clientX - clickStartPos.x, 2) + 
+        Math.pow(coords.clientY - clickStartPos.y, 2)
       );
       
       if (moveDistance < 5) {
@@ -817,19 +834,145 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     setPanOffset({ x: newPanX, y: newPanY });
   };
 
+  // 觸控：開始
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      const distance = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const centerX = (t0.clientX + t1.clientX) / 2 - rect.left;
+      const centerY = (t0.clientY + t1.clientY) / 2 - rect.top;
+      pinchStartRef.current = {
+        distance,
+        centerX,
+        centerY,
+        zoom,
+        panX: panOffset.x,
+        panY: panOffset.y,
+      };
+      return;
+    }
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const syn = {
+        ...e,
+        clientX: t.clientX,
+        clientY: t.clientY,
+        target: e.target,
+        currentTarget: e.currentTarget,
+        preventDefault: () => e.preventDefault(),
+        stopPropagation: () => e.stopPropagation(),
+      };
+      const nodeEl = e.target.closest(`.${styles.node}`);
+      if (nodeEl && !e.target.closest(`.${styles.nodeAddButton}`) && !e.target.closest(`.${styles.nodeDeleteButton}`)) {
+        const nodeId = nodeEl.getAttribute('data-node-id');
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          e.preventDefault();
+          handleNodeMouseDown(syn, node);
+        }
+      } else {
+        handleCanvasMouseDown(syn);
+      }
+    }
+  };
+
+  // 觸控：移動
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 2 && pinchStartRef.current) {
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      const newDistance = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const start = pinchStartRef.current;
+      const scale = newDistance / start.distance;
+      const newZoom = Math.max(0.5, Math.min(3, start.zoom * scale));
+      const centerCanvasX = (start.centerX - start.panX) / start.zoom;
+      const centerCanvasY = (start.centerY - start.panY) / start.zoom;
+      const newPanX = start.centerX - centerCanvasX * newZoom;
+      const newPanY = start.centerY - centerCanvasY * newZoom;
+      setZoom(newZoom);
+      setPanOffset({ x: newPanX, y: newPanY });
+      return;
+    }
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const syn = {
+        ...e,
+        clientX: t.clientX,
+        clientY: t.clientY,
+        currentTarget: e.currentTarget,
+      };
+      handleMouseMove(syn);
+    }
+  };
+
+  // 觸控：結束
+  const handleTouchEnd = (e) => {
+    if (e.touches.length === 0) {
+      pinchStartRef.current = null;
+      if (e.changedTouches && e.changedTouches[0]) {
+        const syn = {
+          clientX: e.changedTouches[0].clientX,
+          clientY: e.changedTouches[0].clientY,
+        };
+        handleMouseUp(syn);
+      } else {
+        handleMouseUp(null);
+      }
+    } else if (e.touches.length === 1) {
+      pinchStartRef.current = null;
+    }
+  };
+
+  // 全域觸控移動/結束（手指移出畫布時仍要收到事件）
+  useEffect(() => {
+    const onTouchMove = (e) => {
+      const canvas = canvasRef.current;
+      if (e.touches.length === 1 && (isPanning || draggingNode) && canvas) {
+        e.preventDefault();
+        const t = e.touches[0];
+        handleMouseMove({ ...e, currentTarget: canvas, touches: [t], clientX: t.clientX, clientY: t.clientY });
+      } else if (e.touches.length === 2 && pinchStartRef.current && canvas) {
+          e.preventDefault();
+          const rect = canvas.getBoundingClientRect();
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          const newDistance = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+          const start = pinchStartRef.current;
+          const scale = newDistance / start.distance;
+          const newZoom = Math.max(0.5, Math.min(3, start.zoom * scale));
+          const centerCanvasX = (start.centerX - start.panX) / start.zoom;
+          const centerCanvasY = (start.centerY - start.panY) / start.zoom;
+          setZoom(newZoom);
+          setPanOffset({ x: start.centerX - centerCanvasX * newZoom, y: start.centerY - centerCanvasY * newZoom });
+      }
+    };
+    const onTouchEnd = (e) => {
+      if (e.touches.length === 0) {
+        handleTouchEnd(e);
+      }
+    };
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isPanning, draggingNode]);
 
   return (
     <div className={styles.mindMapContainer}>
       <div
         className={styles.mindMapCanvas}
         ref={(el) => {
+          canvasRef.current = el;
           if (el && canvasSize.width === 0) {
-            // 確保畫布尺寸被正確獲取
             setTimeout(() => {
-              setCanvasSize({
-                width: el.clientWidth,
-                height: el.clientHeight,
-              });
+              if (el) setCanvasSize({ width: el.clientWidth, height: el.clientHeight });
             }, 0);
           }
         }}
@@ -838,6 +981,9 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         style={{
           cursor: isPanning ? 'grabbing' : 'default',
         }}
@@ -933,6 +1079,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
             <div
               key={node.id}
               className={styles.node}
+              data-node-id={node.id}
               style={{
                 left: `${node.x}px`,
                 top: `${node.y}px`,
