@@ -20,6 +20,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const [hasAutoCentered, setHasAutoCentered] = useState(false);
   const pinchStartRef = useRef(null);
   const canvasRef = useRef(null);
+  const pinchRafRef = useRef(null);
+  const pendingPinchRef = useRef(null);
 
   // 邊界距離（px）
   const BOUNDARY_MARGIN = 20;
@@ -899,6 +901,11 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   // 觸控：結束
   const handleTouchEnd = (e) => {
     if (e.touches.length === 0) {
+      if (pinchRafRef.current) {
+        cancelAnimationFrame(pinchRafRef.current);
+        pinchRafRef.current = null;
+      }
+      pendingPinchRef.current = null;
       pinchStartRef.current = null;
       if (e.changedTouches && e.changedTouches[0]) {
         const syn = {
@@ -925,18 +932,37 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       } else if (e.touches.length === 2 && pinchStartRef.current && canvas) {
           e.preventDefault();
           const rect = canvas.getBoundingClientRect();
-          const centerX = pinchStartRef.current.centerClientX - rect.left;
-          const centerY = pinchStartRef.current.centerClientY - rect.top;
+          const start = pinchStartRef.current;
+          const centerX = start.centerClientX - rect.left;
+          const centerY = start.centerClientY - rect.top;
           const t0 = e.touches[0];
           const t1 = e.touches[1];
           const newDistance = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
-          const start = pinchStartRef.current;
           const scale = newDistance / start.distance;
           const newZoom = Math.max(0.5, Math.min(3, start.zoom * scale));
           const centerCanvasX = (centerX - start.panX) / start.zoom;
           const centerCanvasY = (centerY - start.panY) / start.zoom;
-          setZoom(newZoom);
-          setPanOffset({ x: centerX - centerCanvasX * newZoom, y: centerY - centerCanvasY * newZoom });
+          const newPanX = centerX - centerCanvasX * newZoom;
+          const newPanY = centerY - centerCanvasY * newZoom;
+          pendingPinchRef.current = { zoom: newZoom, panX: newPanX, panY: newPanY, distance: newDistance };
+          if (pinchRafRef.current === null) {
+            pinchRafRef.current = requestAnimationFrame(() => {
+              pinchRafRef.current = null;
+              const pending = pendingPinchRef.current;
+              if (pending && pinchStartRef.current) {
+                setZoom(pending.zoom);
+                setPanOffset({ x: pending.panX, y: pending.panY });
+                pinchStartRef.current = {
+                  ...pinchStartRef.current,
+                  zoom: pending.zoom,
+                  panX: pending.panX,
+                  panY: pending.panY,
+                  distance: pending.distance,
+                };
+                pendingPinchRef.current = null;
+              }
+            });
+          }
       }
     };
     const onTouchEnd = (e) => {
