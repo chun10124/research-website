@@ -20,8 +20,11 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const [hasAutoCentered, setHasAutoCentered] = useState(false);
   const pinchStartRef = useRef(null);
   const canvasRef = useRef(null);
-  const pinchRafRef = useRef(null);
-  const pendingPinchRef = useRef(null);
+  const zoomPanRef = useRef({ zoom: 1, panX: 0, panY: 0 });
+
+  useEffect(() => {
+    zoomPanRef.current = { zoom, panX: panOffset.x, panY: panOffset.y };
+  }, [zoom, panOffset.x, panOffset.y]);
 
   // 邊界距離（px）
   const BOUNDARY_MARGIN = 20;
@@ -836,22 +839,26 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     setPanOffset({ x: newPanX, y: newPanY });
   };
 
-  // 觸控：開始
+  // 觸控：開始（雙指縮放）
   const handleTouchStart = (e) => {
     if (e.touches.length === 2) {
       e.preventDefault();
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
       const t0 = e.touches[0];
       const t1 = e.touches[1];
       const distance = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
       const centerClientX = (t0.clientX + t1.clientX) / 2;
       const centerClientY = (t0.clientY + t1.clientY) / 2;
+      const { zoom: z, panX: px, panY: py } = zoomPanRef.current;
       pinchStartRef.current = {
         distance,
-        centerClientX,
-        centerClientY,
-        zoom,
-        panX: panOffset.x,
-        panY: panOffset.y,
+        centerX: centerClientX - rect.left,
+        centerY: centerClientY - rect.top,
+        zoom: z,
+        panX: px,
+        panY: py,
       };
       return;
     }
@@ -901,23 +908,12 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   // 觸控：結束
   const handleTouchEnd = (e) => {
     if (e.touches.length === 0) {
-      if (pinchRafRef.current) {
-        cancelAnimationFrame(pinchRafRef.current);
-        pinchRafRef.current = null;
-      }
-      const pending = pendingPinchRef.current;
-      if (pending) {
-        setZoom(pending.zoom);
-        setPanOffset({ x: pending.panX, y: pending.panY });
-      }
-      pendingPinchRef.current = null;
       pinchStartRef.current = null;
       if (e.changedTouches && e.changedTouches[0]) {
-        const syn = {
+        handleMouseUp({
           clientX: e.changedTouches[0].clientX,
           clientY: e.changedTouches[0].clientY,
-        };
-        handleMouseUp(syn);
+        });
       } else {
         handleMouseUp(null);
       }
@@ -936,40 +932,18 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         handleMouseMove({ ...e, currentTarget: canvas, touches: [t], clientX: t.clientX, clientY: t.clientY });
       } else if (e.touches.length === 2 && pinchStartRef.current && canvas) {
           e.preventDefault();
-          const rect = canvas.getBoundingClientRect();
           const start = pinchStartRef.current;
-          const centerX = start.centerClientX - rect.left;
-          const centerY = start.centerClientY - rect.top;
           const t0 = e.touches[0];
           const t1 = e.touches[1];
           const newDistance = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
           const scale = newDistance / start.distance;
           const newZoom = Math.max(0.5, Math.min(3, start.zoom * scale));
-          const centerCanvasX = (centerX - start.panX) / start.zoom;
-          const centerCanvasY = (centerY - start.panY) / start.zoom;
-          const newPanX = centerX - centerCanvasX * newZoom;
-          const newPanY = centerY - centerCanvasY * newZoom;
-          pendingPinchRef.current = { zoom: newZoom, panX: newPanX, panY: newPanY, distance: newDistance };
-          if (pinchRafRef.current === null) {
-            pinchRafRef.current = requestAnimationFrame(() => {
-              pinchRafRef.current = null;
-              const pending = pendingPinchRef.current;
-              if (pending) {
-                setZoom(pending.zoom);
-                setPanOffset({ x: pending.panX, y: pending.panY });
-                if (pinchStartRef.current) {
-                  pinchStartRef.current = {
-                    ...pinchStartRef.current,
-                    zoom: pending.zoom,
-                    panX: pending.panX,
-                    panY: pending.panY,
-                    distance: pending.distance,
-                  };
-                }
-                pendingPinchRef.current = null;
-              }
-            });
-          }
+          const contentX = (start.centerX - start.panX) / start.zoom;
+          const contentY = (start.centerY - start.panY) / start.zoom;
+          const newPanX = start.centerX - contentX * newZoom;
+          const newPanY = start.centerY - contentY * newZoom;
+          setZoom(newZoom);
+          setPanOffset({ x: newPanX, y: newPanY });
       }
     };
     const onTouchEnd = (e) => {
