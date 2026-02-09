@@ -848,7 +848,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     }
   };
 
-  // 在畫布左側新增節點（作為新的起始節點）
+  // 在螢幕正中央新增節點
   const handleAddNodeAtCenter = () => {
     const canvasElement = document.querySelector(`.${styles.mindMapCanvas}`);
     if (!canvasElement) return;
@@ -856,22 +856,20 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     const nodeWidth = 120;
     const nodeHeight = 28;
 
-    // 找到最左邊的節點
-    const leftmostNode = nodes.reduce((leftmost, node) => {
-      return !leftmost || node.x < leftmost.x ? node : leftmost;
-    }, null);
-
-    let newX, newY;
-    if (leftmostNode) {
-      // 如果已有節點，新節點放在最左邊節點的左側
-      newX = leftmostNode.x - 200; // 放在左側
-      newY = leftmostNode.y;
-    } else {
-      // 如果沒有節點，放在畫布左側中心
-      const rect = canvasElement.getBoundingClientRect();
-      newX = (BOUNDARY_MARGIN - panOffset.x) / zoom;
-      newY = (rect.height / 2 - panOffset.y) / zoom - nodeHeight / 2;
-    }
+    // 計算畫布在視窗中的位置
+    const rect = canvasElement.getBoundingClientRect();
+    
+    // 螢幕正中央的位置（視窗座標）
+    const screenCenterX = window.innerWidth / 2;
+    const screenCenterY = window.innerHeight / 2;
+    
+    // 轉換為畫布座標系（考慮 zoom 和 panOffset）
+    const canvasX = (screenCenterX - rect.left - panOffset.x) / zoom;
+    const canvasY = (screenCenterY - rect.top - panOffset.y) / zoom;
+    
+    // 節點中心對齊到螢幕中心
+    const newX = canvasX - nodeWidth / 2;
+    const newY = canvasY - nodeHeight / 2;
 
     // 限制在邊界內
     const tempNode = { width: nodeWidth, height: nodeHeight };
@@ -1164,19 +1162,43 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
               onMouseLeave={() => setHoveredNode(null)}
             >
             {hoveredNode === node.id && (
-              <div className={styles.nodeLeftAction}>
-                <button
-                  type="button"
-                  className={styles.nodeInsertBeforeButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleInsertBeforeNode(node);
-                  }}
-                  title={getParentNode(node.id) ? "在此節點前插入" : "在左側新增節點"}
-                >
-                  ◀
-                </button>
-              </div>
+              <>
+                <div className={styles.nodeLeftAction}>
+                  <button
+                    type="button"
+                    className={styles.nodeInsertBeforeButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleInsertBeforeNode(node);
+                    }}
+                    title={getParentNode(node.id) ? "在此節點前插入" : "在左側新增節點"}
+                  >
+                    ◀
+                  </button>
+                </div>
+                <div className={styles.nodeActions}>
+                  <button
+                    className={styles.nodeAddButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddChildNode(node);
+                    }}
+                    title="新增子節點"
+                  >
+                    +
+                  </button>
+                  <button
+                    className={styles.nodeDeleteButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteNode(node.id);
+                    }}
+                    title="刪除節點"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </>
             )}
             {editingNode === node.id ? (
               <input
@@ -1194,39 +1216,13 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
-              <>
-                <div
-                  className={`${styles.nodeText} ${node.text.length < 10 ? styles.nodeTextNoWrap : ''}`}
-                >
-                  {node.text.length > 10 
-                    ? node.text.substring(0, 10) + '\n' + node.text.substring(10)
-                    : node.text}
-                </div>
-                {hoveredNode === node.id && (
-                  <div className={styles.nodeActions}>
-                    <button
-                      className={styles.nodeAddButton}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAddChildNode(node);
-                      }}
-                      title="新增子節點"
-                    >
-                      +
-                    </button>
-                    <button
-                      className={styles.nodeDeleteButton}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteNode(node.id);
-                      }}
-                      title="刪除節點"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
-              </>
+              <div
+                className={`${styles.nodeText} ${node.text.length < 10 ? styles.nodeTextNoWrap : ''}`}
+              >
+                {node.text.length > 10 
+                  ? node.text.substring(0, 10) + '\n' + node.text.substring(10)
+                  : node.text}
+              </div>
             )}
             </div>
           ))}
