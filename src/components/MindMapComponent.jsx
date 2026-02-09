@@ -1208,7 +1208,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
                 onBlur={handleNodeTextBlur}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    handleNodeTextBlur();
+                    e.preventDefault();
+                    // 按 Enter 不跳出輸入，繼續編輯
                   }
                 }}
                 className={styles.nodeInput}
