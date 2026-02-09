@@ -7,10 +7,19 @@ import styles from './MindMap.module.css';
 function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const [nodes, setNodes] = useState([]);
   const [connections, setConnections] = useState([]);
+  const [textBoxes, setTextBoxes] = useState([]);
+  const [arrows, setArrows] = useState([]);
   const [editingNode, setEditingNode] = useState(null);
+  const [editingTextBox, setEditingTextBox] = useState(null);
   const [draggingNode, setDraggingNode] = useState(null);
+  const [draggingTextBox, setDraggingTextBox] = useState(null);
+  const [draggingArrow, setDraggingArrow] = useState(null);
+  const [draggingArrowEnd, setDraggingArrowEnd] = useState(null); // 'start' 或 'end'
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [arrowContextMenu, setArrowContextMenu] = useState(null);
+  const [selectedArrow, setSelectedArrow] = useState(null); // 選中的箭頭 ID
   const [hoveredNode, setHoveredNode] = useState(null);
+  const [hoveredTextBox, setHoveredTextBox] = useState(null);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -18,6 +27,9 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [clickStartPos, setClickStartPos] = useState(null);
   const [hasAutoCentered, setHasAutoCentered] = useState(false);
+  const [isDrawingArrow, setIsDrawingArrow] = useState(false);
+  const [arrowStart, setArrowStart] = useState(null);
+  const [arrowPreviewEnd, setArrowPreviewEnd] = useState(null);
   const pinchStartRef = useRef(null);
   const canvasRef = useRef(null);
   const zoomPanRef = useRef({ zoom: 1, panX: 0, panY: 0 });
@@ -167,6 +179,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         const NODE_HEIGHT = 28;
         setNodes((data.nodes || []).map(n => ({ ...n, height: NODE_HEIGHT })));
         setConnections(data.connections || []);
+        setTextBoxes(data.textBoxes || []);
+        setArrows(data.arrows || []);
       } else {
         // 初始化新心智圖（從最左邊開始）
         const initialNode = {
@@ -238,15 +252,22 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   }, [nodes, canvasSize, zoom, hasAutoCentered]);
 
   // 儲存到 Firebase
-  const saveToFirebase = async (nodesToSave, connectionsToSave) => {
+  const saveToFirebase = async (nodesToSave, connectionsToSave, textBoxesToSave = null, arrowsToSave = null) => {
     if (!mindMapId) return;
     try {
       const docRef = doc(db, `mindmaps`, mindMapId);
-      await setDoc(docRef, {
+      const dataToSave = {
         nodes: nodesToSave,
         connections: connectionsToSave,
         updatedAt: Date.now(),
-      });
+      };
+      if (textBoxesToSave !== null) {
+        dataToSave.textBoxes = textBoxesToSave;
+      }
+      if (arrowsToSave !== null) {
+        dataToSave.arrows = arrowsToSave;
+      }
+      await setDoc(docRef, dataToSave);
     } catch (error) {
       console.error('寫入 Firestore 失敗:', error);
     }
@@ -525,19 +546,160 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   // 開始拖動背景
   const handleCanvasMouseDown = (e) => {
     const { clientX, clientY } = getClientCoords(e);
-    // 如果點擊的是節點、加號按鈕或刪除按鈕，不處理背景點擊
-    if (e.target.closest(`.${styles.node}`) || 
-        e.target.closest(`.${styles.nodeAddButton}`) || 
-        e.target.closest(`.${styles.nodeDeleteButton}`) ||
-        e.target.closest(`.${styles.nodeLeftAction}`)) {
+    
+    // 如果點擊的是懸浮按鈕，不處理
+    if (e.target.closest(`.${styles.floatingActions}`) || 
+        e.target.closest(`.${styles.floatingButton}`)) {
       return;
     }
     
-    // 如果點擊的是 SVG 連接線，不處理背景點擊
-    if (e.target.tagName === 'path' || e.target.tagName === 'svg') {
+    // 如果點擊的是節點、加號按鈕、刪除按鈕、文字方塊，不處理背景點擊
+    if (e.target.closest(`.${styles.node}`) || 
+        e.target.closest(`.${styles.nodeAddButton}`) || 
+        e.target.closest(`.${styles.nodeDeleteButton}`) ||
+        e.target.closest(`.${styles.nodeLeftAction}`) ||
+        e.target.closest(`.${styles.textBox}`) ||
+        e.target.closest(`.${styles.textBoxDeleteButton}`)) {
+      return;
+    }
+    
+    // 箭頭繪製模式
+    if (isDrawingArrow) {
+      // 檢測是否點擊箭頭（線條或圓點）- 在繪製模式下不應該拖動現有箭頭
+      if (e.target.tagName === 'path' || e.target.tagName === 'circle') {
+        const arrowGroup = e.target.closest('g[data-arrow-id]');
+        if (arrowGroup) {
+          // 在繪製模式下點擊現有箭頭，不處理
+          return;
+        }
+      }
+      
+      // 檢查是否點擊了 canvas 外部的背景（點擊了容器外部）
+      const canvasElement = e.currentTarget;
+      const isClickOutsideCanvas = !canvasElement.contains(e.target) && 
+                                   e.target !== canvasElement &&
+                                   !e.target.closest(`.${styles.mindMapCanvas}`);
+      
+      if (isClickOutsideCanvas) {
+        // 點擊 canvas 外部：取消箭頭繪製模式
+        setIsDrawingArrow(false);
+        setArrowStart(null);
+        setArrowPreviewEnd(null);
+        setSelectedArrow(null); // 清除箭頭選中狀態
+        return;
+      }
+      
+      // 點擊 canvas 內部：繼續繪製箭頭
+      // 允許點擊 nodesContainer、SVG、連接線等空白區域來繪製箭頭
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const canvasX = (clientX - rect.left - panOffset.x) / zoom;
+      const canvasY = (clientY - rect.top - panOffset.y) / zoom;
+      
+      if (!arrowStart) {
+        // 第一次點擊：記錄起始點
+        setArrowStart({ x: canvasX, y: canvasY });
+      } else {
+        // 第二次點擊：創建箭頭（應用磁鐵效果）
+        const snapped = snapToAxis(arrowStart.x, arrowStart.y, canvasX, canvasY);
+        const newArrow = {
+          id: uuidv4(),
+          startX: arrowStart.x,
+          startY: arrowStart.y,
+          endX: snapped.x,
+          endY: snapped.y,
+        };
+        const updatedArrows = [...arrows, newArrow];
+        setArrows(updatedArrows);
+        saveToFirebase(nodes, connections, textBoxes, updatedArrows);
+        setArrowStart(null);
+        setArrowPreviewEnd(null);
+        setIsDrawingArrow(false);
+      }
+      return;
+    }
+    
+    // 檢測是否點擊箭頭（線條或圓點）- 只在非箭頭繪製模式下處理
+    if (!isDrawingArrow && (e.target.tagName === 'path' || e.target.tagName === 'circle')) {
+      // 檢查是否是箭頭元素（通過檢查父元素是否有 data-arrow-id）
+      const arrowGroup = e.target.closest('g[data-arrow-id]');
+      if (arrowGroup) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const arrowId = arrowGroup.getAttribute('data-arrow-id');
+        const arrow = arrows.find(a => a.id === arrowId);
+        if (arrow) {
+          // 右鍵：顯示刪除選單
+          if (e.button === 2 || (e.type === 'contextmenu')) {
+            e.preventDefault();
+            setArrowContextMenu({
+              x: clientX,
+              y: clientY,
+              arrowId: arrow.id,
+            });
+            return;
+          }
+          
+          // 左鍵：檢測點擊的是頭部圓點、尾部圓點還是線條
+          const rect = e.currentTarget.getBoundingClientRect();
+          const clickCanvasX = (clientX - rect.left - panOffset.x) / zoom;
+          const clickCanvasY = (clientY - rect.top - panOffset.y) / zoom;
+          
+          if (e.target.tagName === 'circle') {
+            // 點擊圓點：拖動對應的端點
+            const cx = parseFloat(e.target.getAttribute('cx'));
+            const cy = parseFloat(e.target.getAttribute('cy'));
+            const isStart = Math.abs(cx - arrow.startX) < 1 && Math.abs(cy - arrow.startY) < 1;
+            
+            if (isStart) {
+              setDraggingArrow(arrow.id);
+              setDraggingArrowEnd('start');
+              setSelectedArrow(arrow.id); // 選中箭頭
+              setDragOffset({
+                x: clickCanvasX - arrow.startX,
+                y: clickCanvasY - arrow.startY,
+              });
+            } else {
+              setDraggingArrow(arrow.id);
+              setDraggingArrowEnd('end');
+              setSelectedArrow(arrow.id); // 選中箭頭
+              setDragOffset({
+                x: clickCanvasX - arrow.endX,
+                y: clickCanvasY - arrow.endY,
+              });
+            }
+          } else {
+            // 點擊線條：拖動整個箭頭
+            const arrowCenterX = (arrow.startX + arrow.endX) / 2;
+            const arrowCenterY = (arrow.startY + arrow.endY) / 2;
+            setDraggingArrow(arrow.id);
+            setDraggingArrowEnd(null);
+            setSelectedArrow(arrow.id); // 選中箭頭
+            setDragOffset({
+              x: clickCanvasX - arrowCenterX,
+              y: clickCanvasY - arrowCenterY,
+            });
+          }
+          return;
+        }
+      }
+      
+      // 如果是其他 path（連接線），不處理背景點擊
+      if (e.target.tagName === 'path') {
+        return;
+      }
+    }
+    
+    // 如果點擊的是其他 SVG 元素，不處理背景點擊（只在非箭頭繪製模式下）
+    if (!isDrawingArrow && (e.target.tagName === 'svg' || e.target.tagName === 'g')) {
       return;
     }
 
+    // 點擊背景：清除箭頭選中狀態
+    setSelectedArrow(null);
+    
     // 記錄點擊位置，用於判斷是點擊還是拖動
     const rect = e.currentTarget.getBoundingClientRect();
     setClickStartPos({
@@ -555,10 +717,37 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     });
   };
 
+  // 開始拖動文字方塊
+  const handleTextBoxMouseDown = (e, textBox) => {
+    if (e.target.closest(`.${styles.textBoxInput}`) || 
+        e.target.closest(`.${styles.textBoxDeleteButton}`) ||
+        e.target.tagName === 'INPUT' ||
+        e.target.tagName === 'TEXTAREA') {
+      return;
+    }
+    
+    e.stopPropagation();
+    e.preventDefault();
+    
+    const { clientX, clientY } = getClientCoords(e);
+    const canvasElement = e.currentTarget.closest(`.${styles.mindMapCanvas}`);
+    const canvasRect = canvasElement.getBoundingClientRect();
+    
+    setDraggingTextBox(textBox.id);
+    setDragOffset({
+      x: clientX - canvasRect.left - textBox.x * zoom - panOffset.x,
+      y: clientY - canvasRect.top - textBox.y * zoom - panOffset.y,
+    });
+  };
+
   // 開始拖動節點
   const handleNodeMouseDown = (e, node) => {
-    // 如果點擊的是加號按鈕或刪除按鈕，不拖動
-    if (e.target.closest(`.${styles.nodeAddButton}`) || e.target.closest(`.${styles.nodeDeleteButton}`) || e.target.closest(`.${styles.nodeLeftAction}`)) {
+    // 如果點擊的是加號按鈕、刪除按鈕、插入按鈕或輸入框，不拖動
+    if (e.target.closest(`.${styles.nodeAddButton}`) || 
+        e.target.closest(`.${styles.nodeDeleteButton}`) || 
+        e.target.closest(`.${styles.nodeLeftAction}`) ||
+        e.target.closest(`.${styles.nodeInput}`) ||
+        e.target.tagName === 'INPUT') {
       return;
     }
     
@@ -591,9 +780,45 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     return childConnections.length === 1;
   };
 
+  // 磁鐵效果：當箭頭接近水平或垂直時自動對齊
+  const snapToAxis = (fixedX, fixedY, movingX, movingY) => {
+    const dx = movingX - fixedX;
+    const dy = movingY - fixedY;
+    const angle = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx)) * 180 / Math.PI);
+    
+    // 磁鐵閾值：接近水平或垂直時（±5度內）
+    const snapThreshold = 5;
+    
+    // 檢查是否接近水平（0度或180度）
+    if (angle < snapThreshold || angle > 180 - snapThreshold) {
+      // 水平對齊：保持 movingY 與 fixedY 相同
+      return { x: movingX, y: fixedY };
+    }
+    
+    // 檢查是否接近垂直（90度）
+    if (Math.abs(angle - 90) < snapThreshold) {
+      // 垂直對齊：保持 movingX 與 fixedX 相同
+      return { x: fixedX, y: movingY };
+    }
+    
+    return { x: movingX, y: movingY };
+  };
+
   // 拖動處理（節點或背景）
   const handleMouseMove = (e) => {
     const { clientX, clientY } = getClientCoords(e);
+    
+    // 箭頭預覽：如果已選擇起始點，更新預覽終點（應用磁鐵效果）
+    if (isDrawingArrow && arrowStart) {
+      const canvasElement = e.currentTarget;
+      const canvasRect = canvasElement.getBoundingClientRect();
+      const canvasX = (clientX - canvasRect.left - panOffset.x) / zoom;
+      const canvasY = (clientY - canvasRect.top - panOffset.y) / zoom;
+      const snapped = snapToAxis(arrowStart.x, arrowStart.y, canvasX, canvasY);
+      setArrowPreviewEnd({ x: snapped.x, y: snapped.y });
+      return;
+    }
+    
     if (isPanning) {
       // 拖動背景
       const newPanOffset = {
@@ -666,18 +891,12 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         };
         const descendantIds = findDescendants(draggingNode);
         const allMovingNodeIds = new Set([draggingNode, ...descendantIds]);
-        
-        // 調試：確認找到的子節點
-        if (descendantIds.length > 0) {
-          console.log('找到子節點:', descendantIds, '總共要移動的節點:', Array.from(allMovingNodeIds));
-        }
 
         // 先計算所有節點的新位置（包括父節點和所有子節點）
         let updatedNodes = prevNodes.map(node => {
           if (allMovingNodeIds.has(node.id)) {
             const newX = node.x + deltaX;
             const newY = node.y + deltaY;
-            console.log(`移動節點 ${node.id}: (${node.x}, ${node.y}) -> (${newX}, ${newY})`);
             return { ...node, x: newX, y: newY };
           }
           return node;
@@ -703,12 +922,85 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
         return updatedNodes;
       });
+    } else if (draggingTextBox) {
+      // 拖動文字方塊
+      const canvasElement = e.currentTarget;
+      const canvasRect = canvasElement.getBoundingClientRect();
+      const rawX = (clientX - canvasRect.left - dragOffset.x - panOffset.x) / zoom;
+      const rawY = (clientY - canvasRect.top - dragOffset.y - panOffset.y) / zoom;
+
+      setTextBoxes(prevTextBoxes => {
+        return prevTextBoxes.map(textBox => {
+          if (textBox.id === draggingTextBox) {
+            const constrainedPos = constrainNodePosition(textBox, rawX, rawY);
+            return { ...textBox, x: constrainedPos.x, y: constrainedPos.y };
+          }
+          return textBox;
+        });
+      });
+    } else if (draggingArrow) {
+      // 拖動箭頭
+      const canvasElement = e.currentTarget;
+      const canvasRect = canvasElement.getBoundingClientRect();
+      const currentCanvasX = (clientX - canvasRect.left - panOffset.x) / zoom;
+      const currentCanvasY = (clientY - canvasRect.top - panOffset.y) / zoom;
+
+      setArrows(prevArrows => {
+        return prevArrows.map(arrow => {
+          if (arrow.id === draggingArrow) {
+            if (draggingArrowEnd === 'start') {
+              // 只移動起始點（應用磁鐵效果，以終點為固定點）
+              const rawX = currentCanvasX - dragOffset.x;
+              const rawY = currentCanvasY - dragOffset.y;
+              const snapped = snapToAxis(arrow.endX, arrow.endY, rawX, rawY);
+              return {
+                ...arrow,
+                startX: snapped.x,
+                startY: snapped.y,
+              };
+            } else if (draggingArrowEnd === 'end') {
+              // 只移動終點（應用磁鐵效果，以起始點為固定點）
+              const rawX = currentCanvasX - dragOffset.x;
+              const rawY = currentCanvasY - dragOffset.y;
+              const snapped = snapToAxis(arrow.startX, arrow.startY, rawX, rawY);
+              return {
+                ...arrow,
+                endX: snapped.x,
+                endY: snapped.y,
+              };
+            } else {
+              // 移動整個箭頭（不需要磁鐵效果）
+              const newCenterX = currentCanvasX - dragOffset.x;
+              const newCenterY = currentCanvasY - dragOffset.y;
+              const oldCenterX = (arrow.startX + arrow.endX) / 2;
+              const oldCenterY = (arrow.startY + arrow.endY) / 2;
+              const deltaX = newCenterX - oldCenterX;
+              const deltaY = newCenterY - oldCenterY;
+              
+              return {
+                ...arrow,
+                startX: arrow.startX + deltaX,
+                startY: arrow.startY + deltaY,
+                endX: arrow.endX + deltaX,
+                endY: arrow.endY + deltaY,
+              };
+            }
+          }
+          return arrow;
+        });
+      });
     }
   };
 
   // 結束拖動
   const handleMouseUp = (e) => {
     const coords = e ? getClientCoords(e) : null;
+    
+    // 箭頭模式下不處理拖動結束
+    if (isDrawingArrow) {
+      return;
+    }
+    
     if (draggingNode) {
       // 對齊同層級的節點
       let updatedNodes = [...nodes];
@@ -720,6 +1012,17 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       setNodes(updatedNodes);
       saveToFirebase(updatedNodes, connections);
       setDraggingNode(null);
+    }
+    
+    if (draggingTextBox) {
+      saveToFirebase(nodes, connections, textBoxes, arrows);
+      setDraggingTextBox(null);
+    }
+    
+    if (draggingArrow) {
+      saveToFirebase(nodes, connections, textBoxes, arrows);
+      setDraggingArrow(null);
+      setDraggingArrowEnd(null);
     }
     
     if (isPanning && clickStartPos && coords) {
@@ -735,6 +1038,10 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
           // 如果正在編輯節點，結束編輯
           handleNodeTextBlur();
         }
+        if (editingTextBox) {
+          // 如果正在編輯文字方塊，結束編輯
+          handleTextBoxTextBlur();
+        }
         // 移除點擊背景創建新節點的功能
       }
       
@@ -743,6 +1050,74 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     } else if (isPanning) {
       setIsPanning(false);
       setClickStartPos(null);
+    }
+  };
+
+  // 編輯文字方塊
+  const handleTextBoxDoubleClick = (textBox) => {
+    setEditingTextBox(textBox.id);
+  };
+
+  // 計算文字方塊寬度（根據文字內容）
+  const calculateTextBoxWidth = (text) => {
+    const charWidth = 16; // 字體大小 16px，每個字符約 16px 寬
+    const padding = 16;
+    const maxCharsPerLine = 15;
+    
+    // 固定寬度為15個字的寬度（允許自動換行）
+    return maxCharsPerLine * charWidth + padding;
+  };
+
+  // 保存文字方塊編輯
+  const handleTextBoxTextChange = (textBoxId, text) => {
+    const updatedTextBoxes = textBoxes.map(tb => {
+      if (tb.id === textBoxId) {
+        const newWidth = calculateTextBoxWidth(text);
+        return { ...tb, text, width: newWidth };
+      }
+      return tb;
+    });
+    setTextBoxes(updatedTextBoxes);
+    saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
+  };
+
+  // 完成文字方塊編輯
+  const handleTextBoxTextBlur = () => {
+    // 檢查文字是否為空，如果為空則刪除
+    const currentTextBox = textBoxes.find(tb => tb.id === editingTextBox);
+    if (currentTextBox && (!currentTextBox.text || currentTextBox.text.trim() === '')) {
+      handleDeleteTextBox(editingTextBox);
+    } else {
+      // 確保寬度是最新的
+      if (currentTextBox) {
+        const newWidth = calculateTextBoxWidth(currentTextBox.text);
+        if (newWidth !== currentTextBox.width) {
+          const updatedTextBoxes = textBoxes.map(tb =>
+            tb.id === editingTextBox ? { ...tb, width: newWidth } : tb
+          );
+          setTextBoxes(updatedTextBoxes);
+          saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
+        }
+      }
+      setEditingTextBox(null);
+    }
+  };
+
+  // 刪除箭頭
+  const handleDeleteArrow = (arrowId) => {
+    const updatedArrows = arrows.filter(a => a.id !== arrowId);
+    setArrows(updatedArrows);
+    saveToFirebase(nodes, connections, textBoxes, updatedArrows);
+    setArrowContextMenu(null);
+  };
+
+  // 刪除文字方塊
+  const handleDeleteTextBox = (textBoxId) => {
+    const updatedTextBoxes = textBoxes.filter(tb => tb.id !== textBoxId);
+    setTextBoxes(updatedTextBoxes);
+    saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
+    if (editingTextBox === textBoxId) {
+      setEditingTextBox(null);
     }
   };
 
@@ -882,6 +1257,52 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       saveToFirebase(updatedNodes, updatedConnections);
       setEditingNode(newNode.id);
     }
+  };
+
+  // 啟動箭頭繪製模式
+  const handleStartArrowDrawing = () => {
+    setIsDrawingArrow(true);
+    setArrowStart(null);
+    setArrowPreviewEnd(null);
+  };
+
+  // 取消箭頭繪製模式
+  const handleCancelArrowDrawing = () => {
+    setIsDrawingArrow(false);
+    setArrowStart(null);
+    setArrowPreviewEnd(null);
+  };
+
+  // 在螢幕正中央新增文字方塊
+  const handleAddTextBox = () => {
+    const canvasElement = document.querySelector(`.${styles.mindMapCanvas}`);
+    if (!canvasElement) return;
+
+    const rect = canvasElement.getBoundingClientRect();
+    const screenCenterX = window.innerWidth / 2;
+    const screenCenterY = window.innerHeight / 2;
+    
+    const canvasX = (screenCenterX - rect.left - panOffset.x) / zoom;
+    const canvasY = (screenCenterY - rect.top - panOffset.y) / zoom;
+    
+    // 計算寬度：15個字 × 16px + padding 16px = 256px
+    const charWidth = 16;
+    const padding = 16;
+    const textBoxWidth = 15 * charWidth + padding;
+    
+    const newTextBox = {
+      id: uuidv4(),
+      text: '',
+      x: canvasX - textBoxWidth / 2,
+      y: canvasY - 14,
+      width: textBoxWidth,
+      height: 28,
+    };
+
+    const updatedTextBoxes = [...textBoxes, newTextBox];
+    setTextBoxes(updatedTextBoxes);
+    saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
+    setEditingTextBox(newTextBox.id);
   };
 
   // 在螢幕正中央新增節點
@@ -1071,6 +1492,19 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     };
   }, [isPanning, draggingNode]);
 
+  // 關閉箭頭右鍵選單
+  useEffect(() => {
+    const handleClick = () => {
+      setArrowContextMenu(null);
+    };
+    document.addEventListener('click', handleClick);
+    document.addEventListener('contextmenu', handleClick);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('contextmenu', handleClick);
+    };
+  }, []);
+
   return (
     <div className={styles.mindMapContainer}>
       <div
@@ -1092,7 +1526,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
-          cursor: isPanning ? 'grabbing' : 'default',
+          cursor: isDrawingArrow ? 'crosshair' : (isPanning ? 'grabbing' : 'default'),
         }}
       >
         {/* 節點和連接線容器（應用 pan 和 zoom transform） */}
@@ -1104,7 +1538,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
           }}
         >
           {/* SVG 用於繪製連接線 */}
-          <svg className={styles.connectionsLayer}>
+          <svg className={styles.connectionsLayer} style={{ pointerEvents: 'none' }}>
             {(() => {
               // 按父節點分組連接
               const connectionsByParent = {};
@@ -1245,8 +1679,14 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    // 按 Enter 不跳出輸入，繼續編輯
                   }
+                  e.stopPropagation();
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                }}
+                onSelect={(e) => {
+                  e.stopPropagation();
                 }}
                 className={styles.nodeInput}
                 autoFocus
@@ -1258,7 +1698,6 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
               >
                 {node.text.length > 15 
                   ? (() => {
-                      // 每 15 個字換行
                       const lines = [];
                       for (let i = 0; i < node.text.length; i += 15) {
                         lines.push(node.text.substring(i, i + 15));
@@ -1270,11 +1709,401 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
             )}
             </div>
           ))}
+          {/* 渲染文字方塊 */}
+          {textBoxes.map(textBox => (
+            <div
+              key={textBox.id}
+              className={styles.textBox}
+              style={{
+                left: `${textBox.x}px`,
+                top: `${textBox.y}px`,
+                width: `${textBox.width}px`,
+              }}
+              onMouseDown={(e) => handleTextBoxMouseDown(e, textBox)}
+              onDoubleClick={() => handleTextBoxDoubleClick(textBox)}
+              onMouseEnter={() => setHoveredTextBox(textBox.id)}
+              onMouseLeave={() => setHoveredTextBox(null)}
+            >
+              {hoveredTextBox === textBox.id && !editingTextBox && (
+                <button
+                  className={styles.textBoxDeleteButton}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteTextBox(textBox.id);
+                  }}
+                  title="刪除文字方塊"
+                >
+                  ✕
+                </button>
+              )}
+              {editingTextBox === textBox.id ? (
+                <textarea
+                  value={textBox.text}
+                  onChange={(e) => handleTextBoxTextChange(textBox.id, e.target.value)}
+                  onBlur={handleTextBoxTextBlur}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      handleTextBoxTextBlur();
+                    }
+                    e.stopPropagation();
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  className={styles.textBoxInput}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <div className={styles.textBoxText}>
+                  {textBox.text ? (() => {
+                    const lines = textBox.text.split('\n');
+                    const result = [];
+                    lines.forEach((line) => {
+                      if (line.length > 15) {
+                        for (let i = 0; i < line.length; i += 15) {
+                          result.push(line.substring(i, i + 15));
+                        }
+                      } else {
+                        result.push(line);
+                      }
+                    });
+                    return result.map((line, i) => (
+                      <div key={i}>{line || '\u00A0'}</div>
+                    ));
+                  })() : '\u00A0'}
+                </div>
+              )}
+            </div>
+          ))}
+          {/* 繪製箭頭 - 移到最後渲染，確保顯示在文字方塊之上 */}
+          <svg className={styles.connectionsLayer} style={{ pointerEvents: 'none', zIndex: 20 }}>
+            {arrows.map(arrow => {
+              const dx = arrow.endX - arrow.startX;
+              const dy = arrow.endY - arrow.startY;
+              const angle = Math.atan2(dy, dx);
+              const arrowLength = 10;
+              const arrowWidth = 6;
+              
+              // 箭頭終點位置（稍微往內縮一點，避免重疊）
+              const endX = arrow.endX - Math.cos(angle) * 5;
+              const endY = arrow.endY - Math.sin(angle) * 5;
+              
+              // 箭頭兩個邊的終點
+              const arrowPoint1X = endX - arrowLength * Math.cos(angle - Math.PI / 6);
+              const arrowPoint1Y = endY - arrowLength * Math.sin(angle - Math.PI / 6);
+              const arrowPoint2X = endX - arrowLength * Math.cos(angle + Math.PI / 6);
+              const arrowPoint2Y = endY - arrowLength * Math.sin(angle + Math.PI / 6);
+              
+              return (
+                <g 
+                  key={arrow.id}
+                  data-arrow-id={arrow.id}
+                  style={{ cursor: 'move', pointerEvents: 'all' }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setArrowContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      arrowId: arrow.id,
+                    });
+                  }}
+                >
+                  <path
+                    d={`M ${arrow.startX} ${arrow.startY} L ${endX} ${endY}`}
+                    className={styles.arrowLine}
+                    strokeWidth="2"
+                    fill="none"
+                    style={{ cursor: 'move', pointerEvents: 'stroke' }}
+                  />
+                  <path
+                    d={`M ${endX} ${endY} L ${arrowPoint1X} ${arrowPoint1Y} L ${arrowPoint2X} ${arrowPoint2Y} Z`}
+                    className={styles.arrowHead}
+                    strokeWidth="2"
+                  />
+                  {/* 不可見的更大點擊區域 - 用於更容易點擊線條（放在最上層） */}
+                  <path
+                    d={`M ${arrow.startX} ${arrow.startY} L ${endX} ${endY}`}
+                    stroke="transparent"
+                    strokeWidth="12"
+                    fill="none"
+                    style={{ cursor: 'move', pointerEvents: 'stroke' }}
+                  />
+                  {/* 起始點圓點 - 只在選中時顯示 */}
+                  {selectedArrow === arrow.id && (
+                    <>
+                      {/* 不可見的更大點擊區域 */}
+                      <circle
+                        cx={arrow.startX}
+                        cy={arrow.startY}
+                        r="12"
+                        fill="transparent"
+                        stroke="transparent"
+                        style={{ cursor: 'grab', pointerEvents: 'all' }}
+                      />
+                      {/* 可見的圓點 */}
+                      <circle
+                        cx={arrow.startX}
+                        cy={arrow.startY}
+                        r="6"
+                        className={styles.arrowHandle}
+                        style={{ cursor: 'grab' }}
+                      />
+                    </>
+                  )}
+                  {/* 終點圓點 - 只在選中時顯示 */}
+                  {selectedArrow === arrow.id && (
+                    <>
+                      {/* 不可見的更大點擊區域 */}
+                      <circle
+                        cx={arrow.endX}
+                        cy={arrow.endY}
+                        r="12"
+                        fill="transparent"
+                        stroke="transparent"
+                        style={{ cursor: 'grab', pointerEvents: 'all' }}
+                      />
+                      {/* 可見的圓點 */}
+                      <circle
+                        cx={arrow.endX}
+                        cy={arrow.endY}
+                        r="6"
+                        className={styles.arrowHandle}
+                        style={{ cursor: 'grab' }}
+                      />
+                    </>
+                  )}
+                </g>
+              );
+            })}
+            {/* 繪製預覽箭頭（選擇起始點後） */}
+            {isDrawingArrow && arrowStart && arrowPreviewEnd && (
+              <g>
+                <path
+                  d={`M ${arrowStart.x} ${arrowStart.y} L ${arrowPreviewEnd.x} ${arrowPreviewEnd.y}`}
+                  className={styles.arrowPreviewLine}
+                  strokeWidth="2"
+                  fill="none"
+                  strokeDasharray="5,5"
+                />
+                {(() => {
+                  const dx = arrowPreviewEnd.x - arrowStart.x;
+                  const dy = arrowPreviewEnd.y - arrowStart.y;
+                  const angle = Math.atan2(dy, dx);
+                  const arrowLength = 10;
+                  const endX = arrowPreviewEnd.x;
+                  const endY = arrowPreviewEnd.y;
+                  const arrowPoint1X = endX - arrowLength * Math.cos(angle - Math.PI / 6);
+                  const arrowPoint1Y = endY - arrowLength * Math.sin(angle - Math.PI / 6);
+                  const arrowPoint2X = endX - arrowLength * Math.cos(angle + Math.PI / 6);
+                  const arrowPoint2Y = endY - arrowLength * Math.sin(angle + Math.PI / 6);
+                  return (
+                    <path
+                      d={`M ${endX} ${endY} L ${arrowPoint1X} ${arrowPoint1Y} L ${arrowPoint2X} ${arrowPoint2Y} Z`}
+                      className={styles.arrowPreviewHead}
+                      strokeWidth="2"
+                    />
+                  );
+                })()}
+              </g>
+            )}
+          </svg>
+          {/* 繪製箭頭 - 移到最後渲染，確保顯示在文字方塊之上 */}
+          <svg className={styles.connectionsLayer} style={{ pointerEvents: 'none', zIndex: 20 }}>
+            {arrows.map(arrow => {
+              const dx = arrow.endX - arrow.startX;
+              const dy = arrow.endY - arrow.startY;
+              const angle = Math.atan2(dy, dx);
+              const arrowLength = 10;
+              const arrowWidth = 6;
+              
+              // 箭頭終點位置（稍微往內縮一點，避免重疊）
+              const endX = arrow.endX - Math.cos(angle) * 5;
+              const endY = arrow.endY - Math.sin(angle) * 5;
+              
+              // 箭頭兩個邊的終點
+              const arrowPoint1X = endX - arrowLength * Math.cos(angle - Math.PI / 6);
+              const arrowPoint1Y = endY - arrowLength * Math.sin(angle - Math.PI / 6);
+              const arrowPoint2X = endX - arrowLength * Math.cos(angle + Math.PI / 6);
+              const arrowPoint2Y = endY - arrowLength * Math.sin(angle + Math.PI / 6);
+              
+              return (
+                <g 
+                  key={arrow.id}
+                  data-arrow-id={arrow.id}
+                  style={{ cursor: 'move', pointerEvents: 'all' }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setArrowContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      arrowId: arrow.id,
+                    });
+                  }}
+                >
+                  <path
+                    d={`M ${arrow.startX} ${arrow.startY} L ${endX} ${endY}`}
+                    className={styles.arrowLine}
+                    strokeWidth="2"
+                    fill="none"
+                    style={{ cursor: 'move', pointerEvents: 'stroke' }}
+                  />
+                  <path
+                    d={`M ${endX} ${endY} L ${arrowPoint1X} ${arrowPoint1Y} L ${arrowPoint2X} ${arrowPoint2Y} Z`}
+                    className={styles.arrowHead}
+                    strokeWidth="2"
+                  />
+                  {/* 不可見的更大點擊區域 - 用於更容易點擊線條（放在最上層） */}
+                  <path
+                    d={`M ${arrow.startX} ${arrow.startY} L ${endX} ${endY}`}
+                    stroke="transparent"
+                    strokeWidth="12"
+                    fill="none"
+                    style={{ cursor: 'move', pointerEvents: 'stroke' }}
+                  />
+                  {/* 起始點圓點 - 只在選中時顯示 */}
+                  {selectedArrow === arrow.id && (
+                    <>
+                      {/* 不可見的更大點擊區域 */}
+                      <circle
+                        cx={arrow.startX}
+                        cy={arrow.startY}
+                        r="12"
+                        fill="transparent"
+                        stroke="transparent"
+                        style={{ cursor: 'grab', pointerEvents: 'all' }}
+                      />
+                      {/* 可見的圓點 */}
+                      <circle
+                        cx={arrow.startX}
+                        cy={arrow.startY}
+                        r="6"
+                        className={styles.arrowHandle}
+                        style={{ cursor: 'grab' }}
+                      />
+                    </>
+                  )}
+                  {/* 終點圓點 - 只在選中時顯示 */}
+                  {selectedArrow === arrow.id && (
+                    <>
+                      {/* 不可見的更大點擊區域 */}
+                      <circle
+                        cx={arrow.endX}
+                        cy={arrow.endY}
+                        r="12"
+                        fill="transparent"
+                        stroke="transparent"
+                        style={{ cursor: 'grab', pointerEvents: 'all' }}
+                      />
+                      {/* 可見的圓點 */}
+                      <circle
+                        cx={arrow.endX}
+                        cy={arrow.endY}
+                        r="6"
+                        className={styles.arrowHandle}
+                        style={{ cursor: 'grab' }}
+                      />
+                    </>
+                  )}
+                </g>
+              );
+            })}
+            {/* 繪製預覽箭頭（選擇起始點後） */}
+            {isDrawingArrow && arrowStart && arrowPreviewEnd && (
+              <g>
+                <path
+                  d={`M ${arrowStart.x} ${arrowStart.y} L ${arrowPreviewEnd.x} ${arrowPreviewEnd.y}`}
+                  className={styles.arrowPreviewLine}
+                  strokeWidth="2"
+                  fill="none"
+                  strokeDasharray="5,5"
+                />
+                {(() => {
+                  const dx = arrowPreviewEnd.x - arrowStart.x;
+                  const dy = arrowPreviewEnd.y - arrowStart.y;
+                  const angle = Math.atan2(dy, dx);
+                  const arrowLength = 10;
+                  const endX = arrowPreviewEnd.x;
+                  const endY = arrowPreviewEnd.y;
+                  const arrowPoint1X = endX - arrowLength * Math.cos(angle - Math.PI / 6);
+                  const arrowPoint1Y = endY - arrowLength * Math.sin(angle - Math.PI / 6);
+                  const arrowPoint2X = endX - arrowLength * Math.cos(angle + Math.PI / 6);
+                  const arrowPoint2Y = endY - arrowLength * Math.sin(angle + Math.PI / 6);
+                  return (
+                    <path
+                      d={`M ${endX} ${endY} L ${arrowPoint1X} ${arrowPoint1Y} L ${arrowPoint2X} ${arrowPoint2Y} Z`}
+                      className={styles.arrowPreviewHead}
+                      strokeWidth="2"
+                    />
+                  );
+                })()}
+              </g>
+            )}
+            {/* 定義箭頭標記 */}
+            <defs>
+              <marker
+                id="arrowhead"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="3"
+                orient="auto"
+              >
+                <polygon
+                  points="0 0, 10 3, 0 6"
+                  fill="#666"
+                />
+              </marker>
+            </defs>
+          </svg>
         </div>
       </div>
 
+      {/* 箭頭右鍵選單 */}
+      {arrowContextMenu && (
+        <div
+          className={styles.contextMenu}
+          style={{
+            position: 'fixed',
+            left: `${arrowContextMenu.x}px`,
+            top: `${arrowContextMenu.y}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => handleDeleteArrow(arrowContextMenu.arrowId)}
+          >
+            刪除箭頭
+          </button>
+        </div>
+      )}
+
       {/* 懸浮按鈕組 */}
       <div className={styles.floatingActions}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isDrawingArrow) {
+              handleCancelArrowDrawing();
+            } else {
+              handleStartArrowDrawing();
+            }
+          }}
+          className={`${styles.floatingButton} ${isDrawingArrow ? styles.activeFloatingButton : ''}`}
+          title={isDrawingArrow ? "取消箭頭模式" : "繪製箭頭"}
+        >
+          ↗
+        </button>
+        <button
+          onClick={handleAddTextBox}
+          className={styles.floatingButton}
+          title="新增文字方塊"
+        >
+          T
+        </button>
         <button
           onClick={handleAddNodeAtCenter}
           className={styles.floatingButton}
