@@ -608,8 +608,11 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       const rawX = (clientX - canvasRect.left - dragOffset.x - panOffset.x) / zoom;
       const rawY = (clientY - canvasRect.top - dragOffset.y - panOffset.y) / zoom;
 
-      const draggingNodeData = nodes.find(n => n.id === draggingNode);
-      if (draggingNodeData) {
+      // 使用函數式更新確保使用最新的狀態
+      setNodes(prevNodes => {
+        const draggingNodeData = prevNodes.find(n => n.id === draggingNode);
+        if (!draggingNodeData) return prevNodes;
+
         let finalX = rawX;
         let finalY = rawY;
 
@@ -640,33 +643,66 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
           }
         }
 
-        // 計算父節點的新位置（限制在邊界內）
-        const constrainedPos = constrainNodePosition(draggingNodeData, finalX, finalY);
-        
-        // 計算移動距離
-        const deltaX = constrainedPos.x - draggingNodeData.x;
-        const deltaY = constrainedPos.y - draggingNodeData.y;
+        // 計算移動距離（基於原始位置和目標位置）
+        const deltaX = finalX - draggingNodeData.x;
+        const deltaY = finalY - draggingNodeData.y;
 
-        // 獲取所有子節點 ID（遞迴）
-        const descendantIds = getAllDescendants(draggingNode.id);
+        // 獲取所有子節點 ID（遞迴）- 在函數式更新中直接查找，確保使用最新的 connections
+        const findDescendants = (parentId) => {
+          const descendants = new Set();
+          const findChildren = (pid) => {
+            const children = connections
+              .filter(conn => conn.from === pid)
+              .map(conn => conn.to);
+            children.forEach(childId => {
+              if (!descendants.has(childId)) {
+                descendants.add(childId);
+                findChildren(childId);
+              }
+            });
+          };
+          findChildren(parentId);
+          return Array.from(descendants);
+        };
+        const descendantIds = findDescendants(draggingNode);
         const allMovingNodeIds = new Set([draggingNode, ...descendantIds]);
+        
+        // 調試：確認找到的子節點
+        if (descendantIds.length > 0) {
+          console.log('找到子節點:', descendantIds, '總共要移動的節點:', Array.from(allMovingNodeIds));
+        }
 
-        // 更新父節點和所有子節點的位置
-        let updatedNodes = nodes.map(node => {
+        // 先計算所有節點的新位置（包括父節點和所有子節點）
+        let updatedNodes = prevNodes.map(node => {
           if (allMovingNodeIds.has(node.id)) {
             const newX = node.x + deltaX;
             const newY = node.y + deltaY;
-            
-            // 對每個節點都進行邊界限制
-            const constrained = constrainNodePosition(node, newX, newY);
-            
-            return { ...node, x: constrained.x, y: constrained.y };
+            console.log(`移動節點 ${node.id}: (${node.x}, ${node.y}) -> (${newX}, ${newY})`);
+            return { ...node, x: newX, y: newY };
           }
           return node;
         });
 
-        setNodes(updatedNodes);
-      }
+        // 對父節點進行邊界限制（子節點保持相對位置，不單獨限制）
+        const updatedDraggingNode = updatedNodes.find(n => n.id === draggingNode);
+        if (updatedDraggingNode) {
+          const constrainedPos = constrainNodePosition(updatedDraggingNode, updatedDraggingNode.x, updatedDraggingNode.y);
+          const constrainedDeltaX = constrainedPos.x - updatedDraggingNode.x;
+          const constrainedDeltaY = constrainedPos.y - updatedDraggingNode.y;
+          
+          // 如果父節點被邊界限制，所有子節點也要應用相同的調整
+          if (constrainedDeltaX !== 0 || constrainedDeltaY !== 0) {
+            updatedNodes = updatedNodes.map(node => {
+              if (allMovingNodeIds.has(node.id)) {
+                return { ...node, x: node.x + constrainedDeltaX, y: node.y + constrainedDeltaY };
+              }
+              return node;
+            });
+          }
+        }
+
+        return updatedNodes;
+      });
     }
   };
 
