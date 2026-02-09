@@ -1777,7 +1777,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
             </div>
           ))}
           {/* 繪製箭頭 - 移到最後渲染，確保顯示在文字方塊之上 */}
-          <svg className={styles.connectionsLayer} style={{ pointerEvents: 'none', zIndex: 20 }}>
+          <svg className={styles.connectionsLayer} style={{ pointerEvents: 'none' }}>
             {arrows.map(arrow => {
               const dx = arrow.endX - arrow.startX;
               const dy = arrow.endY - arrow.startY;
