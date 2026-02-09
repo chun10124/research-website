@@ -143,11 +143,12 @@
   opacity: 0;
   transition: opacity 0.2s;
   position: absolute;
-  right: -50px;
+  right: 0;
   top: 50%;
-  transform: translateY(-50%);
+  transform: translateX(100%) translateY(-50%);
   pointer-events: auto;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 /* 節點上的加號按鈕 - 不用 scale 避免模糊 */
@@ -210,6 +211,7 @@
   z-index: 10;
   opacity: 0;
   transition: opacity 0.2s;
+  flex-shrink: 0;
 }
 
 .node:hover .nodeLeftAction {
@@ -389,13 +391,12 @@
   cursor: move;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   min-height: 28px;
   height: auto;
   box-sizing: border-box;
   transition: border-color 0.2s;
   overflow: visible;
-  box-sizing: border-box;
 }
 
 .node:hover {
@@ -422,9 +423,11 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  text-align: center;
+  margin: 0 auto;
 }
 
-/* 少於十個字時強制不換行 */
+/* 少於十五個字時強制不換行 */
 .nodeTextNoWrap {
   white-space: nowrap !important;
   word-break: normal !important;

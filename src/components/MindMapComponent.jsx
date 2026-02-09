@@ -315,16 +315,16 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const calculateNodeWidth = (text) => {
     const charWidth = 14; // 每個字符大約的寬度
     const padding = 18; // 左右 padding
-    const maxChars = 10; // 十個字才換行
+    const maxChars = 15; // 十五個字才換行
     const minChars = 4; // 最小寬度約容納四個字
     
-    // 如果不到十個字，根據實際字數計算寬度（不換行），但不小於四個字寬度
+    // 如果不到十五個字，根據實際字數計算寬度（不換行），但不小於四個字寬度
     if (text.length < maxChars) {
       const textWidth = Math.max(minChars * charWidth, text.length * charWidth);
       return textWidth + padding;
     }
     
-    // 十個字或以上，使用固定寬度（允許換行）
+    // 十五個字或以上，使用固定寬度（允許換行）
     const fixedWidth = maxChars * charWidth + padding;
     return fixedWidth;
   };
@@ -1218,10 +1218,17 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
               />
             ) : (
               <div
-                className={`${styles.nodeText} ${node.text.length < 10 ? styles.nodeTextNoWrap : ''}`}
+                className={`${styles.nodeText} ${node.text.length < 15 ? styles.nodeTextNoWrap : ''}`}
               >
-                {node.text.length > 10 
-                  ? node.text.substring(0, 10) + '\n' + node.text.substring(10)
+                {node.text.length > 15 
+                  ? (() => {
+                      // 每 15 個字換行
+                      const lines = [];
+                      for (let i = 0; i < node.text.length; i += 15) {
+                        lines.push(node.text.substring(i, i + 15));
+                      }
+                      return lines.join('\n');
+                    })()
                   : node.text}
               </div>
             )}
