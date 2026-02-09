@@ -776,47 +776,76 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     }
   };
 
-  // 在「父節點 → 此子節點」之間插入新節點
-  const handleInsertBeforeNode = (childNode) => {
-    const parentNode = getParentNode(childNode.id);
-    if (!parentNode) return;
-
+  // 在節點前插入新節點（有父節點：在父→此節點之間插入；無父節點：在左側創建獨立節點）
+  const handleInsertBeforeNode = (targetNode) => {
+    const parentNode = getParentNode(targetNode.id);
     const spacing = 56;
     const newWidth = calculateNodeWidth('新節點');
-    const newX = parentNode.x + parentNode.width + spacing;
-    const newY = childNode.y;
 
-    const newNode = {
-      id: uuidv4(),
-      text: '新節點',
-      x: newX,
-      y: newY,
-      width: newWidth,
-      height: 28,
-    };
+    if (parentNode) {
+      // 有父節點：在「父節點 → 此子節點」之間插入新節點
+      const newX = parentNode.x + parentNode.width + spacing;
+      const newY = targetNode.y;
 
-    const descendantIds = getAllDescendants(childNode.id);
-    const moveIds = new Set([childNode.id, ...descendantIds]);
-    const shift = spacing + newWidth;
+      const newNode = {
+        id: uuidv4(),
+        text: '新節點',
+        x: newX,
+        y: newY,
+        width: newWidth,
+        height: 28,
+      };
 
-    const updatedNodes = nodes.map(node =>
-      moveIds.has(node.id) ? { ...node, x: node.x + shift } : node
-    );
-    updatedNodes.push(newNode);
+      const descendantIds = getAllDescendants(targetNode.id);
+      const moveIds = new Set([targetNode.id, ...descendantIds]);
+      const shift = spacing + newWidth;
 
-    const connToChild = connections.find(conn => conn.from === parentNode.id && conn.to === childNode.id);
-    const updatedConnections = connections.filter(
-      conn => !(conn.from === parentNode.id && conn.to === childNode.id)
-    );
-    updatedConnections.push(
-      { id: uuidv4(), from: parentNode.id, to: newNode.id, direction: 'right' },
-      { id: uuidv4(), from: newNode.id, to: childNode.id, direction: connToChild?.direction || 'right' }
-    );
+      const updatedNodes = nodes.map(node =>
+        moveIds.has(node.id) ? { ...node, x: node.x + shift } : node
+      );
+      updatedNodes.push(newNode);
 
-    setNodes(updatedNodes);
-    setConnections(updatedConnections);
-    saveToFirebase(updatedNodes, updatedConnections);
-    setEditingNode(newNode.id);
+      const connToChild = connections.find(conn => conn.from === parentNode.id && conn.to === targetNode.id);
+      const updatedConnections = connections.filter(
+        conn => !(conn.from === parentNode.id && conn.to === targetNode.id)
+      );
+      updatedConnections.push(
+        { id: uuidv4(), from: parentNode.id, to: newNode.id, direction: 'right' },
+        { id: uuidv4(), from: newNode.id, to: targetNode.id, direction: connToChild?.direction || 'right' }
+      );
+
+      setNodes(updatedNodes);
+      setConnections(updatedConnections);
+      saveToFirebase(updatedNodes, updatedConnections);
+      setEditingNode(newNode.id);
+    } else {
+      // 無父節點：在該節點左側創建新節點，並與右側節點相連
+      const newX = targetNode.x - spacing - newWidth;
+      const newY = targetNode.y;
+
+      const newNode = {
+        id: uuidv4(),
+        text: '新節點',
+        x: newX,
+        y: newY,
+        width: newWidth,
+        height: 28,
+      };
+
+      const newConnection = {
+        id: uuidv4(),
+        from: newNode.id,
+        to: targetNode.id,
+        direction: 'right',
+      };
+
+      const updatedNodes = [...nodes, newNode];
+      const updatedConnections = [...connections, newConnection];
+      setNodes(updatedNodes);
+      setConnections(updatedConnections);
+      saveToFirebase(updatedNodes, updatedConnections);
+      setEditingNode(newNode.id);
+    }
   };
 
   // 在畫布左側新增節點（作為新的起始節點）
@@ -1134,7 +1163,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
               onMouseEnter={() => setHoveredNode(node.id)}
               onMouseLeave={() => setHoveredNode(null)}
             >
-            {getParentNode(node.id) && hoveredNode === node.id && (
+            {hoveredNode === node.id && (
               <div className={styles.nodeLeftAction}>
                 <button
                   type="button"
@@ -1143,7 +1172,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
                     e.stopPropagation();
                     handleInsertBeforeNode(node);
                   }}
-                  title="在此節點前插入"
+                  title={getParentNode(node.id) ? "在此節點前插入" : "在左側新增節點"}
                 >
                   ◀
                 </button>
