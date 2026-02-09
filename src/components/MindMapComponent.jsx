@@ -539,7 +539,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     
     setNodes(updatedNodes);
     setConnections(updatedConnections);
-    saveToFirebase(updatedNodes, updatedConnections);
+    saveToFirebase(updatedNodes, updatedConnections, textBoxes, arrows);
     setEditingNode(newNode.id);
   };
 
@@ -1010,7 +1010,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       updatedNodes = separateOverlappingNodes(updatedNodes);
       
       setNodes(updatedNodes);
-      saveToFirebase(updatedNodes, connections);
+      saveToFirebase(updatedNodes, connections, textBoxes, arrows);
       setDraggingNode(null);
     }
     
@@ -1132,7 +1132,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       node.id === nodeId ? { ...node, text } : node
     );
     setNodes(updatedNodes);
-    saveToFirebase(updatedNodes, connections);
+    saveToFirebase(updatedNodes, connections, textBoxes, arrows);
   };
 
   // 完成編輯
@@ -1146,7 +1146,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
           node.id === editingNode ? { ...node, width: finalWidth } : node
         );
         setNodes(updatedNodes);
-        saveToFirebase(updatedNodes, connections);
+        saveToFirebase(updatedNodes, connections, textBoxes, arrows);
       }
     }
     setEditingNode(null);
@@ -1180,7 +1180,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
     setNodes(updatedNodes);
     setConnections(updatedConnections);
-    saveToFirebase(updatedNodes, updatedConnections);
+    saveToFirebase(updatedNodes, updatedConnections, textBoxes, arrows);
 
     if (editingNode === nodeId) {
       setEditingNode(null);
@@ -1227,7 +1227,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
       setNodes(updatedNodes);
       setConnections(updatedConnections);
-      saveToFirebase(updatedNodes, updatedConnections);
+      saveToFirebase(updatedNodes, updatedConnections, textBoxes, arrows);
       setEditingNode(newNode.id);
     } else {
       // 無父節點：在該節點左側創建新節點，並與右側節點相連
@@ -1254,7 +1254,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
       const updatedConnections = [...connections, newConnection];
       setNodes(updatedNodes);
       setConnections(updatedConnections);
-      saveToFirebase(updatedNodes, updatedConnections);
+      saveToFirebase(updatedNodes, updatedConnections, textBoxes, arrows);
       setEditingNode(newNode.id);
     }
   };
@@ -1343,7 +1343,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
     const updatedNodes = [...nodes, newNode];
     setNodes(updatedNodes);
-    saveToFirebase(updatedNodes, connections);
+    saveToFirebase(updatedNodes, connections, textBoxes, arrows);
     setEditingNode(newNode.id);
   };
 
@@ -1908,155 +1908,6 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
                 })()}
               </g>
             )}
-          </svg>
-          {/* 繪製箭頭 - 移到最後渲染，確保顯示在文字方塊之上 */}
-          <svg className={styles.connectionsLayer} style={{ pointerEvents: 'none', zIndex: 20 }}>
-            {arrows.map(arrow => {
-              const dx = arrow.endX - arrow.startX;
-              const dy = arrow.endY - arrow.startY;
-              const angle = Math.atan2(dy, dx);
-              const arrowLength = 10;
-              const arrowWidth = 6;
-              
-              // 箭頭終點位置（稍微往內縮一點，避免重疊）
-              const endX = arrow.endX - Math.cos(angle) * 5;
-              const endY = arrow.endY - Math.sin(angle) * 5;
-              
-              // 箭頭兩個邊的終點
-              const arrowPoint1X = endX - arrowLength * Math.cos(angle - Math.PI / 6);
-              const arrowPoint1Y = endY - arrowLength * Math.sin(angle - Math.PI / 6);
-              const arrowPoint2X = endX - arrowLength * Math.cos(angle + Math.PI / 6);
-              const arrowPoint2Y = endY - arrowLength * Math.sin(angle + Math.PI / 6);
-              
-              return (
-                <g 
-                  key={arrow.id}
-                  data-arrow-id={arrow.id}
-                  style={{ cursor: 'move', pointerEvents: 'all' }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setArrowContextMenu({
-                      x: e.clientX,
-                      y: e.clientY,
-                      arrowId: arrow.id,
-                    });
-                  }}
-                >
-                  <path
-                    d={`M ${arrow.startX} ${arrow.startY} L ${endX} ${endY}`}
-                    className={styles.arrowLine}
-                    strokeWidth="2"
-                    fill="none"
-                    style={{ cursor: 'move', pointerEvents: 'stroke' }}
-                  />
-                  <path
-                    d={`M ${endX} ${endY} L ${arrowPoint1X} ${arrowPoint1Y} L ${arrowPoint2X} ${arrowPoint2Y} Z`}
-                    className={styles.arrowHead}
-                    strokeWidth="2"
-                  />
-                  {/* 不可見的更大點擊區域 - 用於更容易點擊線條（放在最上層） */}
-                  <path
-                    d={`M ${arrow.startX} ${arrow.startY} L ${endX} ${endY}`}
-                    stroke="transparent"
-                    strokeWidth="12"
-                    fill="none"
-                    style={{ cursor: 'move', pointerEvents: 'stroke' }}
-                  />
-                  {/* 起始點圓點 - 只在選中時顯示 */}
-                  {selectedArrow === arrow.id && (
-                    <>
-                      {/* 不可見的更大點擊區域 */}
-                      <circle
-                        cx={arrow.startX}
-                        cy={arrow.startY}
-                        r="12"
-                        fill="transparent"
-                        stroke="transparent"
-                        style={{ cursor: 'grab', pointerEvents: 'all' }}
-                      />
-                      {/* 可見的圓點 */}
-                      <circle
-                        cx={arrow.startX}
-                        cy={arrow.startY}
-                        r="6"
-                        className={styles.arrowHandle}
-                        style={{ cursor: 'grab' }}
-                      />
-                    </>
-                  )}
-                  {/* 終點圓點 - 只在選中時顯示 */}
-                  {selectedArrow === arrow.id && (
-                    <>
-                      {/* 不可見的更大點擊區域 */}
-                      <circle
-                        cx={arrow.endX}
-                        cy={arrow.endY}
-                        r="12"
-                        fill="transparent"
-                        stroke="transparent"
-                        style={{ cursor: 'grab', pointerEvents: 'all' }}
-                      />
-                      {/* 可見的圓點 */}
-                      <circle
-                        cx={arrow.endX}
-                        cy={arrow.endY}
-                        r="6"
-                        className={styles.arrowHandle}
-                        style={{ cursor: 'grab' }}
-                      />
-                    </>
-                  )}
-                </g>
-              );
-            })}
-            {/* 繪製預覽箭頭（選擇起始點後） */}
-            {isDrawingArrow && arrowStart && arrowPreviewEnd && (
-              <g>
-                <path
-                  d={`M ${arrowStart.x} ${arrowStart.y} L ${arrowPreviewEnd.x} ${arrowPreviewEnd.y}`}
-                  className={styles.arrowPreviewLine}
-                  strokeWidth="2"
-                  fill="none"
-                  strokeDasharray="5,5"
-                />
-                {(() => {
-                  const dx = arrowPreviewEnd.x - arrowStart.x;
-                  const dy = arrowPreviewEnd.y - arrowStart.y;
-                  const angle = Math.atan2(dy, dx);
-                  const arrowLength = 10;
-                  const endX = arrowPreviewEnd.x;
-                  const endY = arrowPreviewEnd.y;
-                  const arrowPoint1X = endX - arrowLength * Math.cos(angle - Math.PI / 6);
-                  const arrowPoint1Y = endY - arrowLength * Math.sin(angle - Math.PI / 6);
-                  const arrowPoint2X = endX - arrowLength * Math.cos(angle + Math.PI / 6);
-                  const arrowPoint2Y = endY - arrowLength * Math.sin(angle + Math.PI / 6);
-                  return (
-                    <path
-                      d={`M ${endX} ${endY} L ${arrowPoint1X} ${arrowPoint1Y} L ${arrowPoint2X} ${arrowPoint2Y} Z`}
-                      className={styles.arrowPreviewHead}
-                      strokeWidth="2"
-                    />
-                  );
-                })()}
-              </g>
-            )}
-            {/* 定義箭頭標記 */}
-            <defs>
-              <marker
-                id="arrowhead"
-                markerWidth="10"
-                markerHeight="10"
-                refX="9"
-                refY="3"
-                orient="auto"
-              >
-                <polygon
-                  points="0 0, 10 3, 0 6"
-                  fill="#666"
-                />
-              </marker>
-            </defs>
           </svg>
         </div>
       </div>
