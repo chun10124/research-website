@@ -322,6 +322,41 @@
   position: relative;
 }
 
+/* 編輯器右上角搜尋框 */
+.editorSearchContainer {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.editorSearchInput {
+  width: 200px;
+  padding: 8px 12px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  background-color: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.editorSearchInput:focus {
+  outline: none;
+  border-color: var(--ifm-color-primary);
+}
+
+.editorSearchInput::placeholder {
+  color: var(--ifm-color-emphasis-600);
+}
+
+/* 節點搜尋符合時高亮 */
+.nodeSearchHighlight {
+  outline: 3px solid var(--ifm-color-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px var(--ifm-color-primary), 0 0 16px 4px var(--ifm-color-primary);
+}
+
 /* 心智圖畫布 */
 .mindMapCanvas {
   flex: 1;

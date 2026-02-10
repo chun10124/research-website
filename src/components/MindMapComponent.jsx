@@ -27,6 +27,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [clickStartPos, setClickStartPos] = useState(null);
   const [hasAutoCentered, setHasAutoCentered] = useState(false);
+  const [nodeSearchQuery, setNodeSearchQuery] = useState('');
   const [isDrawingArrow, setIsDrawingArrow] = useState(false);
   const [arrowStart, setArrowStart] = useState(null);
   const [arrowPreviewEnd, setArrowPreviewEnd] = useState(null);
@@ -1514,6 +1515,15 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
   return (
     <div className={styles.mindMapContainer}>
+      <div className={styles.editorSearchContainer}>
+        <input
+          type="text"
+          placeholder="搜尋節點..."
+          value={nodeSearchQuery}
+          onChange={(e) => setNodeSearchQuery(e.target.value)}
+          className={styles.editorSearchInput}
+        />
+      </div>
       <div
         className={styles.mindMapCanvas}
         ref={(el) => {
@@ -1623,10 +1633,12 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
               return paths;
             })()}
           </svg>
-          {nodes.map(node => (
+          {nodes.map(node => {
+              const matchesSearch = nodeSearchQuery.trim() && node.text.toLowerCase().includes(nodeSearchQuery.trim().toLowerCase());
+              return (
             <div
               key={node.id}
-              className={styles.node}
+              className={`${styles.node} ${matchesSearch ? styles.nodeSearchHighlight : ''}`}
               data-node-id={node.id}
               style={{
                 left: `${node.x}px`,
@@ -1715,7 +1727,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
               </div>
             )}
             </div>
-          ))}
+          );
+          })}
           {/* 渲染文字方塊 */}
           {textBoxes.map(textBox => (
             <div
