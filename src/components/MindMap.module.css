@@ -350,11 +350,13 @@
   color: var(--ifm-color-emphasis-600);
 }
 
-/* 節點搜尋符合時高亮 */
+/* 節點搜尋符合時高亮（亮金色、不土） */
 .nodeSearchHighlight {
-  outline: 3px solid var(--ifm-color-primary);
+  outline: 3px solid #ffcc33;
   outline-offset: 2px;
-  box-shadow: 0 0 0 1px var(--ifm-color-primary), 0 0 16px 4px var(--ifm-color-primary);
+  box-shadow:
+    0 0 0 1px #ffcc33,
+    0 0 14px 4px rgba(255, 204, 51, 0.55);
 }
 
 /* 心智圖畫布 */
