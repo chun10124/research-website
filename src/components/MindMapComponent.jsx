@@ -332,22 +332,28 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     }
   };
 
-  // 計算節點寬度（根據文字內容）
+  // 計算節點寬度（根據文字內容，英文用較窄寬度避免節點過寬）
   const calculateNodeWidth = (text) => {
-    const charWidth = 14; // 每個字符大約的寬度
-    const padding = 18; // 左右 padding
-    const maxChars = 15; // 十五個字才換行
-    const minChars = 4; // 最小寬度約容納四個字
-    
-    // 如果不到十五個字，根據實際字數計算寬度（不換行），但不小於四個字寬度
-    if (text.length < maxChars) {
-      const textWidth = Math.max(minChars * charWidth, text.length * charWidth);
-      return textWidth + padding;
+    const cjkWidth = 14;   // 中文字約 14px
+    const asciiWidth = 11; // 英文字約 11px（8 太擠、14 太寬）
+    const padding = 18;
+    const maxChars = 15;
+    const minWidth = 4 * cjkWidth; // 最小寬度約四個中文字
+
+    const getCharWidth = (c) => (c.charCodeAt(0) < 128 ? asciiWidth : cjkWidth);
+
+    if (!text || text.length === 0) {
+      return minWidth + padding;
     }
-    
+    if (text.length < maxChars) {
+      let visualWidth = 0;
+      for (let i = 0; i < text.length; i++) {
+        visualWidth += getCharWidth(text[i]);
+      }
+      return Math.max(minWidth, visualWidth) + padding;
+    }
     // 十五個字或以上，使用固定寬度（允許換行）
-    const fixedWidth = maxChars * charWidth + padding;
-    return fixedWidth;
+    return maxChars * cjkWidth + padding;
   };
 
   // 檢測兩個節點是否重疊
@@ -1083,24 +1089,25 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
   // 完成文字方塊編輯
   const handleTextBoxTextBlur = () => {
-    // 檢查文字是否為空，如果為空則刪除
+    if (!editingTextBox) return;
     const currentTextBox = textBoxes.find(tb => tb.id === editingTextBox);
     if (currentTextBox && (!currentTextBox.text || currentTextBox.text.trim() === '')) {
       handleDeleteTextBox(editingTextBox);
-    } else {
-      // 確保寬度是最新的
-      if (currentTextBox) {
-        const newWidth = calculateTextBoxWidth(currentTextBox.text);
-        if (newWidth !== currentTextBox.width) {
-          const updatedTextBoxes = textBoxes.map(tb =>
-            tb.id === editingTextBox ? { ...tb, width: newWidth } : tb
-          );
-          setTextBoxes(updatedTextBoxes);
-          saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
-        }
-      }
       setEditingTextBox(null);
+      return;
     }
+    // 確保寬度是最新的
+    if (currentTextBox) {
+      const newWidth = calculateTextBoxWidth(currentTextBox.text);
+      if (newWidth !== currentTextBox.width) {
+        const updatedTextBoxes = textBoxes.map(tb =>
+          tb.id === editingTextBox ? { ...tb, width: newWidth } : tb
+        );
+        setTextBoxes(updatedTextBoxes);
+        saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
+      }
+    }
+    setEditingTextBox(null);
   };
 
   // 刪除箭頭
