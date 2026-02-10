@@ -34,6 +34,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const pinchStartRef = useRef(null);
   const canvasRef = useRef(null);
   const zoomPanRef = useRef({ zoom: 1, panX: 0, panY: 0 });
+  const editorSearchInputRef = useRef(null);
 
   useEffect(() => {
     zoomPanRef.current = { zoom, panX: panOffset.x, panY: panOffset.y };
@@ -554,6 +555,10 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const handleCanvasMouseDown = (e) => {
     const { clientX, clientY } = getClientCoords(e);
     
+    // 如果點擊的是搜尋框區域，不處理
+    if (e.target.closest(`.${styles.editorSearchContainer}`)) {
+      return;
+    }
     // 如果點擊的是懸浮按鈕，不處理
     if (e.target.closest(`.${styles.floatingActions}`) || 
         e.target.closest(`.${styles.floatingButton}`)) {
@@ -717,6 +722,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     });
 
     e.preventDefault();
+    editorSearchInputRef.current?.blur();
     setIsPanning(true);
     setPanStart({
       x: clientX - panOffset.x,
@@ -1517,6 +1523,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     <div className={styles.mindMapContainer}>
       <div className={styles.editorSearchContainer}>
         <input
+          ref={editorSearchInputRef}
           type="text"
           placeholder="搜尋節點..."
           value={nodeSearchQuery}
