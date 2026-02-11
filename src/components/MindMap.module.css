@@ -488,7 +488,7 @@
 .textBox {
   position: absolute;
   background-color: transparent;
-  border: 1px dashed var(--ifm-color-emphasis-300);
+  border: none;
   padding: 2px;
   cursor: move;
   min-height: 26px;
