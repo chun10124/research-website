@@ -488,10 +488,10 @@
 .textBox {
   position: absolute;
   background-color: transparent;
-  border: none;
-  padding: 8px;
+  border: 1px dashed var(--ifm-color-emphasis-300);
+  padding: 2px;
   cursor: move;
-  min-height: 40px;
+  min-height: 26px;
   box-sizing: border-box;
   overflow: visible;
   z-index: 1;
@@ -504,15 +504,15 @@
   white-space: pre-wrap;
   word-break: keep-all;
   overflow-wrap: normal;
-  line-height: 1.5;
-  min-height: 24px;
+  line-height: 1.35;
+  min-height: 20px;
   width: 100%;
 }
 
 .textBoxInput {
   width: 100%;
-  min-height: 60px;
-  padding: 4px;
+  min-height: 20px;
+  padding: 2px;
   border: none;
   background: transparent;
   color: #1e40af;
@@ -524,7 +524,9 @@
   white-space: pre-wrap;
   word-break: break-all;
   overflow-wrap: break-word;
-  line-height: 1.5;
+  line-height: 1.35;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .textBoxDeleteButton {

@@ -17,9 +17,9 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const [draggingArrowEnd, setDraggingArrowEnd] = useState(null); // 'start' 或 'end'
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [arrowContextMenu, setArrowContextMenu] = useState(null);
+  const [textBoxContextMenu, setTextBoxContextMenu] = useState(null);
   const [selectedArrow, setSelectedArrow] = useState(null); // 選中的箭頭 ID
   const [hoveredNode, setHoveredNode] = useState(null);
-  const [hoveredTextBox, setHoveredTextBox] = useState(null);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -28,6 +28,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const [clickStartPos, setClickStartPos] = useState(null);
   const [hasAutoCentered, setHasAutoCentered] = useState(false);
   const [nodeSearchQuery, setNodeSearchQuery] = useState('');
+  const [isPlacingTextBox, setIsPlacingTextBox] = useState(false);
   const [isDrawingArrow, setIsDrawingArrow] = useState(false);
   const [arrowStart, setArrowStart] = useState(null);
   const [arrowPreviewEnd, setArrowPreviewEnd] = useState(null);
@@ -35,6 +36,9 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   const canvasRef = useRef(null);
   const zoomPanRef = useRef({ zoom: 1, panX: 0, panY: 0 });
   const editorSearchInputRef = useRef(null);
+  const editingTextareaRef = useRef(null);
+  const textBoxComposingRef = useRef(false);
+  const [editingTextValue, setEditingTextValue] = useState('');
 
   useEffect(() => {
     zoomPanRef.current = { zoom, panX: panOffset.x, panY: panOffset.y };
@@ -570,8 +574,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         e.target.closest(`.${styles.nodeAddButton}`) || 
         e.target.closest(`.${styles.nodeDeleteButton}`) ||
         e.target.closest(`.${styles.nodeLeftAction}`) ||
-        e.target.closest(`.${styles.textBox}`) ||
-        e.target.closest(`.${styles.textBoxDeleteButton}`)) {
+        e.target.closest(`.${styles.textBox}`)) {
       return;
     }
     
@@ -711,14 +714,26 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
     // 點擊背景：清除箭頭選中狀態
     setSelectedArrow(null);
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const canvasX = (clientX - rect.left - panOffset.x) / zoom;
+    const canvasY = (clientY - rect.top - panOffset.y) / zoom;
+
+    // 若正在放置文字方塊，在點擊處建立後結束模式
+    if (isPlacingTextBox) {
+      e.preventDefault();
+      e.stopPropagation();
+      addTextBoxAt(canvasX, canvasY);
+      setIsPlacingTextBox(false);
+      return;
+    }
     
     // 記錄點擊位置，用於判斷是點擊還是拖動
-    const rect = e.currentTarget.getBoundingClientRect();
     setClickStartPos({
       x: clientX,
       y: clientY,
-      canvasX: (clientX - rect.left - panOffset.x) / zoom,
-      canvasY: (clientY - rect.top - panOffset.y) / zoom,
+      canvasX,
+      canvasY,
     });
 
     e.preventDefault();
@@ -732,8 +747,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
 
   // 開始拖動文字方塊
   const handleTextBoxMouseDown = (e, textBox) => {
-    if (e.target.closest(`.${styles.textBoxInput}`) || 
-        e.target.closest(`.${styles.textBoxDeleteButton}`) ||
+    if (e.target.closest(`.${styles.textBoxInput}`) ||
         e.target.tagName === 'INPUT' ||
         e.target.tagName === 'TEXTAREA') {
       return;
@@ -1071,14 +1085,34 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     setEditingTextBox(textBox.id);
   };
 
-  // 計算文字方塊寬度（根據文字內容）
+  // 計算文字方塊寬度（短字時縮短，最長 15 字一行）
   const calculateTextBoxWidth = (text) => {
-    const charWidth = 16; // 字體大小 16px，每個字符約 16px 寬
+    const cjkWidth = 16; // 中文大約 16px
+    const asciiWidth = 10; // 英文略窄
     const padding = 16;
     const maxCharsPerLine = 15;
-    
-    // 固定寬度為15個字的寬度（允許自動換行）
-    return maxCharsPerLine * charWidth + padding;
+    const minWidth = 1 * cjkWidth + padding; // 外框隨字數推出去，最少 1 字寬
+
+    const getCharWidth = (c) => (c.charCodeAt(0) < 128 ? asciiWidth : cjkWidth);
+
+    if (!text || text.length === 0) return minWidth;
+
+    // 每 15 字一行，取最寬那行的視覺寬度，上限 15 字寬
+    const lines = [];
+    for (let i = 0; i < text.length; i += maxCharsPerLine) {
+      lines.push(text.slice(i, i + maxCharsPerLine));
+    }
+    let maxLineWidth = 0;
+    for (const line of lines) {
+      let w = 0;
+      for (let j = 0; j < line.length; j++) w += getCharWidth(line[j]);
+      maxLineWidth = Math.max(maxLineWidth, w);
+    }
+    // 編輯時約 15 字換行，用略窄的單字寬避免變成 16 字才換
+    const widthPerCharForWrap = 15;
+    const maxWidthFor15Chars = maxCharsPerLine * widthPerCharForWrap;
+    const finalContentWidth = Math.min(maxWidthFor15Chars, maxLineWidth);
+    return Math.max(minWidth, finalContentWidth + padding);
   };
 
   // 保存文字方塊編輯
@@ -1094,26 +1128,52 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
   };
 
-  // 完成文字方塊編輯
-  const handleTextBoxTextBlur = () => {
+  // 進入編輯時同步該方塊文字到本地 state（供 IME 組字用）
+  useEffect(() => {
     if (!editingTextBox) return;
-    const currentTextBox = textBoxes.find(tb => tb.id === editingTextBox);
-    if (currentTextBox && (!currentTextBox.text || currentTextBox.text.trim() === '')) {
+    const tb = textBoxes.find(t => t.id === editingTextBox);
+    setEditingTextValue(tb ? (tb.text || '') : '');
+  }, [editingTextBox]);
+
+  // 僅在「剛進入編輯」時把游標移到最後，用 onFocus + setTimeout 確保 value 已寫入 DOM
+  const textBoxJustOpenedRef = useRef(false);
+  const setTextBoxCursorToEnd = () => {
+    if (!textBoxJustOpenedRef.current) return;
+    textBoxJustOpenedRef.current = false;
+    setTimeout(() => {
+      if (!editingTextareaRef.current) return;
+      const el = editingTextareaRef.current;
+      const len = (el.value || '').length;
+      el.setSelectionRange(len, len);
+    }, 0);
+  };
+  useEffect(() => {
+    if (editingTextBox) textBoxJustOpenedRef.current = true;
+  }, [editingTextBox]);
+
+  // 編輯中 textarea 依內容自動增高（不碰游標）
+  useEffect(() => {
+    if (!editingTextBox || !editingTextareaRef.current) return;
+    const el = editingTextareaRef.current;
+    el.style.height = 'auto';
+    el.style.height = Math.max(20, el.scrollHeight) + 'px';
+  }, [editingTextBox, editingTextValue]);
+
+  // 完成文字方塊編輯（blurValue 為目前輸入內容，IME 組字結束時會正確帶入）
+  const handleTextBoxTextBlur = (blurValue) => {
+    if (!editingTextBox) return;
+    const finalText = (blurValue !== undefined ? blurValue : textBoxes.find(tb => tb.id === editingTextBox)?.text) ?? '';
+    if (!finalText || !finalText.trim()) {
       handleDeleteTextBox(editingTextBox);
       setEditingTextBox(null);
       return;
     }
-    // 確保寬度是最新的
-    if (currentTextBox) {
-      const newWidth = calculateTextBoxWidth(currentTextBox.text);
-      if (newWidth !== currentTextBox.width) {
-        const updatedTextBoxes = textBoxes.map(tb =>
-          tb.id === editingTextBox ? { ...tb, width: newWidth } : tb
-        );
-        setTextBoxes(updatedTextBoxes);
-        saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
-      }
-    }
+    const newWidth = calculateTextBoxWidth(finalText);
+    const updatedTextBoxes = textBoxes.map(tb =>
+      tb.id === editingTextBox ? { ...tb, text: finalText, width: newWidth } : tb
+    );
+    setTextBoxes(updatedTextBoxes);
+    saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
     setEditingTextBox(null);
   };
 
@@ -1287,36 +1347,32 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
     setArrowPreviewEnd(null);
   };
 
-  // 在螢幕正中央新增文字方塊
-  const handleAddTextBox = () => {
-    const canvasElement = document.querySelector(`.${styles.mindMapCanvas}`);
-    if (!canvasElement) return;
-
-    const rect = canvasElement.getBoundingClientRect();
-    const screenCenterX = window.innerWidth / 2;
-    const screenCenterY = window.innerHeight / 2;
-    
-    const canvasX = (screenCenterX - rect.left - panOffset.x) / zoom;
-    const canvasY = (screenCenterY - rect.top - panOffset.y) / zoom;
-    
-    // 計算寬度：15個字 × 16px + padding 16px = 256px
-    const charWidth = 16;
-    const padding = 16;
-    const textBoxWidth = 15 * charWidth + padding;
-    
+  // 在指定畫布座標新增文字方塊（點擊處對齊方塊左側邊線，垂直置中）
+  const addTextBoxAt = (canvasX, canvasY) => {
+    const textBoxHeight = 28;
     const newTextBox = {
       id: uuidv4(),
       text: '',
-      x: canvasX - textBoxWidth / 2,
-      y: canvasY - 14,
-      width: textBoxWidth,
-      height: 28,
+      x: canvasX,
+      y: canvasY - textBoxHeight / 2,
+      width: calculateTextBoxWidth(''),
+      height: textBoxHeight,
     };
 
     const updatedTextBoxes = [...textBoxes, newTextBox];
     setTextBoxes(updatedTextBoxes);
     saveToFirebase(nodes, connections, updatedTextBoxes, arrows);
+    setEditingTextValue('');
     setEditingTextBox(newTextBox.id);
+  };
+
+  // 切換「放置文字方塊」模式：按 T 後下一次點擊畫布會在該處建立
+  const handleAddTextBox = () => {
+    if (isPlacingTextBox) {
+      setIsPlacingTextBox(false);
+      return;
+    }
+    setIsPlacingTextBox(true);
   };
 
   // 在螢幕正中央新增節點
@@ -1510,6 +1566,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
   useEffect(() => {
     const handleClick = () => {
       setArrowContextMenu(null);
+      setTextBoxContextMenu(null);
     };
     document.addEventListener('click', handleClick);
     document.addEventListener('contextmenu', handleClick);
@@ -1550,7 +1607,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
-          cursor: isDrawingArrow ? 'crosshair' : (isPanning ? 'grabbing' : 'default'),
+          cursor: (isDrawingArrow || isPlacingTextBox) ? 'crosshair' : (isPanning ? 'grabbing' : 'default'),
         }}
       >
         {/* 節點和連接線容器（應用 pan 和 zoom transform） */}
@@ -1737,40 +1794,48 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
           );
           })}
           {/* 渲染文字方塊 */}
-          {textBoxes.map(textBox => (
+          {textBoxes.map(textBox => {
+            const isEditingThisTextBox = editingTextBox === textBox.id;
+            const liveWidth = isEditingThisTextBox
+              ? calculateTextBoxWidth(editingTextValue || '')
+              : textBox.width;
+            return (
             <div
               key={textBox.id}
               className={styles.textBox}
               style={{
                 left: `${textBox.x}px`,
                 top: `${textBox.y}px`,
-                width: `${textBox.width}px`,
+                width: `${liveWidth}px`,
               }}
               onMouseDown={(e) => handleTextBoxMouseDown(e, textBox)}
               onDoubleClick={() => handleTextBoxDoubleClick(textBox)}
-              onMouseEnter={() => setHoveredTextBox(textBox.id)}
-              onMouseLeave={() => setHoveredTextBox(null)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setTextBoxContextMenu({ x: e.clientX, y: e.clientY, textBoxId: textBox.id });
+              }}
             >
-              {hoveredTextBox === textBox.id && !editingTextBox && (
-                <button
-                  className={styles.textBoxDeleteButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteTextBox(textBox.id);
-                  }}
-                  title="刪除文字方塊"
-                >
-                  ✕
-                </button>
-              )}
-              {editingTextBox === textBox.id ? (
+              {isEditingThisTextBox ? (
                 <textarea
-                  value={textBox.text}
-                  onChange={(e) => handleTextBoxTextChange(textBox.id, e.target.value)}
-                  onBlur={handleTextBoxTextBlur}
+                  ref={editingTextareaRef}
+                  value={editingTextValue}
+                  onFocus={setTextBoxCursorToEnd}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEditingTextValue(v);
+                    if (!textBoxComposingRef.current) handleTextBoxTextChange(textBox.id, v);
+                  }}
+                  onCompositionStart={() => { textBoxComposingRef.current = true; }}
+                  onCompositionEnd={(e) => {
+                    textBoxComposingRef.current = false;
+                    const v = e.target.value;
+                    handleTextBoxTextChange(textBox.id, v);
+                  }}
+                  onBlur={(e) => handleTextBoxTextBlur(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') {
-                      handleTextBoxTextBlur();
+                      handleTextBoxTextBlur(editingTextareaRef.current?.value);
                     }
                     e.stopPropagation();
                   }}
@@ -1780,6 +1845,7 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
                   className={styles.textBoxInput}
                   autoFocus
                   onClick={(e) => e.stopPropagation()}
+                  rows={1}
                 />
               ) : (
                 <div className={styles.textBoxText}>
@@ -1802,7 +1868,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
                 </div>
               )}
             </div>
-          ))}
+          );
+          })}
           {/* 繪製箭頭 - 移到最後渲染，確保顯示在文字方塊之上 */}
           <svg className={styles.connectionsLayer} style={{ pointerEvents: 'none' }}>
             {arrows.map(arrow => {
@@ -1959,6 +2026,29 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         </div>
       )}
 
+      {/* 文字方塊右鍵選單 */}
+      {textBoxContextMenu && (
+        <div
+          className={styles.contextMenu}
+          style={{
+            position: 'fixed',
+            left: `${textBoxContextMenu.x}px`,
+            top: `${textBoxContextMenu.y}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => {
+              handleDeleteTextBox(textBoxContextMenu.textBoxId);
+              setTextBoxContextMenu(null);
+            }}
+          >
+            刪除
+          </button>
+        </div>
+      )}
+
       {/* 懸浮按鈕組 */}
       <div className={styles.floatingActions}>
         <button
@@ -1977,8 +2067,8 @@ function MindMapComponent({ mindMapId, onBack, onDelete }) {
         </button>
         <button
           onClick={handleAddTextBox}
-          className={styles.floatingButton}
-          title="新增文字方塊"
+          className={`${styles.floatingButton} ${isPlacingTextBox ? styles.activeFloatingButton : ''}`}
+          title={isPlacingTextBox ? '點擊畫布放置文字方塊（再按 T 取消）' : '新增文字方塊'}
         >
           T
         </button>
