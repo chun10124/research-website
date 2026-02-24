@@ -1,6 +1,6 @@
 /* src/pages/AnalysisPage.jsx */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { useDataSync } from '../features/StockAnalysis/hooks/useDataSync';
@@ -27,16 +27,17 @@ const AnalysisPage = () => {
     const [statusMessage, setStatusMessage] = useState('');
     const [syncingAll, setSyncingAll] = useState(false);
     const [syncAllProgress, setSyncAllProgress] = useState({ current: 0, total: 0 });
-    const [lastSyncAllAt, setLastSyncAllAt] = useState(null);
+    const [lastSyncAllAt, setLastSyncAllAt] = useState(() => {
+        if (typeof window === 'undefined') return null;
+        try {
+            const v = window.localStorage.getItem(LAST_SYNC_ALL_KEY);
+            return v ? Number(v) : null;
+        } catch {
+            return null;
+        }
+    });
 
     const { stocks, loading, refreshData, updateStockField} = useStockData();
-
-    useEffect(() => {
-        try {
-            const v = localStorage.getItem(LAST_SYNC_ALL_KEY);
-            if (v) setLastSyncAllAt(Number(v));
-        } catch (_) {}
-    }, []);
 
     const handleSyncAll = async () => {
         if (syncingAll || stocks.length === 0) return;
