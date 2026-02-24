@@ -8,18 +8,16 @@ import { doc } from 'firebase/firestore';
 export const useStockData = () => {
     const [stocks, setStocks] = useState([]);
     const [loading, setLoading] = useState(true);
-    
+    const [lastFetchedAt, setLastFetchedAt] = useState(null);
+
     // 🟢 封裝刷新邏輯
     const refresh = async () => {
         try {
             const data = await fetchWatchlist();
-            // 🟢 直接賦值，不要先 setStocks([])
-            // 只要我們傳入的是一個全新的陣列 [...data]，React 就會知道要重算 PE
-            setStocks([...data]); 
+            setStocks([...data]);
+            setLastFetchedAt(Date.now());
             setLoading(false);
             console.log("✅ 數據已平滑同步");
-            
-            console.log("表格數據已成功強制同步");
         } catch (error) {
             console.error("刷新失敗:", error);
             setLoading(false);
@@ -50,6 +48,5 @@ export const useStockData = () => {
         }
     };
 
-    // 額外導出 refresh，讓你有需要時可以手動刷新
-    return { stocks, loading, updateStockField, refreshData: refresh };
+    return { stocks, loading, updateStockField, refreshData: refresh, lastFetchedAt };
 };

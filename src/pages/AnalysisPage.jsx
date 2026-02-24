@@ -37,7 +37,8 @@ const AnalysisPage = () => {
         }
     });
 
-    const { stocks, loading, refreshData, updateStockField} = useStockData();
+    const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
+    const needReload = lastSyncAllAt != null && lastFetchedAt != null && lastSyncAllAt > lastFetchedAt;
 
     const handleSyncAll = async () => {
         if (syncingAll || stocks.length === 0) return;
@@ -194,7 +195,7 @@ const AnalysisPage = () => {
                                     fontWeight: 'bold',
                                 }}
                             >
-                                {syncingAll ? `同步全部中 (${syncAllProgress.current}/${syncAllProgress.total})…` : '同步全部自選股'}
+                                {syncingAll ? `同步全部中 (${syncAllProgress.current}/${syncAllProgress.total})…` : '同步全部'}
                             </button>
                             {stocks.length > 0 && !syncingAll && (
                                 <span style={{ fontSize: '0.9em', color: '#666' }}>
@@ -202,28 +203,84 @@ const AnalysisPage = () => {
                                 </span>
                             )}
                         </div>
-                        <p style={{ fontSize: '0.9em', color: '#666', marginTop: '12px', paddingLeft: '5px' }}>
-                            上一輪全體更新：{formatLastSync(lastSyncAllAt)}
-                        </p>
-                        {stocks.length > 0 && (() => {
-                            const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
-                            const hasPriceToday = stocks.some(s => (s.latestPriceDate || '') === todayStr);
-                            const hasHoldingsToday = stocks.some(s => (s.latestHoldingsDate || '') === todayStr);
-                            const hasRevenueToday = stocks.some(s => (s.latestRevenueDate || '') === todayStr);
-                            const fields = [
-                                { key: 'price', label: '股價', has: hasPriceToday },
-                                { key: 'holdings', label: '外資持股（外資指標）', has: hasHoldingsToday },
-                                { key: 'revenue', label: '營收', has: hasRevenueToday },
-                            ];
-                            const hasNew = fields.filter(f => f.has);
-                            const notYet = fields.filter(f => !f.has);
-                            return (
-                                <p style={{ fontSize: '0.9em', color: '#666', marginTop: '8px', paddingLeft: '5px' }}>
-                                    今日 API 已提供新數據的欄位：{hasNew.length ? hasNew.map(f => f.label).join('、') : '無'}
-                                    {notYet.length > 0 && '　｜　今日 API 尚未提供新數據的欄位：' + notYet.map(f => f.label).join('、')}
-                                </p>
-                            );
-                        })()}
+                        <div style={{ marginTop: '24px', padding: '16px 20px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #eee' }}>
+                            <div style={{ fontSize: '0.85em', color: '#555', marginBottom: '8px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                                <span><strong>上一輪全體更新</strong> {formatLastSync(lastSyncAllAt)}</span>
+                                <span><strong>此頁資料載入</strong> {lastFetchedAt ? formatLastSync(lastFetchedAt) : '—'}</span>
+                                {needReload && (
+                                    <span style={{ color: '#c0392b', fontWeight: '500' }}>建議重新載入以顯示最新數據</span>
+                                )}
+                                {!needReload && lastFetchedAt != null && (
+                                    <span style={{ color: '#27ae60' }}>表格資料已是最新</span>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => refreshData()}
+                                    disabled={loading}
+                                    style={{ marginLeft: '4px', padding: '4px 10px', fontSize: '12px', cursor: loading ? 'wait' : 'pointer', border: '1px solid #ccc', borderRadius: '4px', background: '#fff' }}
+                                >
+                                    {loading ? '載入中…' : '重新載入'}
+                                </button>
+                            </div>
+                            {stocks.length > 0 && (() => {
+                                const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+                                const formatDate = (str) => str ? `${str.slice(0, 4)}/${Number(str.slice(5, 7))}/${Number(str.slice(8, 10))}` : '';
+                                const revenueDates = stocks.map(s => s.latestRevenueDate).filter(Boolean);
+                                const latestRevenueDateStr = revenueDates.length ? revenueDates.sort().slice(-1)[0] : null;
+                                // 營收 API 常回傳「公告日」（如 2 月初），需轉成「資料所屬月」顯示：當月 1～15 日多為上月營收
+                                const toRevenueMonth = (str) => {
+                                    if (!str || str.length < 10) return null;
+                                    const y = parseInt(str.slice(0, 4), 10);
+                                    const m = parseInt(str.slice(5, 7), 10);
+                                    const d = parseInt(str.slice(8, 10), 10);
+                                    if (d <= 15 && m >= 2) return { y, m: m - 1 };
+                                    if (d <= 15 && m === 1) return { y: y - 1, m: 12 };
+                                    return { y, m };
+                                };
+                                const formatRevenueMonth = (str) => {
+                                    const r = toRevenueMonth(str);
+                                    return r ? `${r.y}/${r.m} 月` : '';
+                                };
+                                const now = new Date();
+                                const lastCompleteMonth = now.getMonth() === 0
+                                    ? `${now.getFullYear() - 1}-12`
+                                    : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
+                                const priceOk = stocks.filter(s => (s.latestPriceDate || '') === todayStr).length;
+                                const holdingsOk = stocks.filter(s => (s.latestHoldingsDate || '') === todayStr).length;
+                                const revenueOk = stocks.filter(s => {
+                                    const parsed = toRevenueMonth(s.latestRevenueDate || '');
+                                    const mStr = parsed ? `${parsed.y}-${String(parsed.m).padStart(2, '0')}` : '';
+                                    return mStr === lastCompleteMonth;
+                                }).length;
+                                const total = stocks.length;
+                                const overNine = (ok) => total > 0 && ok / total >= 0.9;
+                                const hasPriceAll = overNine(priceOk);
+                                const hasHoldingsAll = overNine(holdingsOk);
+                                const hasRevenueAll = overNine(revenueOk);
+                                const countStr = (n, t) => t > 0 ? `（${n}/${t}）` : '';
+                                const fields = [
+                                    { label: '股價', has: hasPriceAll, text: (f) => f.has ? `已有新數據（${formatDate(todayStr)}）${countStr(priceOk, total)}` : `尚未提供今日數據${countStr(priceOk, total)}` },
+                                    { label: '外資持股（外資指標）', has: hasHoldingsAll, text: (f) => f.has ? `已有新數據（${formatDate(todayStr)}）${countStr(holdingsOk, total)}` : `尚未提供今日數據${countStr(holdingsOk, total)}` },
+                                    { label: '營收', has: hasRevenueAll, text: () => latestRevenueDateStr ? `最新：${formatRevenueMonth(latestRevenueDateStr)}${countStr(revenueOk, total)}` : '尚無資料' },
+                                ];
+                                return (
+                                    <div style={{ fontSize: '0.85em', color: '#555' }}>
+                                        <strong style={{ display: 'block', marginBottom: '6px' }}>今日 API 資料狀態</strong>
+                                        <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: 1.6 }}>
+                                            {fields.map(f => (
+                                                <li key={f.label}>
+                                                    <span style={{ color: f.has ? '#27ae60' : '#888' }}>{f.has ? '✓' : '－'}</span>
+                                                    <span style={{ marginLeft: '6px' }}>{f.label}</span>
+                                                    <span style={{ marginLeft: '6px', color: '#888', fontSize: '0.95em' }}>
+                                                        {f.text(f)}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                );
+                            })()}
+                        </div>
                     </div>
                 </div>
             </main>
