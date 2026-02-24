@@ -87,7 +87,6 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
             ...stock,
             ...indicators,
             displayPrice: formatNumber(price, 1),
-            displayWeeklyFlow: formatNumber(indicators.WeeklyChipFlow, 0),
             displayEPS: formatNumber(eps, 1),
             displayTarget: formatNumber(target, 0),
             displayHoldingGrowth: indicators.HoldingGrowth_M ? indicators.HoldingGrowth_M : '0',

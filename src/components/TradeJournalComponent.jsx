@@ -62,8 +62,8 @@ function TradeJournal() {
   // 2. 數據儲存 (saveJournalToCloud 函數)
 const saveJournalToCloud = async (entries) => {
     try {
-        // 1. 先在本地更新 UI (確保響應快速)
-        const sorted = entries.sort((a, b) => {
+        // 1. 先在本地更新 UI (確保響應快速)，複製再排序避免 mutate 傳入的陣列
+        const sorted = [...entries].sort((a, b) => {
             const dateA = new Date(a.date);
             const dateB = new Date(b.date);
             const dateDiff = dateB - dateA; 
@@ -75,8 +75,8 @@ const saveJournalToCloud = async (entries) => {
         });
         setJournalEntries(sorted);
         
-        // 2. 存儲到 Firestore
-        await setDoc(JOURNAL_DOC_REF, { entries: entries });
+        // 2. 存儲到 Firestore（寫入排序後結果，與畫面一致）
+        await setDoc(JOURNAL_DOC_REF, { entries: sorted });
         
         console.log("數據已成功寫入 Firestore。");
         

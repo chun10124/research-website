@@ -1,6 +1,6 @@
 /* src/pages/AnalysisPage.jsx */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { useDataSync } from '../features/StockAnalysis/hooks/useDataSync';
@@ -8,12 +8,57 @@ import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
 import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable'; 
 import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
 
+const LAST_SYNC_ALL_KEY = 'research-website-lastSyncAllAt';
+
+const formatLastSync = (ts) => {
+    if (!ts || ts <= 0) return '尚未執行';
+    const diff = Date.now() - ts;
+    const min = 60 * 1000, hour = 60 * min, day = 24 * hour;
+    if (diff < min) return '剛剛';
+    if (diff < hour) return `${Math.floor(diff / min)} 分鐘前`;
+    if (diff < day) return `${Math.floor(diff / hour)} 小時前`;
+    if (diff < 7 * day) return `${Math.floor(diff / day)} 天前`;
+    if (diff < 30 * day) return `${Math.floor(diff / (7 * day))} 週前`;
+    return new Date(ts).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', year: 'numeric' });
+};
+
 const AnalysisPage = () => {
     const [testCode, setTestCode] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
+    const [syncingAll, setSyncingAll] = useState(false);
+    const [syncAllProgress, setSyncAllProgress] = useState({ current: 0, total: 0 });
+    const [lastSyncAllAt, setLastSyncAllAt] = useState(null);
 
-    const { stocks, loading, refreshData, updateStockField} = useStockData(); 
-    
+    const { stocks, loading, refreshData, updateStockField} = useStockData();
+
+    useEffect(() => {
+        try {
+            const v = localStorage.getItem(LAST_SYNC_ALL_KEY);
+            if (v) setLastSyncAllAt(Number(v));
+        } catch (_) {}
+    }, []);
+
+    const handleSyncAll = async () => {
+        if (syncingAll || stocks.length === 0) return;
+        setSyncingAll(true);
+        const total = stocks.length;
+        for (let i = 0; i < total; i++) {
+            setSyncAllProgress({ current: i + 1, total });
+            try {
+                await syncStockSnapshots(stocks[i]);
+            } catch (e) {
+                console.error(`[${stocks[i].code}] 同步失敗:`, e);
+            }
+            if (i < total - 1) await new Promise((r) => setTimeout(r, 2000));
+        }
+        setSyncAllProgress({ current: 0, total: 0 });
+        await refreshData();
+        const ts = Date.now();
+        setLastSyncAllAt(ts);
+        try { localStorage.setItem(LAST_SYNC_ALL_KEY, String(ts)); } catch (_) {}
+        setSyncingAll(false);
+    };
+
     useDataSync(stocks); 
     
     const handleAddStock = async () => {
@@ -62,7 +107,7 @@ const AnalysisPage = () => {
             <main style={{ padding: '20px 0' }}>
                 <div style={{ padding: '0 20px', maxWidth: '1650px', margin: '0 auto' }}>
 
-                    {/*  1. 表格移到最上面 */}
+                    {/*  1. 表格 */}
                     <div style={{ 
                         overflowX: 'auto', 
                         backgroundColor: '#fff', 
@@ -72,7 +117,7 @@ const AnalysisPage = () => {
                         marginLeft: '-18px',
                         marginTop: '-25px'
                     }}>
-                        <IndustryAnalysisTable stocks={stocks} updateStockField={updateStockField} refreshData={refreshData} />
+                        <IndustryAnalysisTable stocks={stocks} loading={loading} updateStockField={updateStockField} refreshData={refreshData} />
                     </div>
 
                     {/*  2. 輸入區移到最下面 (並進行樣式優化) */}
@@ -95,7 +140,7 @@ const AnalysisPage = () => {
                                 value={testCode}
                                 onChange={(e) => setTestCode(e.target.value)}
                                 placeholder="輸入股票代碼"
-                                disabled={loading}
+                                disabled={loading || syncingAll}
                                 style={{ 
                                     padding: '8px 12px', 
                                     border: '1px solid #ccc',
@@ -106,7 +151,7 @@ const AnalysisPage = () => {
                             />
                             <button 
                                 onClick={handleAddStock} 
-                                disabled={loading || !testCode}
+                                disabled={loading || syncingAll || !testCode}
                                 style={{ 
                                     padding: '10px 20px', 
                                     cursor: 'pointer',
@@ -132,6 +177,52 @@ const AnalysisPage = () => {
                         <p style={{ fontSize: '0.85em', color: '#888', marginTop: '10px', paddingLeft: '5px' }}>
                             * 輸入股票代碼後點擊同步，系統將自動從 API 獲取最新的股價、營收與籌碼數據。
                         </p>
+
+                        <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <button
+                                type="button"
+                                onClick={handleSyncAll}
+                                disabled={loading || syncingAll || stocks.length === 0}
+                                style={{
+                                    padding: '10px 20px',
+                                    cursor: syncingAll ? 'wait' : 'pointer',
+                                    backgroundColor: syncingAll ? '#ccc' : '#25c2a0',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontWeight: 'bold',
+                                }}
+                            >
+                                {syncingAll ? `同步全部中 (${syncAllProgress.current}/${syncAllProgress.total})…` : '同步全部自選股'}
+                            </button>
+                            {stocks.length > 0 && !syncingAll && (
+                                <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                    共 {stocks.length} 檔，約需 {Math.ceil(stocks.length * 2.5 / 60)} 分鐘
+                                </span>
+                            )}
+                        </div>
+                        <p style={{ fontSize: '0.9em', color: '#666', marginTop: '12px', paddingLeft: '5px' }}>
+                            上一輪全體更新：{formatLastSync(lastSyncAllAt)}
+                        </p>
+                        {stocks.length > 0 && (() => {
+                            const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+                            const hasPriceToday = stocks.some(s => (s.latestPriceDate || '') === todayStr);
+                            const hasHoldingsToday = stocks.some(s => (s.latestHoldingsDate || '') === todayStr);
+                            const hasRevenueToday = stocks.some(s => (s.latestRevenueDate || '') === todayStr);
+                            const fields = [
+                                { key: 'price', label: '股價', has: hasPriceToday },
+                                { key: 'holdings', label: '外資持股（外資指標）', has: hasHoldingsToday },
+                                { key: 'revenue', label: '營收', has: hasRevenueToday },
+                            ];
+                            const hasNew = fields.filter(f => f.has);
+                            const notYet = fields.filter(f => !f.has);
+                            return (
+                                <p style={{ fontSize: '0.9em', color: '#666', marginTop: '8px', paddingLeft: '5px' }}>
+                                    今日 API 已提供新數據的欄位：{hasNew.length ? hasNew.map(f => f.label).join('、') : '無'}
+                                    {notYet.length > 0 && '　｜　今日 API 尚未提供新數據的欄位：' + notYet.map(f => f.label).join('、')}
+                                </p>
+                            );
+                        })()}
                     </div>
                 </div>
             </main>

@@ -88,6 +88,21 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}) =
 
     const stockName = (infoRes?.data || []).find(d => d.stock_id === sCode)?.stock_name || "未知";
 
+    // 各資料集在 API 回傳中的最新一筆日期（不假設陣列順序，取最大日期）
+    const getLatestDate = (arr) => {
+      if (!arr?.length) return null;
+      let maxStr = null;
+      for (const row of arr) {
+        const d = row.date ?? row.Date ?? row.trade_date ?? row.TradeDate;
+        const str = d ? String(d).trim().split(' ')[0] : null; // YYYY-MM-DD
+        if (str && /^\d{4}-\d{2}-\d{2}$/.test(str) && (!maxStr || str > maxStr)) maxStr = str;
+      }
+      return maxStr;
+    };
+    const latestPriceDate = getLatestDate(priceRes.data);
+    const latestHoldingsDate = getLatestDate(holdingRes?.data);
+    const latestRevenueDate = getLatestDate(revenueRes?.data);
+
     return {
       code: sCode,
       name: stockName,
@@ -95,10 +110,12 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}) =
       yesterdayClose: priceCloseArray_NewestFirst[1] || 0,
       realTimePE: latestPER,
       lastUpdate: Date.now(),
+      latestPriceDate,
+      latestHoldingsDate,
+      latestRevenueDate,
       history: {
         priceClose: priceCloseArray_NewestFirst, 
-        // 🔴 移除 foreignChipFlowNet
-        foreignTotalHolding: foreignTotal_NewestFirst, // 此陣列現在包含約 750+ 筆數據
+        foreignTotalHolding: foreignTotal_NewestFirst,
         revenueRaw: revenueArray_OldestFirst,
         revenueYoY: revenueYoYArray_OldestFirst
       }

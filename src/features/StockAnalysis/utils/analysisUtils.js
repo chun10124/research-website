@@ -65,23 +65,24 @@ export const calculateForeignForce = (holdings = [], prevBCount = 0) => {
     const stdDev = Math.sqrt(slice700.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / 700);
 
     const todayROC = rocHistory[0];
-    const yesterdayROC = rocHistory[1];
     const zScore = stdDev !== 0 ? (todayROC / stdDev).toFixed(1) : 0;
 
-    // 3. 進場訊號判定 (N -> B): 突破正 1 倍標準差 [cite: 10, 12]
+    // 3. 進場訊號與 B 計數：今天 > 今日門檻 → B；連續天數要用「當日門檻」往回判
+    //    若用同一門檻比歷史 ROC，門檻每天變動會讓昨天變「未突破」→ 連續兩天都顯示 B1
     let bCount = 0;
     let signal = "N";
 
     if (todayROC > stdDev) {
         signal = "B";
-        // 往回遍歷 rocHistory，直到不滿足條件為止
         for (let i = 0; i < rocHistory.length; i++) {
-            // 嚴謹起見，每一天的標準差門檻理論上要動態算，
-            // 但實務上用「今日門檻」回溯前幾天已足夠精確判斷 B1/B2
-            if (rocHistory[i] > stdDev) {
+            const past = rocHistory.slice(i + 1, i + 701);
+            if (past.length < 700) break;
+            const m = past.reduce((a, b) => a + b, 0) / 700;
+            const sd = Math.sqrt(past.map(x => Math.pow(x - m, 2)).reduce((a, b) => a + b, 0) / 700);
+            if (rocHistory[i] > sd) {
                 bCount++;
             } else {
-                break; // 一旦中斷，就停止計數
+                break;
             }
         }
     }

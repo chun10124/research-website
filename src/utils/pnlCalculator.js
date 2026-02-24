@@ -5,11 +5,13 @@ export const getStartDate = (range) => {
     let startDate = null;
 
     switch (range) {
-        case 'WEEK':
-            // 修正：取得本週第一天 (週日)
+        case 'WEEK': {
+            // 取得本週週日 00:00:00（避免只 setDate 未歸零導致篩選範圍錯誤）
             const d = getNow();
-            startDate = new Date(d.setDate(d.getDate() - d.getDay()));
+            const sun = d.getDate() - d.getDay();
+            startDate = new Date(d.getFullYear(), d.getMonth(), sun, 0, 0, 0, 0);
             break;
+        }
         case 'MONTH':
             // 修正：取得本月第一天
             const m = getNow();
