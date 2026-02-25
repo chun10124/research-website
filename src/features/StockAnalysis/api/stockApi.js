@@ -29,37 +29,62 @@ const safeFetch = async (targetUrl) => {
     }
 };
 
-export const fetchCompleteStockData = async (stockCode, onProgress = () => {}) => {
+// 營收 API 日期轉「資料所屬月」YYYY-MM（公告日 1～15 日視為上月）
+const toRevenueMonthStr = (dateStr) => {
+  if (!dateStr || dateStr.length < 10) return null;
+  const y = parseInt(dateStr.slice(0, 4), 10);
+  const m = parseInt(dateStr.slice(5, 7), 10);
+  const d = parseInt(dateStr.slice(8, 10), 10);
+  if (d <= 15 && m >= 2) return `${y}-${String(m - 1).padStart(2, '0')}`;
+  if (d <= 15 && m === 1) return `${y - 1}-12`;
+  return `${y}-${String(m).padStart(2, '0')}`;
+};
+
+export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, options = {}) => {
   const sCode = String(stockCode || "").trim();
   if (!sCode || sCode === "NaN" || sCode === "undefined") {
       throw new Error("無效的股票代碼");
   }
 
-  //  1. 計算三年前的日期 (為了取得策略建議的 750 日標準差門檻)
+  const skipRevenue = options.skipRevenue === true && options.existingRevenue != null;
   const today = new Date();
   const threeYearsAgo = new Date();
   threeYearsAgo.setFullYear(today.getFullYear() - 3);
   const THREE_YEARS_START = threeYearsAgo.toISOString().split('T')[0];
-  
-  const DATA_START_DATE = "2025-10-15"; 
-  const REVENUE_START_DATE = "2024-01-01"; 
+  const DATA_START_DATE = "2025-10-15";
+  const REVENUE_START_DATE = "2024-01-01";
 
   const getFinmindUrl = (dataset, start) => {
     const params = new URLSearchParams({ dataset, data_id: sCode, start_date: start, token: TOKEN });
     return `${FINMIND_BASE}?${params.toString()}`;
   };
 
+  const getLatestDate = (arr) => {
+    if (!arr?.length) return null;
+    let maxStr = null;
+    for (const row of arr) {
+      const d = row.date ?? row.Date ?? row.trade_date ?? row.TradeDate;
+      const str = d ? String(d).trim().split(' ')[0] : null;
+      if (str && /^\d{4}-\d{2}-\d{2}$/.test(str) && (!maxStr || str > maxStr)) maxStr = str;
+    }
+    return maxStr;
+  };
+
   try {
     onProgress(` [${sCode}] 正在抓取三年長線持股數據以計算策略門檻...`);
 
-    // 🔴 2. 移除買賣超 (InstitutionalInvestorsBuySell)
+    const pricePromise = safeFetch(getFinmindUrl("TaiwanStockPrice", DATA_START_DATE));
+    const holdingPromise = safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START));
+    const revenuePromise = skipRevenue ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE));
+    const infoPromise = safeFetch(getFinmindUrl("TaiwanStockInfo", ""));
+    const pePromise = safeFetch(getFinmindUrl("TaiwanStockPER", DATA_START_DATE));
+
     const [priceRes, holdingRes, revenueRes, infoRes, peRes] = await Promise.all([
-      safeFetch(getFinmindUrl("TaiwanStockPrice", DATA_START_DATE)),
-      // 🟢 3. 修改：外資持股改抓三年前開始，確保計算 ROC 與 700 日標準差的精準度
-      safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START)), 
-      safeFetch(getFinmindUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE)),
-      safeFetch(getFinmindUrl("TaiwanStockInfo", "")),
-      safeFetch(getFinmindUrl("TaiwanStockPER", DATA_START_DATE))
+      pricePromise,
+      holdingPromise,
+      revenuePromise,
+      infoPromise,
+      pePromise
     ]);
 
     if (!priceRes || !priceRes.data || priceRes.data.length === 0) {
@@ -79,29 +104,27 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}) =
     const foreignTotal_NewestFirst = rawHoldingData
       .map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000)).reverse();
     
-    const revenueArray_OldestFirst = (revenueRes?.data || []).map(d => Math.round((d.revenue || 0) / 1000)); 
-    const revenueYoYArray_OldestFirst = revenueArray_OldestFirst
-        .map((cur, i) => {
+    let revenueArray_OldestFirst;
+    let latestRevenueDate;
+    if (skipRevenue && options.existingRevenue) {
+      revenueArray_OldestFirst = options.existingRevenue.revenueRaw || [];
+      latestRevenueDate = options.existingRevenue.latestRevenueDate || null;
+    } else {
+      revenueArray_OldestFirst = (revenueRes?.data || []).map(d => Math.round((d.revenue || 0) / 1000));
+      latestRevenueDate = revenueRes?.data?.length ? getLatestDate(revenueRes.data) : null;
+    }
+    const revenueYoYArray_OldestFirst = (skipRevenue && Array.isArray(options.existingRevenue?.revenueYoY) && options.existingRevenue.revenueYoY.length > 0)
+      ? options.existingRevenue.revenueYoY
+      : revenueArray_OldestFirst
+          .map((cur, i) => {
             const prev = revenueArray_OldestFirst[i - 12];
             return (prev && prev > 0) ? parseFloat(((cur - prev) / prev * 100).toFixed(2)) : null;
-        }).filter(val => val !== null);
+          }).filter(val => val !== null);
 
     const stockName = (infoRes?.data || []).find(d => d.stock_id === sCode)?.stock_name || "未知";
 
-    // 各資料集在 API 回傳中的最新一筆日期（不假設陣列順序，取最大日期）
-    const getLatestDate = (arr) => {
-      if (!arr?.length) return null;
-      let maxStr = null;
-      for (const row of arr) {
-        const d = row.date ?? row.Date ?? row.trade_date ?? row.TradeDate;
-        const str = d ? String(d).trim().split(' ')[0] : null; // YYYY-MM-DD
-        if (str && /^\d{4}-\d{2}-\d{2}$/.test(str) && (!maxStr || str > maxStr)) maxStr = str;
-      }
-      return maxStr;
-    };
     const latestPriceDate = getLatestDate(priceRes.data);
     const latestHoldingsDate = getLatestDate(holdingRes?.data);
-    const latestRevenueDate = getLatestDate(revenueRes?.data);
 
     return {
       code: sCode,
@@ -126,11 +149,18 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}) =
   }
 };
 
-// syncStockSnapshots 保持原樣
 export const syncStockSnapshots = async (stock) => {
   console.log(`🚀 正在同步 ${stock.name || stock.code}...`);
   try {
-    const latestData = await fetchCompleteStockData(stock.code);
+    const now = new Date();
+    const lastCompleteMonth = now.getMonth() === 0
+      ? `${now.getFullYear() - 1}-12`
+      : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
+    const haveLatestRevenue = stock.latestRevenueDate && toRevenueMonthStr(stock.latestRevenueDate) === lastCompleteMonth;
+    const opts = haveLatestRevenue
+      ? { skipRevenue: true, existingRevenue: { revenueRaw: stock.history?.revenueRaw, revenueYoY: stock.history?.revenueYoY, latestRevenueDate: stock.latestRevenueDate } }
+      : {};
+    const latestData = await fetchCompleteStockData(stock.code, () => {}, opts);
     if (!latestData) return;
     await updateAnalysisField(stock.code, {
       ...latestData,

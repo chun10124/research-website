@@ -39,22 +39,39 @@ const AnalysisPage = () => {
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
     const needReload = lastSyncAllAt != null && lastFetchedAt != null && lastSyncAllAt > lastFetchedAt;
 
+    // 每檔會打 5 次 API（股價/持股/營收/資訊/本益比），並行 2 檔 = 10 次/批。延遲 2s = 與原本「1 檔 + 2s」同請求率，較不易 429
+    const SYNC_DELAY_MS = 2000;
+    const SYNC_REFRESH_EVERY = 5;
+    const SYNC_CONCURRENCY = 2;
+
     const handleSyncAll = async () => {
         if (syncingAll || stocks.length === 0) return;
         setSyncingAll(true);
         const list = [...stocks];
         const total = list.length;
-        for (let i = 0; i < total; i++) {
-            setSyncAllProgress({ current: i + 1, total });
-            try {
-                await syncStockSnapshots(list[i]);
-            } catch (e) {
-                console.error(`[${list[i].code}] 同步失敗:`, e);
+        let done = 0;
+        for (let i = 0; i < total; i += SYNC_CONCURRENCY) {
+            const batch = list.slice(i, i + SYNC_CONCURRENCY);
+            await Promise.all(
+                batch.map(async (stock) => {
+                    try {
+                        await syncStockSnapshots(stock);
+                    } catch (e) {
+                        console.error(`[${stock.code}] 同步失敗:`, e);
+                    }
+                    done += 1;
+                    setSyncAllProgress({ current: done, total });
+                })
+            );
+            if (done % SYNC_REFRESH_EVERY === 0 || done === total) {
+                await refreshData();
             }
-            await refreshData();
-            if (i < total - 1) await new Promise((r) => setTimeout(r, 2000));
+            if (i + SYNC_CONCURRENCY < total) {
+                await new Promise((r) => setTimeout(r, SYNC_DELAY_MS));
+            }
         }
         setSyncAllProgress({ current: 0, total: 0 });
+        await refreshData();
         const ts = Date.now();
         setLastSyncAllAt(ts);
         try { localStorage.setItem(LAST_SYNC_ALL_KEY, String(ts)); } catch (_) {}
@@ -190,7 +207,7 @@ const AnalysisPage = () => {
                             </button>
                             {stocks.length > 0 && !syncingAll && (
                                 <span style={{ fontSize: '0.9em', color: '#666' }}>
-                                    共 {stocks.length} 檔，約需 {Math.ceil(stocks.length * 2.5 / 60)} 分鐘
+                                    共 {stocks.length} 檔，約需 {Math.ceil((stocks.length / SYNC_CONCURRENCY) * 3.5 / 60)} 分鐘
                                 </span>
                             )}
                         </div>
@@ -230,7 +247,7 @@ const AnalysisPage = () => {
                                 };
                                 const formatRevenueMonth = (str) => {
                                     const r = toRevenueMonth(str);
-                                    return r ? `${r.y}/${r.m} 月` : '';
+                                    return r ? `${r.y} 年 ${r.m} 月` : '';
                                 };
                                 const now = new Date();
                                 const lastCompleteMonth = now.getMonth() === 0
