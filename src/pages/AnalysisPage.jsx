@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
-import { useDataSync } from '../features/StockAnalysis/hooks/useDataSync';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
 import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable'; 
 import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
@@ -43,26 +42,25 @@ const AnalysisPage = () => {
     const handleSyncAll = async () => {
         if (syncingAll || stocks.length === 0) return;
         setSyncingAll(true);
-        const total = stocks.length;
+        const list = [...stocks];
+        const total = list.length;
         for (let i = 0; i < total; i++) {
             setSyncAllProgress({ current: i + 1, total });
             try {
-                await syncStockSnapshots(stocks[i]);
+                await syncStockSnapshots(list[i]);
             } catch (e) {
-                console.error(`[${stocks[i].code}] 同步失敗:`, e);
+                console.error(`[${list[i].code}] 同步失敗:`, e);
             }
+            await refreshData();
             if (i < total - 1) await new Promise((r) => setTimeout(r, 2000));
         }
         setSyncAllProgress({ current: 0, total: 0 });
-        await refreshData();
         const ts = Date.now();
         setLastSyncAllAt(ts);
         try { localStorage.setItem(LAST_SYNC_ALL_KEY, String(ts)); } catch (_) {}
         setSyncingAll(false);
     };
 
-    useDataSync(stocks); 
-    
     const handleAddStock = async () => {
         const code = testCode.trim();
         if (!code) {
@@ -83,19 +81,12 @@ const AnalysisPage = () => {
             };
             
             await updateAnalysisField(code, initialStockObj);
-            
-            // 🟢 立刻刷一次畫面，讓使用者看到「讀取中」的格子
-            await refreshData(); 
 
             setStatusMessage(`正在從 API 抓取 ${code} 的詳細數據...`);
+            await syncStockSnapshots(initialStockObj);
 
-            // 第二步：🟢 強制觸發單個股票的完整同步 (包含股價、籌碼、營收)
-            // 這樣就不需要等 useDataSync 的 6 小時門檻
-            await syncStockSnapshots(initialStockObj); 
-
-            // 第三步：🟢 同步完成後，再拍一次照片，把數據填進格子
-            await refreshData(); 
-
+            await new Promise((r) => setTimeout(r, 400));
+            await refreshData();
             setStatusMessage(`${code} 同步成功！`);
             setTestCode('');
         } catch (error) {
