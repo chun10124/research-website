@@ -47,6 +47,10 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
   }
 
   const skipRevenue = options.skipRevenue === true && options.existingRevenue != null;
+  const skipHoldings = options.skipHoldings === true && options.existingHoldings != null && Array.isArray(options.existingHoldings.foreignTotalHolding) && options.existingHoldings.foreignTotalHolding.length > 0;
+  const skipInfo = options.skipInfo === true && options.existingInfo?.name;
+  const skipPrice = options.skipPrice === true && options.existingPrice != null && Array.isArray(options.existingPrice.priceClose) && options.existingPrice.priceClose.length > 0;
+  const skipPER = options.skipPER === true && options.existingPER != null && options.existingPERDate != null;
   const today = new Date();
   const threeYearsAgo = new Date();
   threeYearsAgo.setFullYear(today.getFullYear() - 3);
@@ -73,11 +77,11 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
   try {
     onProgress(` [${sCode}] 正在抓取三年長線持股數據以計算策略門檻...`);
 
-    const pricePromise = safeFetch(getFinmindUrl("TaiwanStockPrice", DATA_START_DATE));
-    const holdingPromise = safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START));
+    const pricePromise = skipPrice ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockPrice", DATA_START_DATE));
+    const holdingPromise = skipHoldings ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START));
     const revenuePromise = skipRevenue ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE));
-    const infoPromise = safeFetch(getFinmindUrl("TaiwanStockInfo", ""));
-    const pePromise = safeFetch(getFinmindUrl("TaiwanStockPER", DATA_START_DATE));
+    const infoPromise = skipInfo ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockInfo", ""));
+    const pePromise = skipPER ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockPER", DATA_START_DATE));
 
     const [priceRes, holdingRes, revenueRes, infoRes, peRes] = await Promise.all([
       pricePromise,
@@ -87,22 +91,40 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       pePromise
     ]);
 
-    if (!priceRes || !priceRes.data || priceRes.data.length === 0) {
+    if (!skipPrice && (!priceRes || !priceRes.data || priceRes.data.length === 0)) {
         throw new Error("無法取得基礎股價數據，請檢查代碼或隧道狀態");
     }
 
-    const latestPER = (peRes?.data && peRes.data.length > 0) 
-        ? peRes.data[peRes.data.length - 1].PER 
-        : '--';
+    const latestPER = skipPER ? String(options.existingPER ?? '--') : ((peRes?.data && peRes.data.length > 0) ? peRes.data[peRes.data.length - 1].PER : '--');
+    const latestPERDate = skipPER ? (options.existingPERDate || null) : (peRes?.data?.length ? getLatestDate(peRes.data) : null);
 
-    const priceCloseArray_NewestFirst = (priceRes.data || []).map(d => d.close).reverse(); 
-    
-    // 🔴 4. 移除外資買賣超流量計算 (foreignChipFlowNet)
-    
-    // 🟢 5. 處理三年份的持股數據 (確保順序為最新在前，供策略運算使用)
-    const rawHoldingData = holdingRes?.data || [];
-    const foreignTotal_NewestFirst = rawHoldingData
-      .map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000)).reverse();
+    let priceCloseArray_NewestFirst;
+    let latestPriceDate;
+    let currentPrice;
+    let yesterdayClose;
+    if (skipPrice && options.existingPrice) {
+      priceCloseArray_NewestFirst = options.existingPrice.priceClose || [];
+      latestPriceDate = options.existingPrice.latestPriceDate || null;
+      currentPrice = options.existingPrice.currentPrice ?? (priceCloseArray_NewestFirst[0] || 0);
+      yesterdayClose = options.existingPrice.yesterdayClose ?? (priceCloseArray_NewestFirst[1] || 0);
+    } else {
+      priceCloseArray_NewestFirst = (priceRes.data || []).map(d => d.close).reverse();
+      latestPriceDate = getLatestDate(priceRes.data);
+      currentPrice = priceCloseArray_NewestFirst[0] || 0;
+      yesterdayClose = priceCloseArray_NewestFirst[1] || 0;
+    }
+
+    let foreignTotal_NewestFirst;
+    let latestHoldingsDate;
+    if (skipHoldings && options.existingHoldings) {
+      foreignTotal_NewestFirst = options.existingHoldings.foreignTotalHolding || [];
+      latestHoldingsDate = options.existingHoldings.latestHoldingsDate || null;
+    } else {
+      const rawHoldingData = holdingRes?.data || [];
+      foreignTotal_NewestFirst = rawHoldingData
+        .map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000)).reverse();
+      latestHoldingsDate = getLatestDate(holdingRes?.data);
+    }
     
     let revenueArray_OldestFirst;
     let latestRevenueDate;
@@ -121,19 +143,17 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
             return (prev && prev > 0) ? parseFloat(((cur - prev) / prev * 100).toFixed(2)) : null;
           }).filter(val => val !== null);
 
-    const stockName = (infoRes?.data || []).find(d => d.stock_id === sCode)?.stock_name || "未知";
-
-    const latestPriceDate = getLatestDate(priceRes.data);
-    const latestHoldingsDate = getLatestDate(holdingRes?.data);
+    const stockName = skipInfo ? options.existingInfo.name : ((infoRes?.data || []).find(d => d.stock_id === sCode)?.stock_name || "未知");
 
     return {
       code: sCode,
       name: stockName,
-      currentPrice: priceCloseArray_NewestFirst[0] || 0,
-      yesterdayClose: priceCloseArray_NewestFirst[1] || 0,
+      currentPrice,
+      yesterdayClose,
       realTimePE: latestPER,
       lastUpdate: Date.now(),
       latestPriceDate,
+      latestPERDate,
       latestHoldingsDate,
       latestRevenueDate,
       history: {
@@ -149,17 +169,52 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
   }
 };
 
+// 籌碼面（持股）台灣時間晚上 9 點才更新，9 點前不會有新資料
+const isBeforeTaiwan9PM = () => {
+  const utcHour = new Date().getUTCHours();
+  const taiwanHour = (utcHour + 8) % 24;
+  return taiwanHour < 21;
+};
+
 export const syncStockSnapshots = async (stock) => {
   console.log(`🚀 正在同步 ${stock.name || stock.code}...`);
   try {
     const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const lastCompleteMonth = now.getMonth() === 0
       ? `${now.getFullYear() - 1}-12`
       : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
     const haveLatestRevenue = stock.latestRevenueDate && toRevenueMonthStr(stock.latestRevenueDate) === lastCompleteMonth;
-    const opts = haveLatestRevenue
-      ? { skipRevenue: true, existingRevenue: { revenueRaw: stock.history?.revenueRaw, revenueYoY: stock.history?.revenueYoY, latestRevenueDate: stock.latestRevenueDate } }
-      : {};
+    const haveHoldingsAndBefore9PM = isBeforeTaiwan9PM() && stock.history?.foreignTotalHolding?.length > 0 && stock.latestHoldingsDate;
+    const haveLatestPrice = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
+    const haveLatestPER = stock.latestPERDate === todayStr && stock.realTimePE != null && stock.realTimePE !== '';
+    const opts = {};
+    if (haveLatestPrice) {
+      opts.skipPrice = true;
+      opts.existingPrice = {
+        priceClose: stock.history.priceClose,
+        currentPrice: stock.currentPrice,
+        yesterdayClose: stock.yesterdayClose,
+        latestPriceDate: stock.latestPriceDate,
+      };
+    }
+    if (haveLatestPER) {
+      opts.skipPER = true;
+      opts.existingPER = stock.realTimePE;
+      opts.existingPERDate = stock.latestPERDate;
+    }
+    if (haveLatestRevenue) {
+      opts.skipRevenue = true;
+      opts.existingRevenue = { revenueRaw: stock.history?.revenueRaw, revenueYoY: stock.history?.revenueYoY, latestRevenueDate: stock.latestRevenueDate };
+    }
+    if (haveHoldingsAndBefore9PM) {
+      opts.skipHoldings = true;
+      opts.existingHoldings = { foreignTotalHolding: stock.history.foreignTotalHolding, latestHoldingsDate: stock.latestHoldingsDate };
+    }
+    if (stock.name && stock.name !== "讀取中..." && stock.name !== "未知") {
+      opts.skipInfo = true;
+      opts.existingInfo = { name: stock.name };
+    }
     const latestData = await fetchCompleteStockData(stock.code, () => {}, opts);
     if (!latestData) return;
     await updateAnalysisField(stock.code, {
