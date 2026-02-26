@@ -1,6 +1,6 @@
 /* src/pages/AnalysisPage.jsx */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
@@ -26,15 +26,16 @@ const AnalysisPage = () => {
     const [statusMessage, setStatusMessage] = useState('');
     const [syncingAll, setSyncingAll] = useState(false);
     const [syncAllProgress, setSyncAllProgress] = useState({ current: 0, total: 0 });
-    const [lastSyncAllAt, setLastSyncAllAt] = useState(() => {
-        if (typeof window === 'undefined') return null;
+    const [lastSyncAllAt, setLastSyncAllAt] = useState(null);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
         try {
-            const v = window.localStorage.getItem(LAST_SYNC_ALL_KEY);
-            return v ? Number(v) : null;
-        } catch {
-            return null;
-        }
-    });
+            const v = typeof window !== 'undefined' && window.localStorage.getItem(LAST_SYNC_ALL_KEY);
+            if (v) setLastSyncAllAt(Number(v));
+        } catch (_) {}
+    }, []);
 
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
     const needReload = lastSyncAllAt != null && lastFetchedAt != null && lastSyncAllAt > lastFetchedAt;
@@ -213,12 +214,12 @@ const AnalysisPage = () => {
                         </div>
                         <div style={{ marginTop: '24px', padding: '16px 20px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #eee' }}>
                             <div style={{ fontSize: '0.85em', color: '#555', marginBottom: '8px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                                <span><strong>上一輪全體更新</strong> {formatLastSync(lastSyncAllAt)}</span>
-                                <span><strong>此頁資料載入</strong> {lastFetchedAt ? formatLastSync(lastFetchedAt) : '—'}</span>
-                                {needReload && (
+                                <span><strong>上一輪全體更新</strong> {mounted ? formatLastSync(lastSyncAllAt) : '—'}</span>
+                                <span><strong>此頁資料載入</strong> {mounted && lastFetchedAt ? formatLastSync(lastFetchedAt) : '—'}</span>
+                                {mounted && needReload && (
                                     <span style={{ color: '#c0392b', fontWeight: '500' }}>建議重新載入以顯示最新數據</span>
                                 )}
-                                {!needReload && lastFetchedAt != null && (
+                                {mounted && !needReload && lastFetchedAt != null && (
                                     <span style={{ color: '#27ae60' }}>表格資料已是最新</span>
                                 )}
                                 <button
@@ -230,7 +231,7 @@ const AnalysisPage = () => {
                                     {loading ? '載入中…' : '重新載入'}
                                 </button>
                             </div>
-                            {stocks.length > 0 && (() => {
+                            {mounted && stocks.length > 0 && (() => {
                                 const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
                                 const formatDate = (str) => str ? `${str.slice(0, 4)}/${Number(str.slice(5, 7))}/${Number(str.slice(8, 10))}` : '';
                                 const revenueDates = stocks.map(s => s.latestRevenueDate).filter(Boolean);
