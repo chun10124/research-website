@@ -89,30 +89,24 @@ function PerformancePage() {
     }
     setPricesLoading(true);
     const load = async () => {
+      const results = await Promise.all(
+        holdingCodes.map(async (code) => {
+          const bare = code.replace(/\.(TW|tw|TWO|two)$/i, '');
+          const candidates = [...new Set([code, bare, `${bare}.TW`, `${bare}.TWO`])];
+          let price = null;
+          for (const id of candidates) {
+            const snap = await getDoc(doc(STOCK_WATCHLIST_COLLECTION, id));
+            if (snap.exists()) {
+              const p = Number(snap.data().currentPrice);
+              if (p > 0) { price = p; break; }
+            }
+          }
+          if (price == null) price = await fetchYahooPrice(code);
+          return [code, price];
+        })
+      );
       const next = {};
-      for (const code of holdingCodes) {
-        // 1. 優先從 Firestore watchlist 取（多種代碼格式）
-        const bare = code.replace(/\.(TW|tw|TWO|two)$/i, '');
-        const candidates = [...new Set([code, bare, `${bare}.TW`, `${bare}.TWO`])];
-        let price = null;
-        for (const id of candidates) {
-          const snap = await getDoc(doc(STOCK_WATCHLIST_COLLECTION, id));
-          if (snap.exists()) {
-            const p = Number(snap.data().currentPrice);
-            if (p > 0) { price = p; break; }
-          }
-        }
-        // 2. watchlist 找不到 → fallback Yahoo Finance
-        if (price == null) {
-          price = await fetchYahooPrice(code);
-          if (price != null) {
-            console.info(`[績效] ${code} 市價來自 Yahoo Finance: ${price}`);
-          } else {
-            console.warn(`[績效] ${code} 所有來源均無市價`);
-          }
-        }
-        if (price != null) next[code] = price;
-      }
+      results.forEach(([code, price]) => { if (price != null) next[code] = price; });
       setPrices(next);
       setPricesLoading(false);
     };
@@ -174,12 +168,15 @@ function PerformancePage() {
       return;
     }
     setHistoricalPricesLoading(true);
+    const { start, end } = curveDateRange;
     const load = async () => {
+      const results = await Promise.all(
+        curveCodes.map((code) =>
+          fetchYahooHistoricalPriceMap(code, start, end).then((map) => [code, map])
+        )
+      );
       const next = {};
-      for (const code of curveCodes) {
-        const map = await fetchYahooHistoricalPriceMap(code, curveDateRange.start, curveDateRange.end);
-        if (Object.keys(map).length > 0) next[code] = map;
-      }
+      results.forEach(([code, map]) => { if (Object.keys(map).length > 0) next[code] = map; });
       setHistoricalPricesByCode(next);
       setHistoricalPricesLoading(false);
     };
@@ -314,7 +311,7 @@ function PerformancePage() {
                 label: '帳戶總資產（含市值）',
                 value: showTotalAssets
                   ? fmtNum(dailyNavCurve.length ? totalNetWorthFromCurve : totalNetWorth)
-                  : (pendingCurve ? '載入中…' : '—'),
+                  : '—',
                 style: {},
               },
             ].map((card) => (

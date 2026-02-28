@@ -304,7 +304,7 @@ const saveJournalToCloud = async (entries) => {
             <div className={styles.pnlSummaryCard} style={{ flex: 1, padding: '15px', border: '1px solid #ccc', borderRadius: '5px'}}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>未實現損益</h4>
                 <p style={{ margin: 0, fontSize: '1.5em', ...(positionPricesLoading ? {} : unrealizedColorStyle) }}>
-                    {positionPricesLoading ? '載入中…' : formatPnl(Math.round(totalUnrealizedPnl))}
+                    {positionPricesLoading ? '—' : formatPnl(Math.round(totalUnrealizedPnl))}
                 </p>
             </div>
         </div>
