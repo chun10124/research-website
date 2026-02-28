@@ -10,6 +10,7 @@ import { PNL_COLOR, GOLDEN_BORDER_COLOR, formatQuantity, formatAvgCost, formatPn
 
 // 3. 引入核心計算邏輯
 import { calculatePnlSummary, getStartDate } from '../utils/pnlCalculator';
+import { fetchCurrentPrice } from '../features/StockAnalysis/api/stockApi';
 
 import styles from './TradeJournal.module.css';
 
@@ -36,6 +37,8 @@ function TradeJournal() {
   const [historyFilterRange, setHistoryFilterRange] = useState('ALL'); 
   const [historyFilterStock, setHistoryFilterStock] = useState('');
   const [pnlFilterStock, setPnlFilterStock] = useState(''); // 新增：損益區搜尋狀態
+  const [positionPrices, setPositionPrices] = useState({}); // code -> currentPrice，供未實現損益
+  const [positionPricesLoading, setPositionPricesLoading] = useState(false);
 
   // 1. 數據加載與即時同步 (useEffect 區塊)
   useEffect(() => {
@@ -75,8 +78,8 @@ const saveJournalToCloud = async (entries) => {
         });
         setJournalEntries(sorted);
         
-        // 2. 存儲到 Firestore（寫入排序後結果，與畫面一致）
-        await setDoc(JOURNAL_DOC_REF, { entries: sorted });
+        // 2. 存儲到 Firestore（merge 保留 cashFlows 等欄位）
+        await setDoc(JOURNAL_DOC_REF, { entries: sorted }, { merge: true });
         
         console.log("數據已成功寫入 Firestore。");
         
@@ -131,6 +134,40 @@ const saveJournalToCloud = async (entries) => {
     [journalEntries, pnlFilterRange]
   );
 
+  // 持倉代碼（有淨部位者）用於拉現價
+  const positionCodes = useMemo(
+    () => [...new Set(pnlSummary.byStock.filter((s) => s.netQuantity !== 0).map((s) => s.code))],
+    [pnlSummary.byStock]
+  );
+
+  useEffect(() => {
+    if (positionCodes.length === 0) {
+      setPositionPrices({});
+      setPositionPricesLoading(false);
+      return;
+    }
+    setPositionPricesLoading(true);
+    Promise.all(positionCodes.map((code) => fetchCurrentPrice(code)))
+      .then((results) => {
+        const next = {};
+        positionCodes.forEach((code, i) => {
+          const res = results[i];
+          if (res?.currentPrice != null) next[code] = res.currentPrice;
+        });
+        setPositionPrices(next);
+      })
+      .finally(() => setPositionPricesLoading(false));
+  }, [positionCodes.join(',')]);
+
+  // 總未實現損益（持倉 × (現價 - 成本)）
+  const totalUnrealizedPnl = useMemo(() => {
+    return pnlSummary.byStock.reduce((sum, s) => {
+      if (s.netQuantity === 0) return sum;
+      const price = positionPrices[s.code];
+      if (price == null) return sum;
+      return sum + (price - s.avgCost) * s.netQuantity;
+    }, 0);
+  }, [pnlSummary.byStock, positionPrices]);
 
   // 5. 表單處理 (保持不變)
   const handleInputChange = (e) => {
@@ -207,7 +244,7 @@ const saveJournalToCloud = async (entries) => {
   
   // 7. 渲染 P&L 摘要 (保持不變)
  const renderPnlSummary = () => {
-    const { byStock, totalRealizedPnl, winRate } = pnlSummary;
+    const { byStock, totalRealizedPnl } = pnlSummary;
 
     //  1. 新增過濾邏輯：根據代號或名稱篩選
     const filteredByStock = byStock.filter(item => 
@@ -224,6 +261,7 @@ const saveJournalToCloud = async (entries) => {
     });
 
     const pnlColorStyle = { color: PNL_COLOR(totalRealizedPnl), fontWeight: 'bold' };
+    const unrealizedColorStyle = { color: PNL_COLOR(totalUnrealizedPnl), fontWeight: 'bold' };
     const period = pnlFilterRange === 'ALL' ? '全部記錄' : '篩選期間';
 
     return (
@@ -264,9 +302,9 @@ const saveJournalToCloud = async (entries) => {
                 </p>
             </div>
             <div className={styles.pnlSummaryCard} style={{ flex: 1, padding: '15px', border: '1px solid #ccc', borderRadius: '5px'}}> 
-                <h4 style={{ margin: '0 0 5px 0' }}>交易勝率</h4>
-                <p style={{ margin: 0, fontSize: '1.5em' }}>
-                    {winRate}%
+                <h4 style={{ margin: '0 0 5px 0' }}>未實現損益</h4>
+                <p style={{ margin: 0, fontSize: '1.5em', ...(positionPricesLoading ? {} : unrealizedColorStyle) }}>
+                    {positionPricesLoading ? '載入中…' : formatPnl(Math.round(totalUnrealizedPnl))}
                 </p>
             </div>
         </div>

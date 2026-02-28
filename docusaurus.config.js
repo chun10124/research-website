@@ -101,6 +101,11 @@ const config = {
             position: 'left', // 放在左側
           },
           {
+            to: '/performance',
+            label: '績效',
+            position: 'left',
+          },
+          {
             to: '/AnalysisPage', // 指向您在 src/pages/journal.js 中創建的頁面
             label: '儀表板', // 導航欄上顯示的名稱
             position: 'left', // 放在左側

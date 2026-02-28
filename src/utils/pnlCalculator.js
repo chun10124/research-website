@@ -38,7 +38,8 @@ export const getStartDate = (range) => {
 };
 
 // ========== I. P&L 計算核心函數 ==========
-export const calculatePnlSummary = (entries, filterRange = 'ALL') => {
+/** options: { filterStartTime?: number, filterEndTime?: number } 供自訂區間用 */
+export const calculatePnlSummary = (entries, filterRange = 'ALL', options = {}) => {
     if (!entries || entries.length === 0) {
         return {
             byStock: [],
@@ -160,8 +161,9 @@ export const calculatePnlSummary = (entries, filterRange = 'ALL') => {
         }
     });
 
-    let filterStartTime = null;
-    if (filterRange && filterRange !== 'ALL') {
+    let filterStartTime = options.filterStartTime ?? null;
+    const filterEndTime = options.filterEndTime ?? null;
+    if (!filterStartTime && filterRange && filterRange !== 'ALL') {
         const startDateObj = getStartDate(filterRange);
         if (startDateObj) filterStartTime = startDateObj.getTime();
     }
@@ -184,8 +186,9 @@ export const calculatePnlSummary = (entries, filterRange = 'ALL') => {
         let realizedInPeriod = 0;
 
         s.trades.forEach((t) => {
-            const inPeriod =
-                !filterStartTime || t.closeTime >= filterStartTime;
+            const afterStart = !filterStartTime || t.closeTime >= filterStartTime;
+            const beforeEnd = !filterEndTime || t.closeTime <= filterEndTime;
+            const inPeriod = afterStart && beforeEnd;
 
             if (inPeriod) {
                 realizedInPeriod += t.pnl;

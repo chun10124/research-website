@@ -5,6 +5,210 @@ const PROXY_BASE = "https://stock-proxy.tzuchun11232004.workers.dev/?url=";
 const FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data";
 const TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNCAxNzowNzo1MyIsInVzZXJfaWQiOiJjaHVuMTAxMjQiLCJpcCI6IjYxLjIyOC43Ni4yMDYifQ.mSi9H6Lrus7e_wkaNxlYd6OoFmh79NQoQ7pZajx166s";
 
+const getFinmindPriceUrl = (stockCode, startDate, endDate = null) => {
+  const params = new URLSearchParams({
+    dataset: 'TaiwanStockPrice',
+    data_id: String(stockCode).trim(),
+    start_date: startDate,
+    token: TOKEN,
+  });
+  if (endDate) params.set('end_date', endDate);
+  return `${FINMIND_BASE}?${params.toString()}`;
+};
+
+/** 加權報酬指數區間報酬率 %，供績效頁對標用。startStr/endStr YYYY-MM-DD。失敗回傳 null */
+export const fetchBenchmarkReturn = async (startStr, endStr) => {
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  if (!start || !end) return null;
+  const INDEX_ID = 'IR0001';
+  try {
+    const url = getFinmindPriceUrl(INDEX_ID, start);
+    const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
+    const res = await fetch(fullUrl);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const data = json?.data;
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const byDate = {};
+    (data || []).forEach((row) => {
+      const d = (row.date || row.Date || '').toString().slice(0, 10);
+      if (row.close != null) byDate[d] = Number(row.close);
+    });
+    const dates = Object.keys(byDate).sort();
+    let startPrice = null;
+    let endPrice = null;
+    for (let i = dates.length - 1; i >= 0; i--) {
+      if (dates[i] <= start) { startPrice = byDate[dates[i]]; break; }
+    }
+    if (startPrice == null && dates.length) startPrice = byDate[dates[0]];
+    for (let i = dates.length - 1; i >= 0; i--) {
+      if (dates[i] <= end) { endPrice = byDate[dates[i]]; break; }
+    }
+    if (endPrice == null && dates.length) endPrice = byDate[dates[dates.length - 1]];
+    if (startPrice == null || endPrice == null || startPrice <= 0) return null;
+    return ((endPrice - startPrice) / startPrice) * 100;
+  } catch (e) {
+    console.warn('fetchBenchmarkReturn failed:', e?.message);
+    return null;
+  }
+};
+
+/** Finmind 台股 data_id 用純數字，例如 2330；若傳入 2330.TW 會查不到 */
+function toFinmindStockId(stockCode) {
+  const s = String(stockCode || '').trim();
+  return s.replace(/\.(TW|tw)$/, '') || s;
+}
+
+/** 某檔股票歷史收盤價 { dateStr: price }，供績效頁每日淨值含未實現用 */
+export const fetchHistoricalPriceMap = async (stockCode, startStr, endStr) => {
+  const code = toFinmindStockId(String(stockCode || '').trim());
+  if (!code) return {};
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  if (!start) return {};
+  try {
+    const url = getFinmindPriceUrl(code, start, end || undefined);
+    const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
+    const res = await fetch(fullUrl);
+    if (!res.ok) return {};
+    const json = await res.json();
+    const data = json?.data;
+    if (!Array.isArray(data)) return {};
+    const map = {};
+    data.forEach((row) => {
+      const d = (row.date || row.Date || '').toString().slice(0, 10);
+      const c = Number(row.close);
+      if (d && c > 0) map[d] = c;
+    });
+    return map;
+  } catch (e) {
+    console.warn(`fetchHistoricalPriceMap(${stockCode}) failed:`, e?.message);
+    return {};
+  }
+};
+
+/** 台股代碼去掉 .TW / .TWO 後綴，回傳純數字/代碼 */
+function toYahooBare(stockCode) {
+  return String(stockCode || '').trim().replace(/\.(TW|tw|TWO|two)$/i, '');
+}
+
+/** 用指定 symbol（如 2330.TW、1234.TWO）呼叫 Yahoo chart API，回傳 JSON 或 null */
+async function fetchYahooChart(symbol, range = '5d') {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`;
+  const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
+  const res = await fetch(fullUrl);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/**
+ * 從 Yahoo Finance 抓最新收盤價（透過 proxy）。
+ * 先試 .TW（上市/上櫃），無資料再試 .TWO（興櫃）。
+ */
+export const fetchYahooPrice = async (stockCode) => {
+  const bare = toYahooBare(stockCode);
+  if (!bare) return null;
+  for (const suffix of ['.TW', '.TWO']) {
+    const symbol = `${bare}${suffix}`;
+    try {
+      const json = await fetchYahooChart(symbol, '5d');
+      const price = Number(json?.chart?.result?.[0]?.meta?.regularMarketPrice);
+      if (price > 0) return price;
+    } catch (e) {
+      console.warn(`fetchYahooPrice(${symbol}) failed:`, e?.message);
+    }
+  }
+  return null;
+};
+
+/** 依起迄日數選 Yahoo chart range 參數 */
+function yahooRangeForDays(days) {
+  if (days <= 0) return '1mo';
+  if (days <= 35) return '1mo';
+  if (days <= 95) return '3mo';
+  if (days <= 190) return '6mo';
+  if (days <= 380) return '1y';
+  if (days <= 760) return '2y';
+  if (days <= 1900) return '5y';
+  return 'max';
+}
+
+/** 把 Yahoo chart result 解析成 { [dateStr]: price }，只保留 [start, end] 區間 */
+function parseChartToPriceMap(json, startStr, endStr) {
+  const result = json?.chart?.result?.[0];
+  if (!result) return {};
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  const timestamps = result.timestamp || [];
+  const quote = result.indicators?.quote?.[0];
+  const closes = quote?.close || result.indicators?.adjclose?.[0]?.adjclose || [];
+  const map = {};
+  for (let i = 0; i < timestamps.length; i++) {
+    const d = new Date(timestamps[i] * 1000);
+    const dateStr = d.toISOString().slice(0, 10);
+    if (dateStr < start) continue;
+    if (end && dateStr > end) break;
+    const c = Number(closes[i]);
+    if (c > 0) map[dateStr] = c;
+  }
+  return map;
+}
+
+/**
+ * 從 Yahoo Finance 抓歷史收盤價（透過 proxy），回傳 { [dateStr]: price }。
+ * 先試 .TW（上市/上櫃），無資料再試 .TWO（興櫃）。績效頁每日淨值用。
+ */
+export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr) => {
+  const bare = toYahooBare(stockCode);
+  if (!bare) return {};
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  if (!start) return {};
+  const startDay = new Date(start).getTime() / (24 * 60 * 60 * 1000);
+  const endDay = end ? new Date(end).getTime() / (24 * 60 * 60 * 1000) : startDay + 365;
+  const days = Math.ceil(endDay - startDay) + 1;
+  const range = yahooRangeForDays(days);
+
+  for (const suffix of ['.TW', '.TWO']) {
+    const symbol = `${bare}${suffix}`;
+    try {
+      const json = await fetchYahooChart(symbol, range);
+      if (!json) continue;
+      const map = parseChartToPriceMap(json, start, end);
+      if (Object.keys(map).length > 0) return map;
+    } catch (e) {
+      console.warn(`fetchYahooHistoricalPriceMap(${symbol}) failed:`, e?.message);
+    }
+  }
+  return {};
+};
+
+/** 僅抓該股票最新收盤價，供績效頁未實現損益用 */
+export const fetchCurrentPrice = async (stockCode) => {
+  const code = String(stockCode || '').trim();
+  if (!code || code === 'NaN' || code === 'undefined') return null;
+  const finmindId = toFinmindStockId(code);
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  const start = d.toISOString().split('T')[0];
+  try {
+    const url = getFinmindPriceUrl(finmindId, start);
+    const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
+    const res = await fetch(fullUrl);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const data = json?.data;
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const latest = data[data.length - 1];
+    const close = Number(latest?.close);
+    return close > 0 ? { currentPrice: close } : null;
+  } catch (e) {
+    console.warn(`fetchCurrentPrice(${code}) failed:`, e?.message);
+    return null;
+  }
+};
+
 const safeFetch = async (targetUrl) => {
     try {
         if (!targetUrl) return null;
