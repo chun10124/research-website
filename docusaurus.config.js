@@ -120,6 +120,11 @@ const config = {
             label: '心智圖', // 導航欄上顯示的名稱
             position: 'left', // 放在左側
           },
+          {
+            to: '/calendar',
+            label: '投資日曆',
+            position: 'left',
+          },
         ],
       },
       footer: {

@@ -1,0 +1,553 @@
+/* 投資人日曆 - 簡約風格 */
+
+.wrapper {
+  display: flex;
+  min-height: 80vh;
+  padding: 1rem;
+  gap: 1.5rem;
+}
+
+/* ── 側邊欄：標籤篩選 ───────────────────────────── */
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  padding: 1rem;
+  border-right: 1px solid var(--ifm-toc-border-color);
+}
+
+.sidebarTitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ifm-color-emphasis-600);
+  margin-bottom: 0.75rem;
+}
+
+.tagList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+}
+
+.tagList li {
+  margin-bottom: 0.35rem;
+}
+
+.tagRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.tagRow .tagLabel {
+  flex: 0 0 auto;
+}
+
+.tagNameClickable {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tagNameClickable:hover {
+  color: var(--ifm-color-primary);
+}
+
+.tagActionBtn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ifm-color-emphasis-500);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.tagActionBtn:hover {
+  color: var(--ifm-color-primary);
+}
+
+.tagEditRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.tagEditInput {
+  flex: 1;
+  min-width: 80px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 4px;
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+}
+
+.tagColorInput {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--ifm-background-color);
+}
+
+.tagFormBtn,
+.tagFormBtnCancel {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.tagFormBtn {
+  background: var(--ifm-color-primary);
+  color: var(--ifm-background-color);
+  border-color: var(--ifm-color-primary);
+}
+
+.tagFormBtn:hover {
+  filter: brightness(1.05);
+}
+
+.tagFormBtnCancel {
+  background: transparent;
+  color: var(--ifm-color-emphasis-600);
+  border-color: var(--ifm-toc-border-color);
+}
+
+.tagFormBtnCancel:hover {
+  color: var(--ifm-font-color-base);
+}
+
+.addTagBtn {
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--ifm-toc-border-color);
+  background: transparent;
+  color: var(--ifm-color-emphasis-600);
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 0.75rem;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.addTagBtn:hover {
+  border-color: var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+}
+
+.tagLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: var(--ifm-font-color-base);
+}
+
+.tagLabel input {
+  margin: 0;
+  accent-color: #22c55e;
+}
+
+.tagDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.noTags {
+  font-size: 0.8rem;
+  color: var(--ifm-color-emphasis-600);
+  margin: 0.5rem 0;
+}
+
+.addEventBtn {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.addEventBtn:hover {
+  background: var(--ifm-color-primary);
+  color: var(--ifm-background-color);
+}
+
+/* ── 主區：頂部與日曆格 ───────────────────────── */
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.rangeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.navBtn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ifm-toc-border-color);
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  border-radius: 6px;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.navBtn:hover {
+  border-color: var(--ifm-color-primary);
+  background: var(--ifm-color-primary-lightest);
+}
+
+[data-theme='dark'] .navBtn:hover {
+  background: rgba(212, 175, 55, 0.15);
+}
+
+.rangeTitle {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+  min-width: 140px;
+  text-align: center;
+}
+
+.viewButtons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.viewBtn,
+.viewBtnActive {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--ifm-toc-border-color);
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.viewBtn:hover {
+  border-color: var(--ifm-color-primary-lighter);
+  color: var(--ifm-color-primary);
+}
+
+.viewBtnActive {
+  background: var(--ifm-color-primary);
+  border-color: var(--ifm-color-primary);
+  color: var(--ifm-background-color);
+}
+
+/* ── 日曆格容器與切換動畫 ─────────────────────── */
+.gridWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.gridWrap.transitioning {
+  opacity: 0.6;
+  transform: translateY(4px);
+}
+
+.weekdayRow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  margin-bottom: 4px;
+}
+
+.weekdayCell {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ifm-color-emphasis-600);
+  text-align: center;
+  padding: 0.35rem 0;
+}
+
+/* 月視圖：7 欄網格 */
+.gridWrap[data-view='month'] .grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  flex: 1;
+  min-height: 320px;
+}
+
+/* 季視圖：3 欄 */
+.gridWrap[data-view='quarter'] .grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  flex: 1;
+}
+
+/* 半年視圖：3x2 或 6 欄 */
+.gridWrap[data-view='half'] .grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  flex: 1;
+}
+
+/* 年視圖：4x3 */
+.gridWrap[data-view='year'] .grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  flex: 1;
+}
+
+/* ── 單格（月視圖日期格）───────────────────────── */
+.cell {
+  min-height: 80px;
+  padding: 0.35rem;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 4px;
+  background: var(--ifm-background-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.cellPad {
+  min-height: 80px;
+  background: var(--ifm-color-emphasis-100);
+  border-radius: 4px;
+}
+
+[data-theme='dark'] .cellPad {
+  background: var(--ifm-color-emphasis-200);
+}
+
+.cellDay {
+  font-size: 0.75rem;
+  color: var(--ifm-color-emphasis-600);
+  margin-bottom: 0.25rem;
+}
+
+.cellToday {
+  border-color: var(--ifm-color-primary);
+  border-width: 2px;
+}
+
+/* ── 月/季/半年/年區塊 ─────────────────────────── */
+.monthBlock {
+  padding: 0.75rem;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 6px;
+  background: var(--ifm-background-color);
+  min-height: 120px;
+}
+
+.monthBlockLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--ifm-toc-border-color);
+}
+
+/* ── 事件列表 ─────────────────────────────────── */
+.eventList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.eventItem {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ifm-font-color-base);
+  cursor: pointer;
+}
+
+.eventItem:hover {
+  color: var(--ifm-color-primary);
+}
+
+.eventTag {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.eventDate {
+  color: var(--ifm-color-emphasis-600);
+  margin-right: 0.25rem;
+}
+
+/* ── 新增事件彈窗 ───────────────────────────────── */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalCard {
+  background: var(--ifm-background-color);
+  border-radius: 8px;
+  padding: 1.25rem;
+  min-width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.modalTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.modalLabel {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 0.5rem;
+}
+
+.modalLabel + .modalLabel,
+.modalLabel + .modalTagChips {
+  margin-top: 0.75rem;
+}
+
+.modalInput {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 6px;
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  margin-top: 0.25rem;
+}
+
+.modalFrequencyRow,
+.modalTagChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.modalTagChip,
+.modalTagChipActive {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--ifm-toc-border-color);
+  background: transparent;
+  color: var(--ifm-font-color-base);
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.modalTagChip:hover,
+.modalTagChipActive:hover {
+  border-color: var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+}
+
+.modalTagChipActive {
+  border-width: 2px;
+}
+
+.modalTagHint {
+  font-size: 0.8rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ifm-toc-border-color);
+}
+
+.modalBtnCancel,
+.modalBtnSubmit {
+  padding: 0.45rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.modalBtnCancel {
+  border: 1px solid var(--ifm-toc-border-color);
+  background: transparent;
+  color: var(--ifm-font-color-base);
+}
+
+.modalBtnCancel:hover {
+  background: var(--ifm-color-emphasis-100);
+}
+
+.modalBtnSubmit {
+  border: none;
+  background: var(--ifm-color-primary);
+  color: var(--ifm-background-color);
+}
+
+.modalBtnSubmit:hover {
+  filter: brightness(1.05);
+}
