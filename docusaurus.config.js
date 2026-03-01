@@ -1,4 +1,7 @@
 // @ts-check
+// 載入 .env，讓 REACT_APP_* 在 build 時可被注入前端
+import 'dotenv/config';
+
 // `@type` JSDoc annotations allow editor autocompletion and type checking
 // (when paired with `@ts-check`).
 // There are various equivalent ways to declare your Docusaurus config.
@@ -13,6 +16,11 @@ const config = {
   title: 'TzuChun-Research',
   tagline: '研究網站',
   favicon: 'img/author.jpeg',
+
+  // 傳給前端的變數（日曆搜尋重大事件用 Gemini API key）
+  customFields: {
+    perplexityApiKey: process.env.REACT_APP_PERPLEXITY_API_KEY || '',
+  },
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
@@ -90,14 +98,8 @@ const config = {
         },
         items: [
           {
-            type: 'docSidebar',
-            sidebarId: 'tutorialSidebar',
-            position: 'left',
-            label: '資料庫',
-          },
-          {
             to: '/journal', // 指向您在 src/pages/journal.js 中創建的頁面
-            label: '交易日誌', // 導航欄上顯示的名稱
+            label: '交易',
             position: 'left', // 放在左側
           },
           {
@@ -122,7 +124,7 @@ const config = {
           },
           {
             to: '/calendar',
-            label: '投資日曆',
+            label: '日曆',
             position: 'left',
           },
         ],

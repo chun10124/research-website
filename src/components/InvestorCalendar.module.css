@@ -1,553 +1,544 @@
-/* 投資人日曆 - 簡約風格 */
-
-.wrapper {
-  display: flex;
-  min-height: 80vh;
-  padding: 1rem;
-  gap: 1.5rem;
+/* --- Design tokens --- */
+.root {
+  --cal-bg: #fff;
+  --cal-border: #e5e7eb;
+  --cal-sidebar-bg: #f8fafc;
+  --cal-sidebar-border: #e2e8f0;
+  --cal-text: #1e293b;
+  --cal-text-muted: #64748b;
+  --cal-input-border: #cbd5e1;
+  --cal-input-focus: #3b82f6;
+  --cal-primary: #2563eb;
+  --cal-primary-hover: #1d4ed8;
+  --cal-danger: #dc2626;
+  --cal-danger-hover: #b91c1c;
+  --cal-overlay: rgba(15, 23, 42, 0.4);
+  --cal-radius: 6px;
+  --cal-radius-lg: 8px;
+  --cal-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+  --cal-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.06);
 }
 
-/* ── 側邊欄：標籤篩選 ───────────────────────────── */
+/* --- Layout --- */
+.root {
+  display: flex;
+  height: 700px;
+  gap: 0;
+  background: var(--cal-bg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: var(--cal-text);
+}
+
+/* --- Sidebar --- */
 .sidebar {
-  width: 220px;
+  width: 180px;
   flex-shrink: 0;
-  padding: 1rem;
-  border-right: 1px solid var(--ifm-toc-border-color);
+  padding: 16px 12px;
+  background: var(--cal-sidebar-bg);
+  border-right: 1px solid var(--cal-sidebar-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.eventSearchBtn {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cal-text);
+  background: rgba(248, 250, 252, 0.8);
+  border: 1px solid var(--cal-sidebar-border);
+  border-radius: var(--cal-radius);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.eventSearchBtn:hover {
+  background: rgba(241, 245, 249, 0.95);
+  border-color: #cbd5e1;
 }
 
 .sidebarTitle {
-  font-size: 0.75rem;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ifm-color-emphasis-600);
-  margin-bottom: 0.75rem;
-}
-
-.tagList {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 1rem 0;
-}
-
-.tagList li {
-  margin-bottom: 0.35rem;
+  letter-spacing: 0.04em;
+  color: var(--cal-text-muted);
+  margin-bottom: 10px;
+  padding: 0 2px;
 }
 
 .tagRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.25rem;
+  gap: 8px;
+  font-size: 13px;
+  padding: 1px 6px;
+  border-radius: var(--cal-radius);
+  transition: background 0.12s ease;
 }
 
-.tagRow .tagLabel {
-  flex: 0 0 auto;
-}
-
-.tagNameClickable {
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.tagNameClickable:hover {
-  color: var(--ifm-color-primary);
-}
-
-.tagActionBtn {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--ifm-color-emphasis-500);
-  cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-  flex-shrink: 0;
-  transition: color 0.2s;
-}
-
-.tagActionBtn:hover {
-  color: var(--ifm-color-primary);
-}
-
-.tagEditRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.5rem;
-}
-
-.tagEditInput {
-  flex: 1;
-  min-width: 80px;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.8rem;
-  border: 1px solid var(--ifm-toc-border-color);
-  border-radius: 4px;
-  background: var(--ifm-background-color);
-  color: var(--ifm-font-color-base);
-}
-
-.tagColorInput {
-  width: 28px;
-  height: 28px;
-  padding: 2px;
-  border: 1px solid var(--ifm-toc-border-color);
-  border-radius: 4px;
-  cursor: pointer;
-  background: var(--ifm-background-color);
-}
-
-.tagFormBtn,
-.tagFormBtnCancel {
-  padding: 0.3rem 0.5rem;
-  font-size: 0.75rem;
-  border-radius: 4px;
-  cursor: pointer;
-  border: 1px solid transparent;
-}
-
-.tagFormBtn {
-  background: var(--ifm-color-primary);
-  color: var(--ifm-background-color);
-  border-color: var(--ifm-color-primary);
-}
-
-.tagFormBtn:hover {
-  filter: brightness(1.05);
-}
-
-.tagFormBtnCancel {
-  background: transparent;
-  color: var(--ifm-color-emphasis-600);
-  border-color: var(--ifm-toc-border-color);
-}
-
-.tagFormBtnCancel:hover {
-  color: var(--ifm-font-color-base);
-}
-
-.addTagBtn {
-  width: 100%;
-  padding: 0.4rem 0.75rem;
-  font-size: 0.8rem;
-  border: 1px solid var(--ifm-toc-border-color);
-  background: transparent;
-  color: var(--ifm-color-emphasis-600);
-  border-radius: 6px;
-  cursor: pointer;
-  margin-bottom: 0.75rem;
-  transition: border-color 0.2s, color 0.2s;
-}
-
-.addTagBtn:hover {
-  border-color: var(--ifm-color-primary);
-  color: var(--ifm-color-primary);
+.tagRow:hover {
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .tagLabel {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
+  gap: 8px;
   cursor: pointer;
-  color: var(--ifm-font-color-base);
+  min-height: 20px;
 }
 
-.tagLabel input {
-  margin: 0;
-  accent-color: #22c55e;
+.root input[type='checkbox'] {
+  accent-color: #86efac;
 }
 
 .tagDot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: 2px;
   flex-shrink: 0;
 }
 
-.noTags {
-  font-size: 0.8rem;
-  color: var(--ifm-color-emphasis-600);
-  margin: 0.5rem 0;
-}
-
-.addEventBtn {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.8rem;
-  border: 1px solid var(--ifm-color-primary);
-  color: var(--ifm-color-primary);
+.tagEditBtn {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--cal-text-muted);
   background: transparent;
-  border-radius: 6px;
+  border: none;
+  border-radius: var(--cal-radius);
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  opacity: 0.7;
+  transition: opacity 0.12s ease;
 }
 
-.addEventBtn:hover {
-  background: var(--ifm-color-primary);
-  color: var(--ifm-background-color);
+.tagEditBtn:hover {
+  opacity: 1;
+  color: var(--cal-text);
+  background: rgba(0, 0, 0, 0.06);
 }
 
-/* ── 主區：頂部與日曆格 ───────────────────────── */
-.main {
+/* --- Calendar area --- */
+.calendarWrap {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
-.header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+/* 僅月頁面：左側與表格間距、右側留白 */
+.root[data-view='month'] {
+  gap: 10px;
+}
+.root[data-view='month'] .calendarWrap {
+  padding-right: 10px;
 }
 
-.rangeRow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.navBtn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--ifm-toc-border-color);
-  background: var(--ifm-background-color);
-  color: var(--ifm-font-color-base);
-  border-radius: 6px;
-  font-size: 1.25rem;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-}
-
-.navBtn:hover {
-  border-color: var(--ifm-color-primary);
-  background: var(--ifm-color-primary-lightest);
-}
-
-[data-theme='dark'] .navBtn:hover {
-  background: rgba(212, 175, 55, 0.15);
-}
-
-.rangeTitle {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 0;
-  min-width: 140px;
-  text-align: center;
-}
-
-.viewButtons {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.viewBtn,
-.viewBtnActive {
-  padding: 0.4rem 0.75rem;
-  font-size: 0.8rem;
-  border: 1px solid var(--ifm-toc-border-color);
-  background: var(--ifm-background-color);
-  color: var(--ifm-font-color-base);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.viewBtn:hover {
-  border-color: var(--ifm-color-primary-lighter);
-  color: var(--ifm-color-primary);
-}
-
-.viewBtnActive {
-  background: var(--ifm-color-primary);
-  border-color: var(--ifm-color-primary);
-  color: var(--ifm-background-color);
-}
-
-/* ── 日曆格容器與切換動畫 ─────────────────────── */
-.gridWrap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-
-.gridWrap.transitioning {
-  opacity: 0.6;
-  transform: translateY(4px);
-}
-
-.weekdayRow {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-  margin-bottom: 4px;
-}
-
-.weekdayCell {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--ifm-color-emphasis-600);
-  text-align: center;
-  padding: 0.35rem 0;
-}
-
-/* 月視圖：7 欄網格 */
-.gridWrap[data-view='month'] .grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-  flex: 1;
-  min-height: 320px;
-}
-
-/* 季視圖：3 欄 */
-.gridWrap[data-view='quarter'] .grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  flex: 1;
-}
-
-/* 半年視圖：3x2 或 6 欄 */
-.gridWrap[data-view='half'] .grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  flex: 1;
-}
-
-/* 年視圖：4x3 */
-.gridWrap[data-view='year'] .grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.75rem;
-  flex: 1;
-}
-
-/* ── 單格（月視圖日期格）───────────────────────── */
-.cell {
-  min-height: 80px;
-  padding: 0.35rem;
-  border: 1px solid var(--ifm-toc-border-color);
-  border-radius: 4px;
-  background: var(--ifm-background-color);
-  display: flex;
-  flex-direction: column;
-}
-
-.cellPad {
-  min-height: 80px;
-  background: var(--ifm-color-emphasis-100);
-  border-radius: 4px;
-}
-
-[data-theme='dark'] .cellPad {
-  background: var(--ifm-color-emphasis-200);
-}
-
-.cellDay {
-  font-size: 0.75rem;
-  color: var(--ifm-color-emphasis-600);
-  margin-bottom: 0.25rem;
-}
-
-.cellToday {
-  border-color: var(--ifm-color-primary);
-  border-width: 2px;
-}
-
-/* ── 月/季/半年/年區塊 ─────────────────────────── */
-.monthBlock {
-  padding: 0.75rem;
-  border: 1px solid var(--ifm-toc-border-color);
-  border-radius: 6px;
-  background: var(--ifm-background-color);
-  min-height: 120px;
-}
-
-.monthBlockLabel {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--ifm-color-emphasis-700);
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid var(--ifm-toc-border-color);
-}
-
-/* ── 事件列表 ─────────────────────────────────── */
-.eventList {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  font-size: 0.75rem;
-}
-
-.eventItem {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ifm-font-color-base);
-  cursor: pointer;
-}
-
-.eventItem:hover {
-  color: var(--ifm-color-primary);
-}
-
-.eventTag {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.eventDate {
-  color: var(--ifm-color-emphasis-600);
-  margin-right: 0.25rem;
-}
-
-/* ── 新增事件彈窗 ───────────────────────────────── */
-.modalOverlay {
+/* --- Modals --- */
+.overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--cal-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 10000;
 }
 
-.modalCard {
-  background: var(--ifm-background-color);
-  border-radius: 8px;
-  padding: 1.25rem;
-  min-width: 320px;
+.modal {
+  background: rgba(255, 255, 255, 0.72);
+  padding: 24px;
+  border-radius: var(--cal-radius-lg);
+  min-width: 360px;
   max-width: 90vw;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  backdrop-filter: saturate(130%) blur(10px);
 }
 
 .modalTitle {
-  font-size: 1rem;
+  margin: 0 0 20px;
+  font-size: 17px;
   font-weight: 600;
-  margin-bottom: 1rem;
+  color: var(--cal-text);
+  letter-spacing: -0.01em;
 }
 
-.modalLabel {
+.formGroup {
+  margin-bottom: 16px;
+}
+
+.formGroup:last-of-type {
+  margin-bottom: 0;
+}
+
+.formLabel {
   display: block;
-  font-size: 0.8rem;
-  color: var(--ifm-color-emphasis-700);
-  margin-bottom: 0.5rem;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cal-text);
 }
 
-.modalLabel + .modalLabel,
-.modalLabel + .modalTagChips {
-  margin-top: 0.75rem;
-}
-
-.modalInput {
+.input {
   width: 100%;
-  padding: 0.5rem 0.6rem;
-  font-size: 0.9rem;
-  border: 1px solid var(--ifm-toc-border-color);
-  border-radius: 6px;
-  background: var(--ifm-background-color);
-  color: var(--ifm-font-color-base);
-  margin-top: 0.25rem;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--cal-text);
+  background: var(--cal-bg);
+  border: 1px solid var(--cal-input-border);
+  border-radius: var(--cal-radius);
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.modalFrequencyRow,
-.modalTagChips {
+.input:focus {
+  outline: none;
+  border-color: var(--cal-input-focus);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.input::placeholder {
+  color: #94a3b8;
+}
+
+.checkboxRow {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.35rem;
-}
-
-.modalTagChip,
-.modalTagChipActive {
-  padding: 0.3rem 0.6rem;
-  font-size: 0.8rem;
-  border-radius: 6px;
-  border: 1px solid var(--ifm-toc-border-color);
-  background: transparent;
-  color: var(--ifm-font-color-base);
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
-}
-
-.modalTagChip:hover,
-.modalTagChipActive:hover {
-  border-color: var(--ifm-color-primary);
-  color: var(--ifm-color-primary);
-}
-
-.modalTagChipActive {
-  border-width: 2px;
-}
-
-.modalTagHint {
-  font-size: 0.8rem;
-  color: var(--ifm-color-emphasis-600);
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--cal-text);
+  padding: 4px 0;
 }
 
 .modalActions {
   display: flex;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--cal-border);
   justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--ifm-toc-border-color);
 }
 
-.modalBtnCancel,
-.modalBtnSubmit {
-  padding: 0.45rem 1rem;
-  font-size: 0.875rem;
-  border-radius: 6px;
+.btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--cal-radius);
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  backdrop-filter: saturate(120%) blur(6px);
 }
 
-.modalBtnCancel {
-  border: 1px solid var(--ifm-toc-border-color);
-  background: transparent;
-  color: var(--ifm-font-color-base);
+.btnSecondary {
+  background: rgba(248, 250, 252, 0.55);
+  color: #475569;
+  border-color: rgba(226, 232, 240, 0.75);
 }
 
-.modalBtnCancel:hover {
-  background: var(--ifm-color-emphasis-100);
+.btnSecondary:hover {
+  background: rgba(241, 245, 249, 0.72);
+  border-color: rgba(203, 213, 225, 0.95);
 }
 
-.modalBtnSubmit {
+.btnPrimary {
+  background: rgba(226, 232, 240, 0.62);
+  color: #334155;
+  border-color: rgba(203, 213, 225, 0.9);
+}
+
+.btnPrimary:hover {
+  background: rgba(219, 227, 236, 0.82);
+  border-color: rgba(185, 197, 212, 0.95);
+}
+
+.btnDanger {
+  background: rgba(241, 245, 249, 0.58);
+  color: #475569;
+  border-color: rgba(219, 226, 234, 0.85);
+  margin-right: auto;
+}
+
+.btnDanger:hover {
+  background: rgba(232, 238, 245, 0.78);
+  border-color: rgba(199, 210, 225, 0.95);
+  color: #334155;
+}
+
+/* --- Tag edit modal (smaller) --- */
+.modalSmall {
+  min-width: 280px;
+  padding: 20px;
+}
+
+.modalSmall .modalTitle {
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+
+/* --- Event search modal --- */
+.searchResultList {
+  max-height: 280px;
+  overflow-y: auto;
+  margin-top: 12px;
+  margin-bottom: 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--cal-border);
+}
+
+.searchResultRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: var(--cal-radius);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.searchResultRow:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.searchResultRow input[type='checkbox'] {
+  flex-shrink: 0;
+}
+
+.searchResultTitle {
+  flex: 1;
+  color: var(--cal-text);
+}
+
+.searchResultDate {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--cal-text-muted);
+}
+
+.searchHint {
+  font-size: 12px;
+  color: var(--cal-text-muted);
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.searchHint a {
+  color: var(--cal-primary);
+}
+
+.searchError {
+  font-size: 13px;
+  color: var(--cal-danger);
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(220, 38, 38, 0.08);
+  border-radius: var(--cal-radius);
+}
+
+.colorSwatch {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--cal-radius);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.12s ease;
+}
+
+.colorSwatch:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.colorSwatchActive {
+  border-color: var(--cal-text);
+  box-shadow: 0 0 0 1px var(--cal-text);
+}
+
+.colorRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.colorPicker {
+  width: 36px;
+  height: 28px;
   border: none;
-  background: var(--ifm-color-primary);
-  color: var(--ifm-background-color);
+  border-radius: var(--cal-radius);
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
 }
 
-.modalBtnSubmit:hover {
-  filter: brightness(1.05);
+/* --- React Big Calendar overrides --- */
+.root :global(.rbc-toolbar) {
+  padding: 4px 0 6px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+/* 季度、半年頁面：橫幅與下方背景同色（灰） */
+.root[data-view='quarter'] :global(.rbc-toolbar),
+.root[data-view='halfYear'] :global(.rbc-toolbar) {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--cal-radius-lg);
+}
+
+.root :global(.rbc-toolbar button) {
+  font-size: 12px;
+  padding: 4px 10px;
+  color: var(--cal-text);
+  background: var(--cal-sidebar-bg);
+  border: 1px solid var(--cal-border);
+  border-radius: var(--cal-radius);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.root :global(.rbc-toolbar button:hover) {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
+.root :global(.rbc-btn-group) {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.root :global(.rbc-btn-group:first-child) {
+  margin-left: 6px;
+}
+
+.root :global(.rbc-btn-group > button:first-child:not(:last-child)),
+.root :global(.rbc-btn-group > button:last-child:not(:first-child)),
+.root :global(.rbc-btn-group > button:not(:first-child):not(:last-child)) {
+  border-radius: var(--cal-radius);
+}
+
+.root :global(.rbc-toolbar-label) {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cal-text);
+}
+
+.root :global(.rbc-header) {
+  padding: 5px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cal-text-muted);
+  border-bottom: 1px solid var(--cal-border);
+}
+
+.root :global(.rbc-month-view) {
+  border: 1px solid var(--cal-border);
+  border-radius: var(--cal-radius-lg);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto repeat(5, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.root :global(.rbc-month-row) {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.root :global(.rbc-row-bg) {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.root :global(.rbc-day-bg) {
+  flex: 1 1 0;
+  min-width: 0;
+  border-left: 1px solid var(--cal-border);
+  overflow: hidden;
+}
+
+.root :global(.rbc-row-segment) {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.root :global(.rbc-off-range-bg) {
+  background: var(--cal-bg);
+}
+
+.root :global(.rbc-today) {
+  background: transparent;
+}
+
+.root :global(.rbc-date-cell) {
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--cal-text-muted);
+  text-align: right;
+}
+
+.root :global(.rbc-date-cell.rbc-now) {
+  font-weight: 600;
+}
+
+.root :global(.rbc-date-cell.rbc-now .rbc-button-link) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--cal-primary);
+  color: #fff;
+  line-height: 1;
+}
+
+.root :global(.rbc-event) {
+  font-size: 11px !important;
+  padding: 2px 6px !important;
+  line-height: 1.35 !important;
+  min-height: 18px !important;
+  max-width: 100% !important;
+  border: none !important;
+  border-radius: 4px !important;
+  transition: box-shadow 0.12s ease, background-color 0.12s ease;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+}
+
+.root :global(.rbc-event:hover) {
+  box-shadow: 0 0 0 1px rgba(107, 114, 128, 0.28), 0 4px 10px rgba(107, 114, 128, 0.45) !important;
+}
+
+.root :global(.rbc-event-content) {
+  display: block !important;
+  font-size: inherit !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.root :global(.rbc-event-label) {
+  font-size: 10px !important;
+}
+
+.root .modalInput::placeholder {
+  color: #94a3b8;
 }

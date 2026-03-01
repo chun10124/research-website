@@ -4,13 +4,15 @@ import BrowserOnly from '@docusaurus/BrowserOnly';
 
 export default function CalendarPageRoute() {
   return (
-    <Layout title="投資日曆" description="投資事件日曆，可自訂標籤與多維度視圖">
-      <BrowserOnly fallback={<div style={{ padding: '2rem', textAlign: 'center' }}>載入日曆中...</div>}>
-        {() => {
-          const InvestorCalendar = require('../components/InvestorCalendar.jsx').default;
-          return <InvestorCalendar />;
-        }}
-      </BrowserOnly>
+    <Layout title="日曆" description="事件日曆">
+      <main style={{ padding: 0 }}>
+        <BrowserOnly fallback={<div style={{ color: '#999' }}>載入日曆中...</div>}>
+          {() => {
+            const InvestorCalendar = require('@site/src/components/InvestorCalendar').default;
+            return <InvestorCalendar />;
+          }}
+        </BrowserOnly>
+      </main>
     </Layout>
   );
 }

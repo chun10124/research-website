@@ -18,11 +18,22 @@
   "dependencies": {
     "@docusaurus/core": "3.9.2",
     "@docusaurus/preset-classic": "3.9.2",
+    "@fullcalendar/core": "^6.1.20",
+    "@fullcalendar/daygrid": "^6.1.20",
+    "@fullcalendar/interaction": "^6.1.20",
+    "@fullcalendar/list": "^6.1.20",
+    "@fullcalendar/multimonth": "^6.1.20",
+    "@fullcalendar/react": "^6.1.20",
+    "@fullcalendar/timegrid": "^6.1.20",
     "@mdx-js/react": "^3.0.0",
+    "@syncfusion/ej2-base": "^32.2.6",
+    "@syncfusion/ej2-react-schedule": "^32.2.3",
     "clsx": "^2.0.0",
+    "date-fns": "^4.1.0",
     "firebase": "^12.6.0",
     "prism-react-renderer": "^2.3.0",
     "react": "^19.0.0",
+    "react-big-calendar": "^1.19.4",
     "react-dom": "^19.0.0",
     "recharts": "^3.7.0",
     "uuid": "^13.0.0"
@@ -30,6 +41,7 @@
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.9.2",
     "@docusaurus/types": "3.9.2",
+    "dotenv": "^16.6.1",
     "gh-pages": "^6.3.0"
   },
   "browserslist": {
