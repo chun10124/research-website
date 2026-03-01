@@ -17,11 +17,6 @@ const config = {
   tagline: '研究網站',
   favicon: 'img/author.jpeg',
 
-  // 傳給前端的變數（日曆搜尋重大事件用 Gemini API key）
-  customFields: {
-    perplexityApiKey: process.env.REACT_APP_PERPLEXITY_API_KEY || '',
-  },
-
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
     v4: true, // Improve compatibility with the upcoming Docusaurus v4

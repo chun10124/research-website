@@ -1,5 +1,4 @@
 import React, { useState, useMemo, createContext, useContext, useEffect, useRef } from 'react';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, differenceInDays, isSameDay, startOfDay, addDays } from 'date-fns';
 import zhTW from 'date-fns/locale/zh-TW';
@@ -87,9 +86,13 @@ function eventStyleGetter(typeColors) {
   };
 }
 
+const LS_KEY = 'pplx_api_key';
+const getStoredKey = () => (typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) || '' : '');
+
 export default function InvestorCalendar() {
-  const { siteConfig } = useDocusaurusContext();
-  const perplexityApiKey = siteConfig?.customFields?.perplexityApiKey ?? '';
+  const [perplexityApiKey, setPerplexityApiKey] = useState(getStoredKey);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [tags, setTags] = useState(INITIAL_TAGS);
   const [editingTag, setEditingTag] = useState(null);
   const [tagForm, setTagForm] = useState({ label: '', color: '#26A69A' });
@@ -532,12 +535,37 @@ export default function InvestorCalendar() {
         <div className={styles.overlay} onClick={() => setEventSearchOpen(false)}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h3 className={styles.modalTitle}>搜尋重大事件</h3>
-            {!hasEventSearchApiKey(perplexityApiKey) && (
-              <p className={styles.searchHint}>
-                設定環境變數 REACT_APP_PERPLEXITY_API_KEY 可讓 AI 依關鍵字列舉重大事件（
-                <a href="https://www.perplexity.ai/settings/api" target="_blank" rel="noopener noreferrer">Perplexity API</a> 申請 Key）。未設定時為示範資料。
-              </p>
+
+            {/* API Key 區塊 */}
+            {hasEventSearchApiKey(perplexityApiKey) ? (
+              <div className={styles.apiKeyRow}>
+                <span className={styles.apiKeySet}>✓ Perplexity API Key 已設定</span>
+                <button type="button" className={styles.apiKeyChangeBtn}
+                  onClick={() => { setApiKeyInput(''); setShowApiKeyInput(true); }}>更換</button>
+              </div>
+            ) : (
+              <div className={styles.apiKeyRow}>
+                <span className={styles.apiKeyUnset}>尚未設定 API Key（將使用示範資料）</span>
+                <button type="button" className={styles.apiKeyChangeBtn}
+                  onClick={() => { setApiKeyInput(''); setShowApiKeyInput(true); }}>設定</button>
+              </div>
             )}
+            {showApiKeyInput && (
+              <div className={styles.formGroup} style={{ display: 'flex', gap: 8 }}>
+                <input className={styles.input} type="password" value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="貼上 Perplexity API Key（pplx-…）" style={{ flex: 1 }} />
+                <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
+                  onClick={() => {
+                    const k = apiKeyInput.trim();
+                    if (k) { localStorage.setItem(LS_KEY, k); setPerplexityApiKey(k); }
+                    setShowApiKeyInput(false); setApiKeyInput('');
+                  }}>儲存</button>
+                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
+                  onClick={() => { setShowApiKeyInput(false); setApiKeyInput(''); }}>取消</button>
+              </div>
+            )}
+
             <div className={styles.formGroup}>
               <input
                 className={`${styles.input} ${styles.modalInput}`}
@@ -563,7 +591,7 @@ export default function InvestorCalendar() {
             {eventSearchResults.length > 0 && (
               <>
                 {eventSearchSource === 'mock' && (
-                  <p className={styles.searchHint}>目前為示範資料，設定 Perplexity API Key 後可依關鍵字查詢真實事件。</p>
+                  <p className={styles.searchHint}>目前為示範資料，點「設定」輸入 Perplexity API Key 後可查詢真實事件。</p>
                 )}
                 <div className={styles.searchResultList}>
                   {eventSearchResults.map((ev) => (

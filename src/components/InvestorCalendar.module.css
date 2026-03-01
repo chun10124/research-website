@@ -322,6 +322,37 @@
   color: var(--cal-text-muted);
 }
 
+.apiKeyRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+
+.apiKeySet {
+  color: #16a34a;
+  font-weight: 500;
+}
+
+.apiKeyUnset {
+  color: var(--cal-text-muted);
+}
+
+.apiKeyChangeBtn {
+  background: none;
+  border: 1px solid var(--cal-border);
+  border-radius: 4px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--cal-primary);
+}
+
+.apiKeyChangeBtn:hover {
+  background: var(--cal-surface-hover);
+}
+
 .searchHint {
   font-size: 12px;
   color: var(--cal-text-muted);
