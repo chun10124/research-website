@@ -52,7 +52,7 @@ export async function searchUpcomingEvents(keyword, apiKey) {
         body: JSON.stringify({
           model: PERPLEXITY_MODEL,
           messages: [{ role: 'user', content: prompt }],
-          temperature: 0.5,
+          temperature: 0.3,
           max_tokens: 2048,
         }),
       });
