@@ -26,17 +26,22 @@ export async function searchUpcomingEvents(keyword, apiKey) {
       nextYear.setFullYear(nextYear.getFullYear() + 1);
       const nextYearStr = nextYear.toISOString().slice(0, 10);
 
-      const prompt = `你是一位專業的產業研究員。請搜尋網路即時資訊，找出與「${k}」相關且在未來一年內（${todayStr} 到 ${nextYearStr}）發生的所有重大事件。
+      const prompt = `你是一位專業的產業分析師，正在研究「${k}」這間公司及其產業鏈。
+        請搜尋網路即時資訊，找出未來一年內（${todayStr} 到 ${nextYearStr}）的所有重大事件。
 
-          請包含：
-          1. 官方已公告的確切日期（如法說會、財報日、營收公告）。
-          2. 上下游或相關廠商的重大事件（如美股或台股上下游廠商相關廠商法說會、財報公布）。
-          3. 產業重要展會（如 COMPUTEX、CES、高峰會、特展）。
-          4. 產業重要政策（如政府政策、產業政策）。
-          5. 市場正在討論的重大事件。
+        **搜尋重點：**
+        1. **公司動態：** 法說會 (Earnings Call)、財報日。
+        2. **營運里程碑：** 新產能投產 (Mass Production)、擴產計畫、關鍵客戶訂單、開始出貨、驗證。
+        3. **產業鏈連動：** 該公司主要客戶或主要供應商的重大變動。
 
-          請「只」回傳一個 JSON 陣列，格式為：[{"title":"事件名稱","date":"YYYY-MM-DD"}]。
-          請盡可能列出 5 到 15 個事件，不要回傳任何 Markdown 或解釋文字。`;
+        **格式要求 (非常重要)：**
+        - 如果有「確切日期」，請回傳 "YYYY-MM-DD"。
+        - 如果只有「月份」，請回傳 "YYYY-MM-01"。
+        - 如果只有「季度」，請回傳該季的第一天（如 Q3 則回傳 "YYYY-07-01"）。
+        - 請在 title 中註明時間的精確度（例如：[預計 Q3] 墨西哥廠擴產完成）。
+
+        請「只」回傳一個 JSON 陣列：[{"title":"事件名稱","date":"YYYY-MM-DD","isEstimated":true/false}]。
+        不要回傳任何 Markdown 代碼塊或解釋文字。`;
 
       const res = await fetch(PERPLEXITY_URL, {
         method: 'POST',
