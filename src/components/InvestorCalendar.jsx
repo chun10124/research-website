@@ -4,7 +4,6 @@ import { format, parse, startOfWeek, getDay, differenceInDays, isSameDay, startO
 import zhTW from 'date-fns/locale/zh-TW';
 import { setDoc, onSnapshot } from 'firebase/firestore';
 import { CALENDAR_DOC_REF } from '../utils/firebaseConfig';
-import { searchUpcomingEvents, hasEventSearchApiKey } from '../utils/eventSearchApi';
 import { TagsContext, INITIAL_TAGS } from './CalendarContext';
 import { QuarterView, HalfYearView } from './CalendarViews';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -86,13 +85,7 @@ function eventStyleGetter(typeColors) {
   };
 }
 
-const LS_KEY = 'pplx_api_key';
-const getStoredKey = () => (typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) || '' : '');
-
 export default function InvestorCalendar() {
-  const [perplexityApiKey, setPerplexityApiKey] = useState(getStoredKey);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [tags, setTags] = useState(INITIAL_TAGS);
   const [editingTag, setEditingTag] = useState(null);
   const [tagForm, setTagForm] = useState({ label: '', color: '#26A69A' });
@@ -114,13 +107,6 @@ export default function InvestorCalendar() {
   });
   const [calendarReady, setCalendarReady] = useState(false);
   const isFromSnapshotRef = useRef(false);
-  const [eventSearchOpen, setEventSearchOpen] = useState(false);
-  const [eventSearchKeyword, setEventSearchKeyword] = useState('');
-  const [eventSearchResults, setEventSearchResults] = useState([]);
-  const [eventSearchSelected, setEventSearchSelected] = useState(new Set());
-  const [eventSearchLoading, setEventSearchLoading] = useState(false);
-  const [eventSearchError, setEventSearchError] = useState(null);
-  const [eventSearchSource, setEventSearchSource] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -311,51 +297,6 @@ export default function InvestorCalendar() {
     setEditingTag(null);
   };
 
-  const runEventSearch = async () => {
-    const q = eventSearchKeyword.trim();
-    if (!q) return;
-    setEventSearchLoading(true);
-    setEventSearchResults([]);
-    setEventSearchSelected(new Set());
-    setEventSearchError(null);
-    try {
-      const { events, error, source } = await searchUpcomingEvents(q, perplexityApiKey);
-      setEventSearchResults(events || []);
-      setEventSearchError(error || null);
-      setEventSearchSource(source || null);
-    } finally {
-      setEventSearchLoading(false);
-    }
-  };
-
-  const toggleSearchResult = (id) => {
-    setEventSearchSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const addSearchResultsToCalendar = () => {
-    const toAdd = eventSearchResults.filter((e) => eventSearchSelected.has(e.id));
-    if (toAdd.length === 0) return;
-    const baseId = Date.now();
-    const newEvents = toAdd.map((ev, i) => ({
-      id: baseId + i,
-      title: ev.title,
-      start: startOfDay(new Date(ev.start)),
-      end: addDays(startOfDay(new Date(ev.start)), 1),
-      allDay: true,
-      tags: [],
-      resource: undefined,
-      createdOrder: baseId + i,
-    }));
-    setEvents((prev) => [...prev, ...newEvents]);
-    setEventSearchSelected(new Set());
-    setEventSearchOpen(false);
-  };
-
   const handleDeleteTag = () => {
     if (!editingTag) return;
     const ok = window.confirm(`確定要刪除標籤「${editingTag.label}」嗎？`);
@@ -388,13 +329,6 @@ export default function InvestorCalendar() {
     <TagsContext.Provider value={contextValue}>
     <div className={styles.root} data-view={currentView}>
       <aside className={styles.sidebar}>
-        <button
-          type="button"
-          className={styles.eventSearchBtn}
-          onClick={() => setEventSearchOpen(true)}
-        >
-          搜尋重大事件
-        </button>
         <div className={styles.sidebarTitle}>顯示標籤</div>
         {tags.map((o) => (
           <div key={o.value} className={styles.tagRow}>
@@ -443,7 +377,7 @@ export default function InvestorCalendar() {
         formats={{
           monthHeaderFormat: 'yyyy 年 M 月',
         }}
-        defaultDate={new Date(2026, 3, 1)}
+        defaultDate={new Date()}
         eventPropGetter={eventStyleGetter(typeColors)}
         components={{ event: EventComponent }}
         culture="zh-TW"
@@ -528,105 +462,6 @@ export default function InvestorCalendar() {
                 儲存
               </button>
             </div>
-          </div>
-        </div>
-      )}
-      {eventSearchOpen && (
-        <div className={styles.overlay} onClick={() => setEventSearchOpen(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h3 className={styles.modalTitle}>搜尋重大事件</h3>
-
-            {/* API Key 區塊 */}
-            {hasEventSearchApiKey(perplexityApiKey) ? (
-              <div className={styles.apiKeyRow}>
-                <span className={styles.apiKeySet}>✓ Perplexity API Key 已設定</span>
-                <button type="button" className={styles.apiKeyChangeBtn}
-                  onClick={() => { setApiKeyInput(''); setShowApiKeyInput(true); }}>更換</button>
-              </div>
-            ) : (
-              <div className={styles.apiKeyRow}>
-                <span className={styles.apiKeyUnset}>尚未設定 API Key（將使用示範資料）</span>
-                <button type="button" className={styles.apiKeyChangeBtn}
-                  onClick={() => { setApiKeyInput(''); setShowApiKeyInput(true); }}>設定</button>
-              </div>
-            )}
-            {showApiKeyInput && (
-              <div className={styles.formGroup} style={{ display: 'flex', gap: 8 }}>
-                <input className={styles.input} type="password" value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder="貼上 Perplexity API Key（pplx-…）" style={{ flex: 1 }} />
-                <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
-                  onClick={() => {
-                    const k = apiKeyInput.trim();
-                    if (k) { localStorage.setItem(LS_KEY, k); setPerplexityApiKey(k); }
-                    setShowApiKeyInput(false); setApiKeyInput('');
-                  }}>儲存</button>
-                <button type="button" className={`${styles.btn} ${styles.btnSecondary}`}
-                  onClick={() => { setShowApiKeyInput(false); setApiKeyInput(''); }}>取消</button>
-              </div>
-            )}
-
-            <div className={styles.formGroup}>
-              <input
-                className={`${styles.input} ${styles.modalInput}`}
-                value={eventSearchKeyword}
-                onChange={(e) => setEventSearchKeyword(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && runEventSearch()}
-                placeholder="輸入關鍵字，例如：台積電、NVIDIA、半導體"
-              />
-            </div>
-            {eventSearchError && (
-              <div className={styles.searchError}>{eventSearchError}</div>
-            )}
-            <div className={styles.modalActions} style={{ marginTop: 12, paddingTop: 12 }}>
-              <button
-                type="button"
-                onClick={runEventSearch}
-                disabled={eventSearchLoading || !eventSearchKeyword.trim()}
-                className={`${styles.btn} ${styles.btnPrimary}`}
-              >
-                {eventSearchLoading ? '搜尋中…' : '搜尋'}
-              </button>
-            </div>
-            {eventSearchResults.length > 0 && (
-              <>
-                {eventSearchSource === 'mock' && (
-                  <p className={styles.searchHint}>目前為示範資料，點「設定」輸入 Perplexity API Key 後可查詢真實事件。</p>
-                )}
-                <div className={styles.searchResultList}>
-                  {eventSearchResults.map((ev) => (
-                    <label key={ev.id} className={styles.searchResultRow}>
-                      <input
-                        type="checkbox"
-                        checked={eventSearchSelected.has(ev.id)}
-                        onChange={() => toggleSearchResult(ev.id)}
-                      />
-                      <span className={styles.searchResultTitle}>{ev.title}</span>
-                      <span className={styles.searchResultDate}>
-                        {format(new Date(ev.start), 'yyyy/M/d')}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <div className={styles.modalActions}>
-                  <button
-                    type="button"
-                    onClick={addSearchResultsToCalendar}
-                    disabled={eventSearchSelected.size === 0}
-                    className={`${styles.btn} ${styles.btnPrimary}`}
-                  >
-                    加入日曆（已選 {eventSearchSelected.size} 項）
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEventSearchOpen(false)}
-                    className={`${styles.btn} ${styles.btnSecondary}`}
-                  >
-                    關閉
-                  </button>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}
