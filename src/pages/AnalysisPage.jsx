@@ -1,15 +1,15 @@
 /* src/pages/AnalysisPage.jsx */
 
 import React, { useState, useEffect } from 'react';
+import { setDoc, onSnapshot } from 'firebase/firestore';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
 import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable'; 
 import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
+import { ANALYSIS_LAYOUT_DOC_REF } from '../utils/firebaseConfig';
 
 const LAST_SYNC_ALL_KEY = 'research-website-lastSyncAllAt';
-const BIG_COLUMN_CONFIG_KEY = 'research-website-bigColumnConfig';
-const COLUMN_LABELS_KEY = 'research-website-columnLabels';
 
 const formatLastSync = (ts) => {
     if (!ts || ts <= 0) return '尚未執行';
@@ -42,11 +42,21 @@ const AnalysisPage = () => {
         try {
             const v = typeof window !== 'undefined' && window.localStorage.getItem(LAST_SYNC_ALL_KEY);
             if (v) setLastSyncAllAt(Number(v));
-            const cfg = typeof window !== 'undefined' && window.localStorage.getItem(BIG_COLUMN_CONFIG_KEY);
-            if (cfg) setBigColumnConfig(JSON.parse(cfg));
-            const lbl = typeof window !== 'undefined' && window.localStorage.getItem(COLUMN_LABELS_KEY);
-            if (lbl) setColumnLabels(JSON.parse(lbl));
         } catch (_) {}
+    }, []);
+
+    useEffect(() => {
+        const unsub = onSnapshot(ANALYSIS_LAYOUT_DOC_REF, (snap) => {
+            if (!snap.exists()) return;
+            const d = snap.data();
+            if (d.bigColumnConfig && typeof d.bigColumnConfig === 'object') setBigColumnConfig(d.bigColumnConfig);
+            if (Array.isArray(d.columnLabels)) {
+                const arr = [...d.columnLabels];
+                while (arr.length < 8) arr.push('');
+                setColumnLabels(arr.slice(0, 8));
+            }
+        }, (err) => console.error('分析版面 Firestore 監聽失敗:', err));
+        return () => unsub();
     }, []);
 
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
@@ -54,13 +64,13 @@ const AnalysisPage = () => {
     const categoriesFromStocks = [...new Set((stocks || []).map(s => s.category || '未分類'))].sort();
     const saveBigColumnConfig = (next) => {
         setBigColumnConfig(next);
-        try { window.localStorage.setItem(BIG_COLUMN_CONFIG_KEY, JSON.stringify(next)); } catch (_) {}
+        setDoc(ANALYSIS_LAYOUT_DOC_REF, { bigColumnConfig: next }, { merge: true }).catch((e) => console.error('寫入版面設定失敗:', e));
     };
     const saveColumnLabel = (idx, val) => {
         const next = [...columnLabels];
         next[idx] = val;
         setColumnLabels(next);
-        try { window.localStorage.setItem(COLUMN_LABELS_KEY, JSON.stringify(next)); } catch (_) {}
+        setDoc(ANALYSIS_LAYOUT_DOC_REF, { columnLabels: next }, { merge: true }).catch((e) => console.error('寫入欄位標籤失敗:', e));
     };
     const needReload = lastSyncAllAt != null && lastFetchedAt != null && lastSyncAllAt > lastFetchedAt;
 

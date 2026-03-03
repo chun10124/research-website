@@ -36,6 +36,7 @@ export const JOURNAL_DOC_REF = doc(db, "trade_journals", "my_only_log");
 export const WHITEBOARD_DOC_REF = doc(db, "whiteboard", "my_whiteboard");
 export const MINDMAP_DOC_REF = doc(db, "mindmaps", "mindmap_list");
 export const CALENDAR_DOC_REF = doc(db, "investor_calendar", "my_calendar");
+export const ANALYSIS_LAYOUT_DOC_REF = doc(db, "analysis_layout", "layout");
 
 // Analytics 初始化
 let analytics;
