@@ -303,16 +303,20 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
     const latestPERDate = skipPER ? (options.existingPERDate || null) : (peRes?.data?.length ? getLatestDate(peRes.data) : null);
 
     let priceCloseArray_NewestFirst;
+    let volumeArray_NewestFirst;
     let latestPriceDate;
     let currentPrice;
     let yesterdayClose;
     if (skipPrice && options.existingPrice) {
       priceCloseArray_NewestFirst = options.existingPrice.priceClose || [];
+      volumeArray_NewestFirst = options.existingPrice.volume || [];
       latestPriceDate = options.existingPrice.latestPriceDate || null;
       currentPrice = options.existingPrice.currentPrice ?? (priceCloseArray_NewestFirst[0] || 0);
       yesterdayClose = options.existingPrice.yesterdayClose ?? (priceCloseArray_NewestFirst[1] || 0);
     } else {
-      priceCloseArray_NewestFirst = (priceRes.data || []).map(d => d.close).reverse();
+      const priceData = (priceRes.data || []).slice().reverse();
+      priceCloseArray_NewestFirst = priceData.map(d => d.close);
+      volumeArray_NewestFirst = priceData.map(d => Number(d.Trading_Volume ?? d.trading_volume ?? d.volume ?? 0) || 0);
       latestPriceDate = getLatestDate(priceRes.data);
       currentPrice = priceCloseArray_NewestFirst[0] || 0;
       yesterdayClose = priceCloseArray_NewestFirst[1] || 0;
@@ -361,7 +365,8 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       latestHoldingsDate,
       latestRevenueDate,
       history: {
-        priceClose: priceCloseArray_NewestFirst, 
+        priceClose: priceCloseArray_NewestFirst,
+        volume: volumeArray_NewestFirst,
         foreignTotalHolding: foreignTotal_NewestFirst,
         revenueRaw: revenueArray_OldestFirst,
         revenueYoY: revenueYoYArray_OldestFirst
@@ -390,13 +395,16 @@ export const syncStockSnapshots = async (stock) => {
       : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
     const haveLatestRevenue = stock.latestRevenueDate && toRevenueMonthStr(stock.latestRevenueDate) === lastCompleteMonth;
     const haveHoldingsAndBefore9PM = isBeforeTaiwan9PM() && stock.history?.foreignTotalHolding?.length > 0 && stock.latestHoldingsDate;
-    const haveLatestPrice = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
+    const havePriceData = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
+    const haveVolumeData = Array.isArray(stock.history?.volume) && stock.history.volume.length > 0;
+    const haveLatestPrice = havePriceData && haveVolumeData;
     const haveLatestPER = stock.latestPERDate === todayStr && stock.realTimePE != null && stock.realTimePE !== '';
     const opts = {};
     if (haveLatestPrice) {
       opts.skipPrice = true;
       opts.existingPrice = {
         priceClose: stock.history.priceClose,
+        volume: stock.history.volume,
         currentPrice: stock.currentPrice,
         yesterdayClose: stock.yesterdayClose,
         latestPriceDate: stock.latestPriceDate,

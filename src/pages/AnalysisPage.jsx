@@ -8,6 +8,8 @@ import IndustryAnalysisTable from '../features/StockAnalysis/components/Industry
 import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
 
 const LAST_SYNC_ALL_KEY = 'research-website-lastSyncAllAt';
+const BIG_COLUMN_CONFIG_KEY = 'research-website-bigColumnConfig';
+const COLUMN_LABELS_KEY = 'research-website-columnLabels';
 
 const formatLastSync = (ts) => {
     if (!ts || ts <= 0) return '尚未執行';
@@ -21,23 +23,45 @@ const formatLastSync = (ts) => {
     return new Date(ts).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', year: 'numeric' });
 };
 
+const TAB_MAIN = 'main';
+const TAB_CHIP = 'chip';
+
 const AnalysisPage = () => {
+    const [trackingTab, setTrackingTab] = useState(TAB_MAIN);
     const [testCode, setTestCode] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
     const [syncingAll, setSyncingAll] = useState(false);
     const [syncAllProgress, setSyncAllProgress] = useState({ current: 0, total: 0 });
     const [lastSyncAllAt, setLastSyncAllAt] = useState(null);
     const [mounted, setMounted] = useState(false);
+    const [bigColumnConfig, setBigColumnConfig] = useState({});
+    const [columnLabels, setColumnLabels] = useState(Array(8).fill(''));
 
     useEffect(() => {
         setMounted(true);
         try {
             const v = typeof window !== 'undefined' && window.localStorage.getItem(LAST_SYNC_ALL_KEY);
             if (v) setLastSyncAllAt(Number(v));
+            const cfg = typeof window !== 'undefined' && window.localStorage.getItem(BIG_COLUMN_CONFIG_KEY);
+            if (cfg) setBigColumnConfig(JSON.parse(cfg));
+            const lbl = typeof window !== 'undefined' && window.localStorage.getItem(COLUMN_LABELS_KEY);
+            if (lbl) setColumnLabels(JSON.parse(lbl));
         } catch (_) {}
     }, []);
 
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
+
+    const categoriesFromStocks = [...new Set((stocks || []).map(s => s.category || '未分類'))].sort();
+    const saveBigColumnConfig = (next) => {
+        setBigColumnConfig(next);
+        try { window.localStorage.setItem(BIG_COLUMN_CONFIG_KEY, JSON.stringify(next)); } catch (_) {}
+    };
+    const saveColumnLabel = (idx, val) => {
+        const next = [...columnLabels];
+        next[idx] = val;
+        setColumnLabels(next);
+        try { window.localStorage.setItem(COLUMN_LABELS_KEY, JSON.stringify(next)); } catch (_) {}
+    };
     const needReload = lastSyncAllAt != null && lastFetchedAt != null && lastSyncAllAt > lastFetchedAt;
 
     // 每檔會打 5 次 API（股價/持股/營收/資訊/本益比），並行 2 檔 = 10 次/批。延遲 2s = 與原本「1 檔 + 2s」同請求率，較不易 429
@@ -114,9 +138,9 @@ const AnalysisPage = () => {
     };
 
     return (
-        <Layout title="量化分析儀表板">
+        <Layout title="量化分析追蹤表">
             <main style={{ padding: '20px 0' }}>
-                <div style={{ padding: '0 20px', maxWidth: '1650px', margin: '0 auto' }}>
+                <div style={{ padding: '0 0 0 20px', maxWidth: '1650px', margin: '0 auto' }}>
 
                     {/*  1. 表格 */}
                     <div style={{ 
@@ -126,12 +150,57 @@ const AnalysisPage = () => {
                         boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
                         marginBottom: '30px',
                         marginLeft: '-18px',
-                        marginTop: '-25px'
+                        marginTop: '-8px'
                     }}>
-                        <IndustryAnalysisTable stocks={stocks} loading={loading} updateStockField={updateStockField} refreshData={refreshData} />
+                        <IndustryAnalysisTable
+                            stocks={stocks}
+                            loading={loading}
+                            updateStockField={updateStockField}
+                            refreshData={refreshData}
+                            columnsMode={trackingTab}
+                            bigColumnConfig={bigColumnConfig}
+                            columnLabels={columnLabels}
+                            onColumnLabelChange={saveColumnLabel}
+                        />
                     </div>
 
-                    {/*  2. 輸入區移到最下面 (並進行樣式優化) */}
+                    {/* 一般 / 籌碼 切換 */}
+                    <div style={{ marginBottom: '16px', display: 'flex', gap: '4px' }}>
+                        <button
+                            type="button"
+                            onClick={() => setTrackingTab(TAB_MAIN)}
+                            style={{
+                                padding: '6px 14px',
+                                border: `2px solid ${trackingTab === TAB_MAIN ? '#25c2a0' : '#ddd'}`,
+                                borderRadius: '8px',
+                                background: trackingTab === TAB_MAIN ? '#25c2a0' : '#fff',
+                                color: trackingTab === TAB_MAIN ? '#fff' : '#333',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                            }}
+                        >
+                            一般
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setTrackingTab(TAB_CHIP)}
+                            style={{
+                                padding: '6px 14px',
+                                border: `2px solid ${trackingTab === TAB_CHIP ? '#25c2a0' : '#ddd'}`,
+                                borderRadius: '8px',
+                                background: trackingTab === TAB_CHIP ? '#25c2a0' : '#fff',
+                                color: trackingTab === TAB_CHIP ? '#fff' : '#333',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                            }}
+                        >
+                            籌碼
+                        </button>
+                    </div>
+
+                    {/*  2. 輸入區 */}
                     <div style={{ 
                         borderTop: '2px solid #eee',
                         paddingTop: '25px',
@@ -188,6 +257,61 @@ const AnalysisPage = () => {
                         <p style={{ fontSize: '0.85em', color: '#888', marginTop: '10px', paddingLeft: '5px' }}>
                             * 輸入股票代碼後點擊同步，系統將自動從 API 獲取最新的股價、營收與籌碼數據。
                         </p>
+
+                        <details style={{ marginTop: '12px' }}>
+                            <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: '#555', fontSize: '12px' }}>設定產業</summary>
+                            <div style={{ marginTop: '6px', padding: '8px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #eee', fontSize: '11px' }}>
+                                {stocks.length === 0 ? (
+                                    <p style={{ margin: 0, color: '#888' }}>尚無股票，請先新增。</p>
+                                ) : (
+                                    <ul style={{ margin: 0, paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        {stocks.map(s => (
+                                            <li key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', listStyle: 'none', marginLeft: '-12px' }}>
+                                                <span style={{ fontWeight: 'bold', minWidth: '42px' }}>{s.id}</span>
+                                                <span style={{ minWidth: '70px', color: '#666' }}>{s.name}</span>
+                                                <input
+                                                    type="text"
+                                                    defaultValue={s.category || ''}
+                                                    onBlur={(e) => {
+                                                        const v = e.target.value.trim() || null;
+                                                        if (v !== (s.category || '')) updateStockField(s.id, 'category', v || '未分類');
+                                                    }}
+                                                    placeholder="產業"
+                                                    style={{ padding: '2px 4px', width: '100px', border: '1px solid #ccc', borderRadius: '3px', fontSize: '11px' }}
+                                                />
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </details>
+
+                        <details style={{ marginTop: '12px' }}>
+                            <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: '#555', fontSize: '12px' }}>大欄設定</summary>
+                            <div style={{ marginTop: '8px', padding: '10px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #eee', fontSize: '11px' }}>
+                                <p style={{ margin: '0 0 8px 0', color: '#666' }}>選擇類別要放在第幾大欄（1～5），以及該大欄內順序（數字小在上）。</p>
+                                {categoriesFromStocks.length === 0 ? (
+                                    <p style={{ margin: 0, color: '#888' }}>尚無類別，請先在「設定產業」為股票設定產業。</p>
+                                ) : (
+                                    <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {categoriesFromStocks.map(cat => {
+                                            const c = bigColumnConfig[cat] || { column: 0, order: 0 };
+                                            return (
+                                                <li key={cat} style={{ display: 'flex', alignItems: 'center', gap: '8px', listStyle: 'none', marginLeft: '-18px' }}>
+                                                    <span style={{ minWidth: '72px', fontWeight: '500' }}>{cat}</span>
+                                                    <label>大欄</label>
+                                                    <select value={c.column} onChange={(e) => saveBigColumnConfig({ ...bigColumnConfig, [cat]: { ...c, column: Number(e.target.value) } })} style={{ width: '48px', padding: '2px 4px', fontSize: '11px' }}>
+                                                        {[1, 2, 3, 4, 5].map(n => <option key={n} value={n - 1}>{n}</option>)}
+                                                    </select>
+                                                    <label style={{ marginLeft: '6px' }}>順序</label>
+                                                    <input type="number" min={0} value={c.order} onChange={(e) => saveBigColumnConfig({ ...bigColumnConfig, [cat]: { ...c, order: Number(e.target.value) || 0 } })} style={{ width: '44px', padding: '2px 4px', fontSize: '11px' }} />
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                )}
+                            </div>
+                        </details>
 
                         <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <button

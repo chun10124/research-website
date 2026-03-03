@@ -167,7 +167,7 @@ input[type="number"] {
         /* 移除 flex: 1 1 100% !important; 避免和內聯樣式衝突 */
     }
 
-    /* 3. 卡片區塊 (儀表板總體指標) */
+    /* 3. 卡片區塊 (追蹤表總體指標) */
     .responsiveFlexRow {
         flex-direction: column !important;
         gap: 15px !important;

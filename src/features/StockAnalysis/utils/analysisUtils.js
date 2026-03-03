@@ -142,8 +142,19 @@ export const calculateSingleStockIndicators = (stock) => {
     const raw_DailyChange = stock.yesterdayClose ? ((stock.currentPrice - stock.yesterdayClose) / stock.yesterdayClose) * 100 : 0;
     const holdingGrowth = totalHoldingData[21] ? ((totalHoldingData[0] - totalHoldingData[21]) / totalHoldingData[21]) * 100 : 0;
 
+    // 6. 量比：1日成交量 / 5日平均成交量（newest first）
+    const volumeData = stock.history?.volume || [];
+    let VolumeRatio = null;
+    if (volumeData.length >= 5) {
+        const sum5 = volumeData.slice(0, 5).reduce((a, b) => a + b, 0);
+        if (sum5 > 0 && volumeData[0] != null) {
+            VolumeRatio = (volumeData[0] * 5) / sum5;
+        }
+    }
+
     return {
         DailyChange: parseFloat(raw_DailyChange.toFixed(2)),
+        VolumeRatio,
         // 🟢 替換原本的 WeeklyChipFlow 為 N/B 訊號數據
         foreignSignal: force.signal,
         foreignBCount: force.bCount,

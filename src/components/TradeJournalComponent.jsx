@@ -267,7 +267,7 @@ const saveJournalToCloud = async (entries) => {
     return (
       <div style={{ marginTop: '30px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, borderRadius: '5px', padding: '15px' }}>
         <div className={styles.pnlHeaderRow} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ marginRight: '20px' }}>儀表板與損益摘要 ({period})</h3>
+            <h3 style={{ marginRight: '20px' }}>追蹤表與損益摘要 ({period})</h3>
             
             {/*  3. 加入搜尋框與下拉選單 */}
             <div className={styles.pnlSelectContainer} style={{ display: 'flex', gap: '10px' }}>
@@ -622,7 +622,7 @@ const saveJournalToCloud = async (entries) => {
         </div>
       </form>
 
-      {/* II. 儀表板/摘要區塊 */}
+      {/* II. 追蹤表/摘要區塊 */}
       {renderPnlSummary()}
       
       {/* III. 歷史記錄列表區塊 */}

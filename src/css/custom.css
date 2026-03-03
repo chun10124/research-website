@@ -68,6 +68,11 @@ body {
   flex: 1 0 auto;
 }
 
+/* 移除 Infima 預設的交替灰底 */
+table tr:nth-child(2n) {
+  background-color: transparent;
+}
+
 .navbar__brand img {
   /* 設置圓角半徑為 50%，將正方形變成圓形 */
   border-radius: 50%; 
