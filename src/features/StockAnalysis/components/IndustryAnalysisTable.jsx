@@ -39,12 +39,15 @@ const getCurvatureStyle = (val, isShowBg) => {
     };
 };
 
-// 量比熱力圖：白→乾淨亮黃（#FFEB3B 檸檬黃），不偏土
+// 量比熱力圖：量縮藍色階（<1）、約 1 白、量增黃色階（>1）
 const getVolumeHeatmapBg = (ratio) => {
-    const v = Number(ratio) || 0;
-    if (v <= 0.9) return '#FFFFFF';
-    const t = Math.min((v - 0.9) / 2.1, 1);
-    // 白 → #FFEB3B (255,235,59) 亮黃
+    const v = Number(ratio) ?? 0;
+    if (v >= 0.98 && v <= 1.05) return '#FFFFFF';
+    if (v < 0.98) {
+        const t = Math.min((0.98 - v) / 0.98, 1);
+        return `rgb(${Math.round(255 - 189 * t)}, ${Math.round(255 - 90 * t)}, ${Math.round(255 - 10 * t)})`;
+    }
+    const t = Math.min((v - 1.05) / 2, 1);
     return `rgb(255, ${Math.round(255 - 20 * t)}, ${Math.round(255 - 196 * t)})`;
 };
 
@@ -171,7 +174,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
     const SUB_COL_WIDTHS = SUB_COL_WIDTHS_PX.map(w => `${w}px`);
     const BIG_COL_WIDTH_PX = SUB_COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
     const TABLE_TOTAL_WIDTH = NUM_BIG_COLUMNS * BIG_COL_WIDTH_PX;
-    const SEP_LINE_WIDTH = 2;
+    const SEP_LINE_WIDTH = 1;
 
     const renderMainCellBlock = (item, blockIndex) => {
         if (!item) {

@@ -305,7 +305,7 @@ const AnalysisPage = () => {
                                 ) : (
                                     <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                         {categoriesFromStocks.map(cat => {
-                                            const c = bigColumnConfig[cat] || { column: 0, order: 0 };
+                                            const c = bigColumnConfig[cat] || { column: 0, order: '' };
                                             return (
                                                 <li key={cat} style={{ display: 'flex', alignItems: 'center', gap: '8px', listStyle: 'none', marginLeft: '-18px' }}>
                                                     <span style={{ minWidth: '72px', fontWeight: '500' }}>{cat}</span>
@@ -314,7 +314,17 @@ const AnalysisPage = () => {
                                                         {[1, 2, 3, 4, 5].map(n => <option key={n} value={n - 1}>{n}</option>)}
                                                     </select>
                                                     <label style={{ marginLeft: '6px' }}>順序</label>
-                                                    <input type="number" min={0} value={c.order} onChange={(e) => saveBigColumnConfig({ ...bigColumnConfig, [cat]: { ...c, order: Number(e.target.value) || 0 } })} style={{ width: '44px', padding: '2px 4px', fontSize: '11px' }} />
+                                                    <input
+                                                        type="text"
+                                                        value={c.order ?? ''}
+                                                        onChange={(e) =>
+                                                            saveBigColumnConfig({
+                                                                ...bigColumnConfig,
+                                                                [cat]: { ...c, order: e.target.value },
+                                                            })
+                                                        }
+                                                        style={{ width: '44px', padding: '2px 4px', fontSize: '11px' }}
+                                                    />
                                                 </li>
                                             );
                                         })}
