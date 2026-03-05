@@ -1,0 +1,431 @@
+import React, { useRef, useState, useEffect } from 'react';
+
+const OPENAI_API_URL = 'https://api.openai.com/v1/audio/transcriptions';
+const STORAGE_KEY = 'whisper_openai_api_key';
+
+const OPTIMIZE_PROMPT = `角色設定： 你是一位極度嚴謹的「專業全產業速記員」，負責處理各種專業領域（包含但不限於金融、半導體、傳產、網通、製造）的會議記錄與深度訪談。
+核心任務： 請將下方的原始逐字稿進行「可讀性優化」。你的唯一目標是提升原文的閱讀流暢度，同時確保內容 100% 完整，不遺漏任何專業細節。
+嚴格限制（不可違反）：
+
+絕對禁止摘要： 不准濃縮、簡化、重組或省略任何句子。即便語意碎裂或有贅字，也要完整保留原始內容。
+禁止列點改寫： 保持對話原始段落，不要將敘述改寫為 bullet points（點狀條列）。
+保留原始語氣： 保留說話者的原始口吻（如「那個」、「其實」、「我覺得」）。
+保護原始數據： 所有的數據、金額、比例、日期、型號、專案代號（如 P1/P2/T1）必須 100% 精確保留。
+執行動作：
+
+語意偵測與分段： 根據對話主題的切換或語意轉折強制換行。
+加入導航標題： 在各分段上方加上 ### [主題名稱]，標題應精煉且具代表性。
+情境化術語校正： > * 第一步：先識別本段內容所屬的專業領域（如：半導體、醫療、金融、傳產、原物料）。
+第二步：將模糊或錯誤的音近字，修正為該領域的標準名詞（例如：將音近字修正為正確的公司名、產品名或技術術語）。
+標點與斷句強化： 根據語氣停頓補上正確的標點符號，使長難句更易於閱讀。
+待處理原文：
+`;
+
+export default function WhisperTranscriber() {
+  const [isDragging, setIsDragging] = useState(false);
+  const [phase, setPhase] = useState('idle');
+  const [progressText, setProgressText] = useState('');
+  const [transcript, setTranscript] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) setApiKey(saved);
+  }, []);
+
+  const saveApiKey = (key) => {
+    setApiKey(key);
+    if (key) {
+      localStorage.setItem(STORAGE_KEY, key);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  };
+
+  const handleFile = async (file) => {
+    if (!apiKey) {
+      setShowKeyInput(true);
+      setError('請先輸入 OpenAI API Key。');
+      return;
+    }
+
+    setError('');
+    setTranscript('');
+    setFileName(file.name);
+    setPhase('transcribing');
+    setProgressText('正在上傳至 OpenAI Whisper API...');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('model', 'whisper-1');
+      formData.append('language', 'zh');
+      formData.append('response_format', 'text');
+
+      const res = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text();
+        if (res.status === 401) {
+          throw new Error('API Key 無效或已過期，請重新輸入。');
+        }
+        throw new Error(`OpenAI API 錯誤 (${res.status}): ${errBody}`);
+      }
+
+      const text = await res.text();
+      setTranscript(text.trim());
+      setPhase('done');
+      setProgressText('');
+    } catch (err) {
+      console.error(err);
+      setError(err?.message || '轉譯失敗，請稍後再試。');
+      setPhase('error');
+      setProgressText('');
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  const handleInputChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  const handleCopy = async () => {
+    if (!transcript) return;
+    await navigator.clipboard.writeText(transcript);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyPrompt = async () => {
+    await navigator.clipboard.writeText(OPTIMIZE_PROMPT);
+    setCopiedPrompt(true);
+    setTimeout(() => setCopiedPrompt(false), 2000);
+  };
+
+  const isActive = phase === 'transcribing';
+
+  return (
+    <section
+      style={{
+        padding: '10px',
+        maxWidth: '450px',
+        margin: '10px 0',
+        borderRadius: '8px',
+        border: '1px solid var(--ifm-color-primary-light)',
+        background: 'var(--ifm-background-color)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '10px',
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: '1rem' }}>Whisper 逐字稿</h2>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={handleCopyPrompt}
+            title="複製優化指令（貼到 ChatGPT 等）"
+            style={{
+              fontSize: '0.7rem',
+              padding: '3px 8px',
+              borderRadius: '4px',
+              border: '1px solid var(--ifm-color-emphasis-300)',
+              background: copiedPrompt ? 'var(--ifm-color-success)' : 'transparent',
+              color: copiedPrompt ? '#fff' : 'var(--ifm-color-emphasis-600)',
+              cursor: 'pointer',
+              transition: 'background 0.2s, color 0.2s',
+            }}
+          >
+            {copiedPrompt ? '已複製' : '複製優化指令'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowKeyInput((v) => !v)}
+            style={{
+              fontSize: '0.7rem',
+              padding: '3px 8px',
+              borderRadius: '999px',
+              border: '1px solid var(--ifm-color-emphasis-300)',
+              background: apiKey
+                ? 'var(--ifm-color-success)'
+                : 'var(--ifm-color-emphasis-200)',
+              color: apiKey ? '#fff' : 'var(--ifm-color-emphasis-700)',
+              cursor: 'pointer',
+            }}
+          >
+            {apiKey ? 'API Key ✓' : '設定 API Key'}
+          </button>
+        </div>
+      </div>
+
+      {showKeyInput && (
+        <div
+          style={{
+            marginBottom: '10px',
+            display: 'flex',
+            gap: '6px',
+            alignItems: 'center',
+          }}
+        >
+          <input
+            type="password"
+            placeholder="sk-..."
+            value={apiKey}
+            onChange={(e) => saveApiKey(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '6px 10px',
+              fontSize: '0.85rem',
+              borderRadius: '6px',
+              border: '1px solid var(--ifm-color-emphasis-300)',
+              background: 'var(--ifm-background-color)',
+              color: 'var(--ifm-font-color-base)',
+            }}
+          />
+          {apiKey && (
+            <button
+              type="button"
+              onClick={() => {
+                saveApiKey('');
+                setShowKeyInput(true);
+              }}
+              style={{
+                fontSize: '0.75rem',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: '1px solid var(--ifm-color-emphasis-300)',
+                background: 'var(--ifm-color-danger)',
+                color: '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              清除
+            </button>
+          )}
+        </div>
+      )}
+
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => !isActive && inputRef.current?.click()}
+        style={{
+          borderRadius: '6px',
+          border: `1px solid ${
+            isDragging
+              ? 'var(--ifm-color-primary)'
+              : 'var(--ifm-color-primary-lighter)'
+          }`,
+          padding: '14px 12px',
+          textAlign: 'center',
+          cursor: isActive ? 'default' : 'pointer',
+          transition: 'background 0.15s ease, border-color 0.15s ease',
+          background: isDragging
+            ? 'rgba(0,122,255,0.06)'
+            : 'var(--ifm-background-color)',
+        }}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="audio/*"
+          style={{ display: 'none' }}
+          onChange={handleInputChange}
+        />
+
+        {isActive ? (
+          <div>
+            <div style={{ marginBottom: '8px', fontSize: '0.9rem' }}>
+              {progressText}
+            </div>
+            <div
+              style={{
+                height: '6px',
+                borderRadius: '999px',
+                background: 'var(--ifm-color-emphasis-200)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  width: '100%',
+                  background: `linear-gradient(90deg, var(--ifm-color-primary) 0%, transparent 50%, var(--ifm-color-primary) 100%)`,
+                  backgroundSize: '200% 100%',
+                  animation: 'whisper-shimmer 1.5s linear infinite',
+                  borderRadius: '999px',
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>💿</div>
+            <div style={{ fontSize: '0.9rem' }}>
+              <strong>拖曳錄音檔到這裡</strong>，或點擊選擇檔案
+            </div>
+            <div
+              style={{
+                fontSize: '0.75rem',
+                marginTop: '4px',
+                color: 'var(--ifm-color-emphasis-500)',
+              }}
+            >
+              拖曳或點選錄音檔｜OpenAI Whisper API
+            </div>
+            {fileName && (
+              <div
+                style={{
+                  marginTop: '8px',
+                  fontSize: '0.85rem',
+                  color: 'var(--ifm-color-emphasis-600)',
+                }}
+              >
+                上次：{fileName}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {error && (
+        <div
+          style={{
+            marginTop: '8px',
+            color: 'var(--ifm-color-danger)',
+            fontSize: '0.8rem',
+          }}
+        >
+          ⚠️ {error}
+        </div>
+      )}
+
+      <div
+        className="whisper-transcript-box"
+        style={{
+          marginTop: '10px',
+          position: 'relative',
+          borderRadius: '4px',
+          border: '1px solid var(--ifm-color-primary-lighter)',
+          padding: '8px 10px',
+          paddingRight: '56px',
+          background: 'var(--ifm-background-color)',
+          minHeight: '52px',
+          maxHeight: '180px',
+          overflowY: 'auto',
+        }}
+      >
+        <button
+          type="button"
+          onClick={handleCopy}
+          disabled={!transcript}
+          title={copied ? '已複製' : '複製'}
+          style={{
+            position: 'absolute',
+            top: '6px',
+            right: '6px',
+            width: '28px',
+            height: '28px',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '4px',
+            border: '1px solid var(--ifm-color-emphasis-300)',
+            background: transcript
+              ? copied
+                ? 'var(--ifm-color-success)'
+                : 'transparent'
+              : 'transparent',
+            color: transcript
+              ? copied
+                ? '#fff'
+                : 'var(--ifm-color-emphasis-600)'
+              : 'var(--ifm-color-emphasis-400)',
+            cursor: transcript ? 'pointer' : 'not-allowed',
+            transition: 'background-color 0.2s ease, color 0.2s ease',
+          }}
+        >
+          {copied ? (
+            <span style={{ fontSize: '0.75rem' }}>✓</span>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          )}
+        </button>
+
+        <div
+          style={{
+            whiteSpace: 'pre-wrap',
+            fontSize: '0.9rem',
+            lineHeight: '1.5',
+          }}
+        >
+          {transcript || (
+            <span style={{ color: 'var(--ifm-color-emphasis-400)' }}>
+              逐字稿會顯示在這裡。
+            </span>
+          )}
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes whisper-shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        .whisper-transcript-box {
+          scrollbar-width: thin;
+          scrollbar-color: var(--ifm-color-emphasis-200) transparent;
+        }
+        .whisper-transcript-box::-webkit-scrollbar {
+          width: 5px;
+        }
+        .whisper-transcript-box::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .whisper-transcript-box::-webkit-scrollbar-thumb {
+          background: var(--ifm-color-emphasis-200);
+          border-radius: 3px;
+        }
+        .whisper-transcript-box::-webkit-scrollbar-thumb:hover {
+          background: var(--ifm-color-emphasis-300);
+        }
+      `}</style>
+    </section>
+  );
+}

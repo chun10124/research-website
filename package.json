@@ -30,6 +30,7 @@
     "@syncfusion/ej2-react-schedule": "^32.2.3",
     "clsx": "^2.0.0",
     "date-fns": "^4.1.0",
+    "dayjs": "^1.11.19",
     "firebase": "^12.6.0",
     "prism-react-renderer": "^2.3.0",
     "react": "^19.0.0",

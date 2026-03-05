@@ -24,8 +24,7 @@ const config = {
 
   // Set the production url of your site here
   url: 'https://chun10124.github.io',
-  // Set the /<baseUrl>/ pathname under which your site is served
-  // For GitHub pages deployment, it is often '/<projectName>/'
+  // 子路徑：站點在 /research-website/，Docusaurus 會以此作為資源前綴，避免相對路徑載到 index.html 導致 JSON parse 錯誤
   baseUrl: '/research-website/',
 
   // GitHub pages deployment config.
