@@ -29,7 +29,6 @@ function createMultiMonthView(monthCount) {
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
-      minHeight: 180,
       background: '#fff',
       position: 'relative',
     };
@@ -66,11 +65,13 @@ function createMultiMonthView(monthCount) {
         style={{
           display: 'grid',
           gridTemplateColumns: `repeat(${Math.min(monthCount, 3)}, 1fr)`,
-          gap: 16,
-          padding: '12px 16px 16px 16px',
+          gap: 12,
+          padding: '0 0 5px',
           height: '100%',
           overflow: 'auto',
-          background: '#f8fafc',
+          background: 'transparent',
+          boxSizing: 'border-box',
+          alignContent: 'stretch',
         }}
       >
         {months.map((monthStart) => {
@@ -101,7 +102,7 @@ function createMultiMonthView(monthCount) {
               >
                 {monthEvents.length > 0 && monthEvents.map((event) => {
                   const firstTag = event.tags?.[0] || event.resource;
-                  const color = typeColors[firstTag] || '#1e3a8a';
+                  const color = typeColors[firstTag] || '#f59e0b';
                   const start = accessors.start(event);
                   const end = accessors.end(event);
                   const lastDay = addDays(end, -1);

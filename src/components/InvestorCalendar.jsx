@@ -34,7 +34,7 @@ function EventComponent({ event, title, continuesPrior, continuesAfter }) {
   const { typeColors } = useContext(TagsContext);
   const isSingleDay = !continuesPrior && !continuesAfter;
   const firstTag = event.tags?.[0] || event.resource;
-  const color = typeColors[firstTag] || '#1e3a8a';
+  const color = typeColors[firstTag] || '#f59e0b';
   const blockStyle = {
     display: 'block',
     overflow: 'hidden',
@@ -67,7 +67,7 @@ function EventComponent({ event, title, continuesPrior, continuesAfter }) {
 function eventStyleGetter(typeColors) {
   return (event, start, end) => {
     const firstTag = event.tags?.[0] || event.resource;
-    const color = typeColors[firstTag] || '#1e3a8a';
+    const color = typeColors[firstTag] || '#f59e0b';
     const isSingleDay = start && end && (isSameDay(start, end) || differenceInDays(end, start) <= 1);
     return {
       style: {
