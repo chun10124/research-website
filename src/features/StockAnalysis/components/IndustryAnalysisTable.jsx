@@ -213,7 +213,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
     };
 
     return (
-        <div style={{ padding: '6px', overflowX: 'auto' }}>
+        <div style={{ padding: '6px' }}>
             
             {/* 籌碼頁：頂部產業標籤；一般頁：5 大欄無產業列 */}
             {isChipMode && (
@@ -275,7 +275,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         }}
                     />
                 ))}
-            <table style={{ width: `${TABLE_TOTAL_WIDTH}px`, borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600 }}>
+            <table style={{ width: `${TABLE_TOTAL_WIDTH}px`, borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600, display: 'table', overflow: 'visible' }}>
                 {!isChipMode && (
                     <colgroup>
                         {Array.from({ length: NUM_BIG_COLUMNS }, (_, blockIndex) => (

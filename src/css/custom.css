@@ -68,6 +68,15 @@ body {
   flex: 1 0 auto;
 }
 
+
+/* 防止頁面層出現第二條橫向捲軸 */
+html,
+body,
+#___docusaurus,
+.main-wrapper {
+  overflow-x: hidden;
+}
+
 /* 移除 Infima 預設的交替灰底 */
 table tr:nth-child(2n) {
   background-color: transparent;

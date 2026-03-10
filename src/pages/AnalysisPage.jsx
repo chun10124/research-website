@@ -10,6 +10,7 @@ import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
 import { ANALYSIS_LAYOUT_DOC_REF } from '../utils/firebaseConfig';
 
 const LAST_SYNC_ALL_KEY = 'research-website-lastSyncAllAt';
+const NUM_BIG_COLUMNS = 8;
 
 const formatLastSync = (ts) => {
     if (!ts || ts <= 0) return '尚未執行';
@@ -35,7 +36,7 @@ const AnalysisPage = () => {
     const [lastSyncAllAt, setLastSyncAllAt] = useState(null);
     const [mounted, setMounted] = useState(false);
     const [bigColumnConfig, setBigColumnConfig] = useState({});
-    const [columnLabels, setColumnLabels] = useState(Array(8).fill(''));
+    const [columnLabels, setColumnLabels] = useState(Array(NUM_BIG_COLUMNS).fill(''));
 
     useEffect(() => {
         setMounted(true);
@@ -52,8 +53,8 @@ const AnalysisPage = () => {
             if (d.bigColumnConfig && typeof d.bigColumnConfig === 'object') setBigColumnConfig(d.bigColumnConfig);
             if (Array.isArray(d.columnLabels)) {
                 const arr = [...d.columnLabels];
-                while (arr.length < 8) arr.push('');
-                setColumnLabels(arr.slice(0, 8));
+                while (arr.length < NUM_BIG_COLUMNS) arr.push('');
+                setColumnLabels(arr.slice(0, NUM_BIG_COLUMNS));
             }
         }, (err) => console.error('分析版面 Firestore 監聽失敗:', err));
         return () => unsub();
@@ -149,12 +150,12 @@ const AnalysisPage = () => {
 
     return (
         <Layout title="量化分析追蹤表">
-            <main style={{ padding: '20px 0' }}>
+            <main style={{ padding: '20px 0', overflowX: 'hidden' }}>
                 <div style={{ padding: '0 0 0 20px', maxWidth: '1650px', margin: '0 auto' }}>
 
                     {/*  1. 表格 */}
                     <div style={{ 
-                        overflowX: 'auto', 
+                        overflowX: 'auto',
                         backgroundColor: '#fff', 
                         borderRadius: '8px',
                         boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
@@ -299,7 +300,7 @@ const AnalysisPage = () => {
                         <details style={{ marginTop: '12px' }}>
                             <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: '#555', fontSize: '12px' }}>大欄設定</summary>
                             <div style={{ marginTop: '8px', padding: '10px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #eee', fontSize: '11px' }}>
-                                <p style={{ margin: '0 0 8px 0', color: '#666' }}>選擇類別要放在第幾大欄（1～5），以及該大欄內順序（數字小在上）。</p>
+                                <p style={{ margin: '0 0 8px 0', color: '#666' }}>選擇類別要放在第幾大欄（1～8），以及該大欄內順序（數字小在上）。</p>
                                 {categoriesFromStocks.length === 0 ? (
                                     <p style={{ margin: 0, color: '#888' }}>尚無類別，請先在「設定產業」為股票設定產業。</p>
                                 ) : (
@@ -311,7 +312,7 @@ const AnalysisPage = () => {
                                                     <span style={{ minWidth: '72px', fontWeight: '500' }}>{cat}</span>
                                                     <label>大欄</label>
                                                     <select value={c.column} onChange={(e) => saveBigColumnConfig({ ...bigColumnConfig, [cat]: { ...c, column: Number(e.target.value) } })} style={{ width: '48px', padding: '2px 4px', fontSize: '11px' }}>
-                                                        {[1, 2, 3, 4, 5].map(n => <option key={n} value={n - 1}>{n}</option>)}
+                                                        {Array.from({ length: NUM_BIG_COLUMNS }, (_, i) => i + 1).map(n => <option key={n} value={n - 1}>{n}</option>)}
                                                     </select>
                                                     <label style={{ marginLeft: '6px' }}>順序</label>
                                                     <input
