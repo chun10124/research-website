@@ -3,22 +3,39 @@ import React, { useRef, useState, useEffect } from 'react';
 const OPENAI_API_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const STORAGE_KEY = 'whisper_openai_api_key';
 
-const OPTIMIZE_PROMPT = `角色設定： 你是一位極度嚴謹的「專業財經速記員」，專門處理各種產業的法說會、訪談錄音。  
-核心任務： 請將下方的原始逐字稿進行「可讀性優化」。你的唯一目標是提升原文的可讀性，同時確保內容 100% 完整。  
-嚴格限制（不可違反）：  
+const OPTIMIZE_PROMPT = `角色設定： 你是一位極度嚴謹的「專業財經速記員」，專門處理各種產業的法說會、訪談錄音。
+核心任務： 請將下方的原始逐字稿進行「可讀性優化」。你的唯一目標是提升原文的可讀性，同時確保內容 100% 完整。
+嚴格限制（不可違反）：
 
 必須將所有數字改為阿拉伯數字（例如將「二七」改為 27 ）。
-禁止摘要： 絕對不准濃縮、簡化或省略任何句子。即便語句碎裂，也要完整保留。  
-禁止列點： 不准將對話中的任何內容改寫為條列式摘要，一切以逐字稿呈現。  
-保留語氣： 保留說話者的原始口吻（如「那個」、「其實」、「我覺得」）。  
-禁止刪除數據： 所有的百分比、金額（幾億）、日期、案號（P1/P2）必須精確保留在原位。  
-執行動作：  
+禁止摘要： 絕對不准濃縮、簡化或省略任何句子。即便語句碎裂，也要完整保留。
+禁止列點： 不准將對話中的任何內容改寫為條列式摘要，一切以逐字稿呈現。
+保留語氣： 保留說話者的原始口吻（如「那個」、「其實」、「我覺得」）。
+禁止刪除數據： 所有的百分比、金額（幾億）、日期、案號（P1/P2）必須精確保留在原位。
+執行動作：
 
-自動分段： 在說話主題變更、或是語意轉折處強制換行。  
-加入主題標題： 在各分段上方加上 ### [主題名稱]，方便閱讀定位。  
-專業術語校正： 根據上下文修正音近錯字，並根據產業知識修正專業術語（例如：將「KOWAS」改為「CoWoS」）。  
-標點強化： 確保標點符號精確，讓長難句變得易讀。  
+自動分段： 在說話主題變更、或是語意轉折處強制換行。
+加入主題標題： 在各分段上方加上 ### [主題名稱]，方便閱讀定位。
+專業術語校正： 根據上下文修正音近錯字，並根據產業知識修正專業術語（例如：將「KOWAS」改為「CoWoS」）。
+標點強化： 確保標點符號精確，讓長難句變得易讀。
 待處理原文：
+`;
+
+const MINIMAL_PROMPT = `角色設定： 你現在是一位極簡主義的文字編輯。
+
+任務目標： 請幫我優化下方這段文字。你的目標是「去蕪存菁」，僅針對句子內部的修辭進行微調。
+
+執行準則（嚴格遵守）：
+
+禁止結構變動： 不准更改段落順序、不准把內文變成列點（Bullet points）、不准做摘要。
+
+保留原意與語氣： 盡可能保留我原本的用詞與敘事風格，不要把語氣變得太過正式或公關化。
+
+僅刪除贅字： 專注於刪除冗贅的連接詞（例如：的部分、進行一個...的動作、其實、然後）、重複的詞彙或不必要的修飾語。
+
+字數微調： 輸出後的總字數應與原稿相近，甚至略少，絕對不可增加內容。
+
+待修改文字：
 `;
 
 export default function WhisperTranscriber() {
@@ -30,6 +47,7 @@ export default function WhisperTranscriber() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [copiedMinimalPrompt, setCopiedMinimalPrompt] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [showKeyInput, setShowKeyInput] = useState(false);
   const inputRef = useRef(null);
@@ -129,6 +147,12 @@ export default function WhisperTranscriber() {
     setTimeout(() => setCopiedPrompt(false), 2000);
   };
 
+  const handleCopyMinimalPrompt = async () => {
+    await navigator.clipboard.writeText(MINIMAL_PROMPT);
+    setCopiedMinimalPrompt(true);
+    setTimeout(() => setCopiedMinimalPrompt(false), 2000);
+  };
+
   const isActive = phase === 'transcribing';
 
   return (
@@ -155,7 +179,7 @@ export default function WhisperTranscriber() {
           <button
             type="button"
             onClick={handleCopyPrompt}
-            title="複製優化指令（貼到 ChatGPT 等）"
+            title="複製逐字稿分段整理指令"
             style={{
               fontSize: '0.7rem',
               padding: '3px 8px',
@@ -167,7 +191,26 @@ export default function WhisperTranscriber() {
               transition: 'background 0.2s, color 0.2s',
             }}
           >
-            {copiedPrompt ? '已複製' : '複製優化指令'}
+            {copiedPrompt ? '已複製' : '分段整理'}
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyMinimalPrompt}
+            title="複製極簡編輯指令"
+            style={{
+              fontSize: '0.7rem',
+              padding: '3px 8px',
+              borderRadius: '4px',
+              border: '1px solid var(--ifm-color-emphasis-300)',
+              background: copiedMinimalPrompt
+                ? 'var(--ifm-color-success)'
+                : 'transparent',
+              color: copiedMinimalPrompt ? '#fff' : 'var(--ifm-color-emphasis-600)',
+              cursor: 'pointer',
+              transition: 'background 0.2s, color 0.2s',
+            }}
+          >
+            {copiedMinimalPrompt ? '已複製' : '極簡編輯'}
           </button>
           <button
             type="button"
