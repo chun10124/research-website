@@ -66,6 +66,65 @@ export default function WhisperTranscriber() {
     }
   };
 
+  // 把 Float32Array PCM（16kHz 單聲道）封裝成 WAV Blob
+  const encodeWav = (samples, sampleRate = 16000) => {
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+    const writeStr = (off, str) => {
+      for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+    };
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+    const blockAlign = (numChannels * bitsPerSample) / 8;
+    const dataSize = samples.length * 2;
+
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);           // PCM
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      offset += 2;
+    }
+    return new Blob([buffer], { type: 'audio/wav' });
+  };
+
+  // 上傳單一 Blob 到 Whisper API 並回傳文字
+  const transcribeBlob = async (blob, filename) => {
+    const formData = new FormData();
+    formData.append('file', blob, filename);
+    formData.append('model', 'whisper-1');
+    formData.append('language', 'zh');
+    formData.append('response_format', 'text');
+
+    const res = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      if (res.status === 401) throw new Error('API Key 無效或已過期，請重新輸入。');
+      const errBody = await res.text();
+      throw new Error(`OpenAI API 錯誤 (${res.status}): ${errBody}`);
+    }
+
+    return (await res.text()).trim();
+  };
+
   const handleFile = async (file) => {
     if (!apiKey) {
       setShowKeyInput(true);
@@ -77,31 +136,45 @@ export default function WhisperTranscriber() {
     setTranscript('');
     setFileName(file.name);
     setPhase('transcribing');
-    setProgressText('正在上傳至 OpenAI Whisper API...');
+
+    const MAX_DIRECT_BYTES = 25 * 1024 * 1024; // 25MB
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('model', 'whisper-1');
-      formData.append('language', 'zh');
-      formData.append('response_format', 'text');
-
-      const res = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errBody = await res.text();
-        if (res.status === 401) {
-          throw new Error('API Key 無效或已過期，請重新輸入。');
-        }
-        throw new Error(`OpenAI API 錯誤 (${res.status}): ${errBody}`);
+      // ── 路徑 A：原始檔案 ≤ 25MB，直接丟給 OpenAI，行為跟以前一樣 ──
+      if (file.size <= MAX_DIRECT_BYTES) {
+        setProgressText('正在上傳至 OpenAI Whisper API...');
+        const text = await transcribeBlob(file, file.name);
+        setTranscript(text);
+        setPhase('done');
+        setProgressText('');
+        return;
       }
 
-      const text = await res.text();
-      setTranscript(text.trim());
+      // ── 路徑 B：原始檔案 > 25MB，才走「解碼 → 切段 → WAV → 逐段上傳」 ──
+      const SAMPLE_RATE = 16000;
+      // 16kHz 16-bit mono = 32000 bytes/sec；留 1MB buffer，每塊最多 24MB
+      const MAX_CHUNK_BYTES = 24 * 1024 * 1024;
+      const CHUNK_SAMPLES = Math.floor((MAX_CHUNK_BYTES - 44) / 2);
+
+      setProgressText('解碼音訊...');
+      const arrayBuffer = await file.arrayBuffer();
+      const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const pcm = audioBuffer.getChannelData(0);
+
+      const totalChunks = Math.ceil(pcm.length / CHUNK_SAMPLES);
+      const parts = [];
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SAMPLES;
+        const slice = pcm.slice(start, start + CHUNK_SAMPLES);
+        setProgressText(`轉譯中 ${i + 1} / ${totalChunks} 段...`);
+        const wav = encodeWav(slice, SAMPLE_RATE);
+        const text = await transcribeBlob(wav, `chunk_${i + 1}.wav`);
+        parts.push(text);
+      }
+
+      setTranscript(parts.join(' '));
       setPhase('done');
       setProgressText('');
     } catch (err) {
