@@ -637,11 +637,18 @@ function RsChartModal({ stock, onClose }) {
   /** VCP：價格項／成交量項／加權合成；error 表示 Yahoo 失敗 */
   const [vcpSnapshot, setVcpSnapshot] = useState(null);
 
+  /** 同一「交易日」只保留一點（台灣曆週六／週日併入週五）；舊資料若同週內多筆則取曆日較新那筆的 r */
   const history = useMemo(() => {
     if (!stock?.ibdRsHistory) return [];
-    return [...stock.ibdRsHistory]
+    const raw = [...stock.ibdRsHistory]
       .filter((e) => e?.d && e.r != null)
       .sort((a, b) => (a.d < b.d ? -1 : 1));
+    const byAnchor = new Map();
+    for (const e of raw) {
+      const anchor = normalizeYmdToTaiwanTradingDay(String(e.d).slice(0, 10)) ?? String(e.d).slice(0, 10);
+      byAnchor.set(anchor, { d: anchor, r: e.r });
+    }
+    return [...byAnchor.values()].sort((a, b) => (a.d < b.d ? -1 : 1));
   }, [stock]);
 
   const earliestHistoryDate = history.length > 0 ? history[0].d : null;

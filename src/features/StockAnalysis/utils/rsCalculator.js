@@ -116,8 +116,8 @@ export function getTaipeiWeekdayFromYmd(ymd) {
 }
 
 /**
- * 將 YYYY-MM-DD 對齊到「台股有交易的曆日」：若為週六／週日則回推到上一個週五。
- * （國定假日未排除；僅處理週末。）
+ * 將 YYYY-MM-DD（台灣曆、Asia/Taipei 該日）對齊到「台股有交易的曆日」：
+ * 若為週六或週日則回推到上一個週五。（國定假日未排除；僅處理週六／週日。）
  */
 export function normalizeYmdToTaiwanTradingDay(ymd) {
   if (!ymd) return null;

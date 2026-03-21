@@ -27,7 +27,16 @@ import {
   taipeiYmdAddDays,
   calcPriceChangePct,
   calcPricePosition6m,
+  normalizeYmdToTaiwanTradingDay,
 } from '../utils/rsCalculator';
+
+/**
+ * ibdRsHistory 的日期鍵（台灣曆 YYYY-MM-DD）：週六、週日皆 normalize 到上一個交易日（通常為週五），
+ * 避免週五 sync 一筆、週六或週日再 sync 又寫一筆、圖上兩點 RS 卻不同。
+ */
+function historyAnchorYmd(ymd) {
+  return normalizeYmdToTaiwanTradingDay(ymd) ?? String(ymd || '').slice(0, 10);
+}
 
 const RS_HISTORY_MAX = 180;
 
@@ -290,8 +299,9 @@ async function runFinalizePhases(stockList, stockListTotal, todayStr, existingMa
         const prevHistory = Array.isArray(existing.ibdRsHistory) ? existing.ibdRsHistory : [];
         const prevRating = typeof existing.ibdRsRating === 'number' ? existing.ibdRsRating : null;
 
-        const withoutToday = prevHistory.filter((h) => h.d !== todayStr);
-        const newHistory = [...withoutToday, { d: todayStr, r: newRating }]
+        const anchorStr = historyAnchorYmd(todayStr);
+        const withoutSlot = prevHistory.filter((h) => historyAnchorYmd(h.d) !== anchorStr);
+        const newHistory = [...withoutSlot, { d: anchorStr, r: newRating }]
           .sort((a, b) => (a.d < b.d ? -1 : 1))
           .slice(-RS_HISTORY_MAX);
 
@@ -1021,9 +1031,10 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
   onProgress({ phase: 'write', done: 0, total: 1, msg: `寫入 ${stockId} RS=${rating ?? '—'}…` });
   const existingDoc = (await readExistingRsData())[stockId] ?? {};
   const prevHistory = Array.isArray(existingDoc.ibdRsHistory) ? existingDoc.ibdRsHistory : [];
-  const withoutToday = prevHistory.filter((h) => h.d !== todayStr);
+  const anchorStr = historyAnchorYmd(todayStr);
+  const withoutSlot = prevHistory.filter((h) => historyAnchorYmd(h.d) !== anchorStr);
   const newHistory = rating != null
-    ? [...withoutToday, { d: todayStr, r: rating }].sort((a, b) => (a.d < b.d ? -1 : 1)).slice(-RS_HISTORY_MAX)
+    ? [...withoutSlot, { d: anchorStr, r: rating }].sort((a, b) => (a.d < b.d ? -1 : 1)).slice(-RS_HISTORY_MAX)
     : prevHistory;
 
   await setDoc(
