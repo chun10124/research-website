@@ -2774,8 +2774,7 @@ export default function IBDRsRankingPage() {
           deltaShortTitle={deltaShortTitle}
           deltaLongTitle={deltaLongTitle}
           onPickStock={(st) => {
-            setSelectedStock(st);
-            setMajorMovesOpen(false);
+            setSelectedStock(st); // 不關 majorMovesOpen：折線圖在上層，關閉後仍回到今日重點
           }}
         />
       )}
