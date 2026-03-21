@@ -32,6 +32,10 @@ export const db = initializeFirestore(app, {
 
 // 導出集合與文件路徑
 export const STOCK_WATCHLIST_COLLECTION = collection(db, "stockWatchlist");
+// IBD RS Ranking：全台股（上市+上櫃）獨立 collection，不混入個人 watchlist
+export const RS_RATINGS_COLLECTION = collection(db, "ibdRsRatings");
+// 台股清單快取（單一文件，避免每次打 TWSE/TPEX OpenAPI）
+export const STOCK_LIST_DOC_REF = doc(db, "ibdRsMeta", "stockList");
 export const JOURNAL_DOC_REF = doc(db, "trade_journals", "my_only_log");
 export const WHITEBOARD_DOC_REF = doc(db, "whiteboard", "my_whiteboard");
 export const MINDMAP_DOC_REF = doc(db, "mindmaps", "mindmap_list");

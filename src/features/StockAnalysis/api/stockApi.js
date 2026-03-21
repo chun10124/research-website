@@ -57,7 +57,7 @@ export const fetchBenchmarkReturn = async (startStr, endStr) => {
 /** Finmind 台股 data_id 用純數字，例如 2330；若傳入 2330.TW 會查不到 */
 function toFinmindStockId(stockCode) {
   const s = String(stockCode || '').trim();
-  return s.replace(/\.(TW|tw)$/, '') || s;
+  return s.replace(/\.(TW|TWO)$/i, '') || s;
 }
 
 /** 某檔股票歷史收盤價 { dateStr: price }，供績效頁每日淨值含未實現用 */
@@ -93,13 +93,45 @@ function toYahooBare(stockCode) {
   return String(stockCode || '').trim().replace(/\.(TW|tw|TWO|two)$/i, '');
 }
 
-/** 用指定 symbol（如 2330.TW、1234.TWO）呼叫 Yahoo chart API，回傳 JSON 或 null */
-async function fetchYahooChart(symbol, range = '5d') {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Yahoo 經 proxy 易觸發 429，對可重試狀態與網路錯誤做指數退避 */
+const YAHOO_RETRYABLE_HTTP = new Set([408, 429, 502, 503, 504]);
+
+/**
+ * 用指定 symbol（如 2330.TW、1234.TWO）呼叫 Yahoo chart API，回傳 JSON 或 null
+ * @param {string} symbol
+ * @param {string} range
+ * @param {{ maxRetries?: number, baseDelayMs?: number }} [opts]
+ */
+async function fetchYahooChart(symbol, range = '5d', opts = {}) {
+  const maxRetries = opts.maxRetries ?? 6;
+  const baseDelayMs = opts.baseDelayMs ?? 900;
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`;
   const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
-  const res = await fetch(fullUrl);
-  if (!res.ok) return null;
-  return res.json();
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(fullUrl);
+      if (res.ok) return await res.json();
+
+      if (!YAHOO_RETRYABLE_HTTP.has(res.status) || attempt === maxRetries) {
+        return null;
+      }
+
+      let waitMs = baseDelayMs * 2 ** attempt + Math.random() * 400;
+      const ra = res.headers.get('Retry-After');
+      if (ra) {
+        const sec = parseInt(ra, 10);
+        if (!Number.isNaN(sec) && sec > 0) waitMs = Math.max(waitMs, sec * 1000);
+      }
+      await sleep(waitMs);
+    } catch {
+      if (attempt === maxRetries) return null;
+      await sleep(baseDelayMs * 2 ** attempt + Math.random() * 400);
+    }
+  }
+  return null;
 }
 
 /**
@@ -146,7 +178,7 @@ function parseChartToPriceMap(json, startStr, endStr) {
   const map = {};
   for (let i = 0; i < timestamps.length; i++) {
     const d = new Date(timestamps[i] * 1000);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     if (dateStr < start) continue;
     if (end && dateStr > end) break;
     const c = Number(closes[i]);
@@ -159,7 +191,7 @@ function parseChartToPriceMap(json, startStr, endStr) {
  * 從 Yahoo Finance 抓歷史收盤價（透過 proxy），回傳 { [dateStr]: price }。
  * 先試 .TW（上市/上櫃），無資料再試 .TWO（興櫃）。績效頁每日淨值用。
  */
-export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr) => {
+export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr, opts = {}) => {
   const bare = toYahooBare(stockCode);
   if (!bare) return {};
   const start = (startStr || '').slice(0, 10);
@@ -170,10 +202,21 @@ export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr) 
   const days = Math.ceil(endDay - startDay) + 1;
   const range = yahooRangeForDays(days);
 
-  for (const suffix of ['.TW', '.TWO']) {
+  /** 回填長跑時可拉高，降低 429；預設與舊版 fetchYahooChart 一致 */
+  const chartOpts = {
+    maxRetries: opts.yahooMaxRetries ?? 8,
+    baseDelayMs: opts.yahooBaseDelayMs ?? 900,
+  };
+
+  const suffixes = opts.market === 'TPEX' ? ['.TWO', '.TW']
+    : opts.market === 'TWSE' ? ['.TW', '.TWO']
+    : ['.TW', '.TWO'];
+  for (let si = 0; si < suffixes.length; si++) {
+    if (si > 0) await sleep(400 + Math.floor(Math.random() * 200));
+    const suffix = suffixes[si];
     const symbol = `${bare}${suffix}`;
     try {
-      const json = await fetchYahooChart(symbol, range);
+      const json = await fetchYahooChart(symbol, range, chartOpts);
       if (!json) continue;
       const map = parseChartToPriceMap(json, start, end);
       if (Object.keys(map).length > 0) return map;
@@ -182,6 +225,28 @@ export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr) 
     }
   }
   return {};
+};
+
+/**
+ * 抓台股加權指數（^TWII）歷史收盤，回傳 { dateStr: price }。
+ * 直接用 ^TWII symbol，不加 .TW/.TWO 後綴。
+ */
+export const fetchIndexPriceMap = async (startStr, endStr) => {
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  if (!start) return {};
+  const startDay = new Date(start).getTime() / (24 * 60 * 60 * 1000);
+  const endDay = end ? new Date(end).getTime() / (24 * 60 * 60 * 1000) : startDay + 365;
+  const days = Math.ceil(endDay - startDay) + 1;
+  const range = yahooRangeForDays(days);
+  try {
+    const json = await fetchYahooChart('^TWII', range);
+    if (!json) return {};
+    return parseChartToPriceMap(json, start, end);
+  } catch (e) {
+    console.warn('fetchIndexPriceMap(^TWII) failed:', e?.message);
+    return {};
+  }
 };
 
 /** 僅抓該股票最新收盤價，供績效頁未實現損益用 */

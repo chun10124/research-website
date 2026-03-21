@@ -69,13 +69,25 @@ body {
 }
 
 
-/* 防止頁面層出現第二條橫向捲軸 */
-html,
+/* 裁掉橫向溢出（避免捲軸） */
+html {
+  overflow-x: clip;
+}
 body,
 #___docusaurus,
 .main-wrapper {
   overflow-x: hidden;
 }
+
+/* IBD RS 排名頁：允許整頁橫向捲動 */
+html.ibd-rs-page,
+html.ibd-rs-page body,
+html.ibd-rs-page #___docusaurus,
+html.ibd-rs-page .main-wrapper {
+  overflow-x: auto;
+}
+
+/* RS 篩選 placeholder 完整規則見檔案末尾（與 IBDRsRankingPage 執行時注入雙保險） */
 
 /* 移除 Infima 預設的交替灰底 */
 table tr:nth-child(2n) {
@@ -92,4 +104,23 @@ table tr:nth-child(2n) {
   
   /* 確保裁切 Logo 時，邊緣清晰銳利 */
   object-fit: cover; 
+}
+
+/* ── IBD RS 篩選：placeholder 必須用 CSS（行內 style 無 ::placeholder）
+   選擇器用 input[data-ibd-rs-filter]，避免與全域 input 規則打架。
+   頁面亦會在 document.head 末尾再注入同一段，蓋過非同步載入的樣式。 ── */
+input[data-ibd-rs-filter]::placeholder,
+input[data-ibd-rs-filter]::-webkit-input-placeholder,
+input[data-ibd-rs-filter]::-moz-placeholder {
+  color: #c0392b !important;
+  -webkit-text-fill-color: #c0392b !important;
+  opacity: 1 !important;
+}
+
+html[data-theme='dark'] input[data-ibd-rs-filter]::placeholder,
+html[data-theme='dark'] input[data-ibd-rs-filter]::-webkit-input-placeholder,
+html[data-theme='dark'] input[data-ibd-rs-filter]::-moz-placeholder {
+  color: #e57373 !important;
+  -webkit-text-fill-color: #e57373 !important;
+  opacity: 1 !important;
 }

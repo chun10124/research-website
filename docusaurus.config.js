@@ -121,6 +121,11 @@ const config = {
             label: '日曆',
             position: 'left',
           },
+          {
+            to: '/IBDRsRankingPage',
+            label: 'RS',
+            position: 'left',
+          },
         ],
       },
       footer: {

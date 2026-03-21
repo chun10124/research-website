@@ -1,0 +1,246 @@
+/* src/features/StockAnalysis/api/rsStockList.js */
+
+/**
+ * 從 TWSE（上市）+ TPEX（上櫃）Open API 抓取完整台股清單
+ *
+ * 快取策略（優先順序）：
+ *   1. localStorage 當日快取（最快，同一瀏覽器）
+ *   2. Firestore ibdRsMeta/stockList（跨裝置/跨瀏覽器）
+ *   3. 直接打 TWSE + TPEX OpenAPI（含 retry），成功後同步寫回 1+2
+ */
+
+import { getDoc, setDoc } from 'firebase/firestore';
+import { STOCK_LIST_DOC_REF } from '../../../utils/firebaseConfig';
+
+const PROXY_BASE = 'https://stock-proxy.tzuchun11232004.workers.dev/?url=';
+
+const TWSE_LIST_URL = 'https://openapi.twse.com.tw/v1/opendata/t187ap03_L';
+const TPEX_LIST_URL = 'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O';
+
+const LS_STOCK_LIST_KEY = 'research-website-stockList';
+
+function getTaiwanYmd() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+}
+
+/** 讀 localStorage 當日快取；回傳 null 代表無快取或已過期 */
+function readLsCache() {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(LS_STOCK_LIST_KEY);
+    if (!raw) return null;
+    const { date, list } = JSON.parse(raw);
+    if (date !== getTaiwanYmd()) return null;
+    if (!Array.isArray(list) || list.length < 100) return null;
+    return list;
+  } catch {
+    return null;
+  }
+}
+
+/** 寫 localStorage 快取 */
+function writeLsCache(list) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LS_STOCK_LIST_KEY, JSON.stringify({ date: getTaiwanYmd(), list }));
+  } catch (_) {}
+}
+
+/** 讀 Firestore 當日快取；失敗或過期回傳 null */
+async function readFirestoreCache() {
+  try {
+    const snap = await getDoc(STOCK_LIST_DOC_REF);
+    if (!snap.exists()) return null;
+    const { date, list } = snap.data();
+    if (date !== getTaiwanYmd()) return null;
+    if (!Array.isArray(list) || list.length < 100) return null;
+    return list;
+  } catch (e) {
+    console.warn('[RS StockList] Firestore 快取讀取失敗:', e.message);
+    return null;
+  }
+}
+
+/** 寫 Firestore 快取（非同步，不擋主流程） */
+async function writeFirestoreCache(list) {
+  try {
+    await setDoc(STOCK_LIST_DOC_REF, { date: getTaiwanYmd(), list, updatedAt: Date.now() });
+  } catch (e) {
+    console.warn('[RS StockList] Firestore 快取寫入失敗:', e.message);
+  }
+}
+
+/** Exponential backoff retry */
+async function withRetry(fn, { maxRetries = 5, baseDelayMs = 1000 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (attempt === maxRetries) break;
+      const wait = baseDelayMs * 2 ** attempt + Math.random() * 500;
+      console.warn(`[RS StockList] 第 ${attempt + 1} 次失敗，${Math.round(wait)}ms 後重試：${e.message}`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * 判斷是否為「一般股票/ETF」代碼（4 位純數字）
+ * 排除：權證（通常 6 位）、特別股（通常帶英文字母後綴）、牛熊證等
+ */
+function isRegularCode(code) {
+  return /^\d{4}$/.test(String(code || '').trim());
+}
+
+/**
+ * OpenAPI 回傳可能是頂層陣列，或包在 data / body（字串再 parse）等欄位
+ */
+function unwrapJsonArray(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed == null || typeof parsed !== 'object') return null;
+  const keys = ['data', 'Data', 'records', 'Records', 'result', 'Result', 'list', 'List', 'items', 'Items'];
+  for (const k of keys) {
+    const v = parsed[k];
+    if (Array.isArray(v)) return v;
+  }
+  if (typeof parsed.body === 'string') {
+    try {
+      const inner = JSON.parse(parsed.body);
+      const u = unwrapJsonArray(inner);
+      if (u) return u;
+      if (Array.isArray(inner)) return inner;
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+/**
+ * 透過 proxy 抓 JSON，回傳列舉陣列（失敗或無法解析為陣列時回傳 []）
+ */
+async function proxyFetchArray(targetUrl) {
+  const full = `${PROXY_BASE}${encodeURIComponent(targetUrl)}`;
+  const res = await fetch(full);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${targetUrl}`);
+  const text = (await res.text()).replace(/^\uFEFF/, '');
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    console.warn(`[RS StockList] JSON 解析失敗: ${targetUrl.slice(-48)}`, e?.message);
+    return [];
+  }
+  const rows = unwrapJsonArray(parsed);
+  if (rows == null) {
+    const hint = parsed && typeof parsed === 'object' ? Object.keys(parsed).slice(0, 12).join(',') : typeof parsed;
+    console.warn(`[RS StockList] 回應非預期格式（無法取得陣列）: ${targetUrl.slice(-48)} keys=${hint}`);
+    return [];
+  }
+  return rows;
+}
+
+/**
+ * 從陣列項目中抽取「代號」與「簡稱/名稱」
+ * TWSE：中文欄位（公司代號、公司簡稱）
+ * TPEX：英文欄位（SecuritiesCompanyCode、CompanyAbbreviation）
+ */
+function extractFields(item) {
+  const rawCode =
+    item['公司代號'] ??
+    item['SecuritiesCompanyCode'] ??
+    item['securitiesCompanyCode'] ??
+    item['code'] ??
+    item['Code'] ??
+    '';
+  const code = String(rawCode ?? '').trim();
+
+  const name = String(
+    item['公司簡稱'] ??
+    item['CompanyAbbreviation'] ??
+    item['公司名稱'] ??
+    item['CompanyName'] ??
+    item['name'] ??
+    item['Name'] ??
+    ''
+  ).trim();
+
+  return { code, name };
+}
+
+/**
+ * 抓取全台股清單（上市 + 上櫃），回傳：
+ * [{ id: '2330', name: '台積電', market: 'TWSE' | 'TPEX' }, ...]
+ *
+ * 保護機制：
+ *   1. localStorage 當日快取：當天已成功拿過就不再打 OpenAPI
+ *   2. Exponential backoff retry（各自最多 5 次）
+ *   3. Fail-fast：任一段拿不到有效資料（<100 筆）就 throw，不用半套清單繼續跑
+ */
+export async function fetchTaiwanStockList() {
+  // ── 1. localStorage 快取（最快）──────────────────────────────────────
+  const lsCached = readLsCache();
+  if (lsCached) {
+    console.log(`[RS StockList] localStorage 快取：${lsCached.length} 檔`);
+    return lsCached;
+  }
+
+  // ── 2. Firestore 快取（跨裝置）───────────────────────────────────────
+  const fsCached = await readFirestoreCache();
+  if (fsCached) {
+    console.log(`[RS StockList] Firestore 快取：${fsCached.length} 檔`);
+    writeLsCache(fsCached); // 順便存進 localStorage 加速下次
+    return fsCached;
+  }
+
+  const all = [];
+  const seen = new Set();
+
+  const addStock = (code, name, market) => {
+    if (!isRegularCode(code)) return;
+    if (seen.has(code)) return;
+    seen.add(code);
+    all.push({ id: code, name: name || code, market });
+  };
+
+  // ── 2. TWSE 上市（retry + fail-fast）────────────────────────────────
+  const twseData = await withRetry(() => proxyFetchArray(TWSE_LIST_URL), {
+    maxRetries: 5,
+    baseDelayMs: 1000,
+  });
+  if (!twseData || twseData.length < 100) {
+    throw new Error(`[RS StockList] TWSE 清單不完整（${twseData?.length ?? 0} 筆），中止`);
+  }
+  for (const item of twseData) {
+    const { code, name } = extractFields(item);
+    addStock(code, name, 'TWSE');
+  }
+  console.log(`[RS StockList] TWSE 上市：${all.length} 檔`);
+
+  // ── 3. TPEX 上櫃（retry + fail-fast）───────────────────────────────
+  const tpexData = await withRetry(() => proxyFetchArray(TPEX_LIST_URL), {
+    maxRetries: 5,
+    baseDelayMs: 1000,
+  });
+  if (!tpexData || tpexData.length < 100) {
+    throw new Error(`[RS StockList] TPEX 清單不完整（${tpexData?.length ?? 0} 筆），中止`);
+  }
+  let added = 0;
+  for (const item of tpexData) {
+    const { code, name } = extractFields(item);
+    if (!isRegularCode(code) || seen.has(code)) continue;
+    seen.add(code);
+    all.push({ id: code, name: name || code, market: 'TPEX' });
+    added++;
+  }
+  console.log(`[RS StockList] TPEX 上櫃：+${added} 檔，合計 ${all.length} 檔`);
+
+  // ── 4. 寫快取（localStorage 同步 + Firestore 非同步）────────────────
+  writeLsCache(all);
+  writeFirestoreCache(all); // 不 await，背景跑
+
+  return all;
+}
