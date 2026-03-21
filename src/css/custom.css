@@ -79,12 +79,54 @@ body,
   overflow-x: hidden;
 }
 
-/* IBD RS 排名頁：允許整頁橫向捲動 */
+/* IBD RS 排名頁：允許整頁橫向捲動（備援；主要橫捲在 .ibd-rs-ranking-table-scroll） */
 html.ibd-rs-page,
 html.ibd-rs-page body,
 html.ibd-rs-page #___docusaurus,
 html.ibd-rs-page .main-wrapper {
   overflow-x: auto;
+}
+
+/* IBD RS 排名頁：主內容可縮，避免 flex 子項把橫向捲動吃掉 */
+html.ibd-rs-page .ibd-rs-ranking-main {
+  min-width: 0;
+  overflow-x: visible;
+}
+
+/* 多欄表：專用橫向捲動（手機可左右滑看完整欄；勿依賴整頁 overflow） */
+.ibd-rs-ranking-table-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
+  width: 100%;
+}
+
+@media (max-width: 996px) {
+  .ibd-rs-ranking-page-inner .ibd-rs-ranking-table-scroll {
+    margin-left: -10px;
+    margin-right: -10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-bottom: 10px;
+  }
+
+  /* 頂欄：標題獨列，搜尋＋翻頁下一列較好點 */
+  .ibd-rs-ranking-topbar-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+  .ibd-rs-ranking-topbar-actions {
+    width: 100%;
+    justify-content: flex-start !important;
+  }
+  .ibd-rs-ranking-topbar-actions input.ibd-rs-topbar-search {
+    flex: 1 1 auto;
+    max-width: none;
+    width: auto;
+    min-width: 0;
+  }
 }
 
 /* RS 篩選 placeholder 完整規則見檔案末尾（與 IBDRsRankingPage 執行時注入雙保險） */

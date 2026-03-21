@@ -1369,11 +1369,12 @@ export default function IBDRsRankingPage() {
 
   return (
     <Layout title="IBD RS Ranking">
-      <main style={{ padding: '8px 0 12px' }}>
-        <div style={{ padding: '0 10px' }}>
+      <main className="ibd-rs-ranking-main" style={{ padding: '8px 0 12px', minWidth: 0 }}>
+        <div className="ibd-rs-ranking-page-inner" style={{ padding: '0 10px', minWidth: 0 }}>
           {/* ── 頂欄：標題與「搜尋＋翻頁」同一列；統計在下一列 ─────────────── */}
           <div style={{ marginBottom: 8 }}>
             <div
+              className="ibd-rs-ranking-topbar-row"
               style={{
                 display: 'flex',
                 flexWrap: 'wrap',
@@ -1385,6 +1386,7 @@ export default function IBDRsRankingPage() {
             >
               <h2 style={{ margin: 0, fontSize: '1.15rem', lineHeight: 1.2, flex: '0 1 auto' }}>IBD RS Ranking</h2>
               <div
+                className="ibd-rs-ranking-topbar-actions"
                 style={{
                   display: 'inline-flex',
                   flexDirection: 'row',
@@ -1827,7 +1829,7 @@ export default function IBDRsRankingPage() {
             </div>
           )}
 
-          {/* ── 表格：並排多組（橫向捲軸在 .main-wrapper，勿此層 overflow） ── */}
+          {/* ── 表格：並排多組（橫向捲在 .ibd-rs-ranking-table-scroll） ── */}
           <div style={{ marginBottom: 8 }}>
             {loading && stocks.length === 0 ? (
               <div style={{ padding: 36, textAlign: 'center', color: '#888', fontSize: 13 }}>載入中...</div>
@@ -1846,26 +1848,33 @@ export default function IBDRsRankingPage() {
               </div>
             ) : (
               <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${parallelChunksToShow.length}, ${IBDRS_QUADRANT_TABLE_WIDTH_PX}px)`,
-                  gap: 8,
-                  alignItems: 'start',
-                }}
+                className="ibd-rs-ranking-table-scroll"
+                role="region"
+                aria-label="RS 排名表（可橫向捲動檢視各欄）"
               >
-                {parallelChunksToShow.map((chunk, qi) => (
-                  <IbdRsQuadrantTable
-                    key={qi}
-                    rows={chunk}
-                    tdBase={tdBase}
-                    thBase={thBase}
-                    onNameClick={setSelectedStock}
-                    deltaShortLabel={`Δ${deltaShortDaysResolved}`}
-                    deltaLongLabel={`Δ${deltaLongDaysResolved}`}
-                    deltaShortTitle={deltaShortTitle}
-                    deltaLongTitle={deltaLongTitle}
-                  />
-                ))}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${parallelChunksToShow.length}, ${IBDRS_QUADRANT_TABLE_WIDTH_PX}px)`,
+                    gap: 8,
+                    alignItems: 'start',
+                    width: 'max-content',
+                  }}
+                >
+                  {parallelChunksToShow.map((chunk, qi) => (
+                    <IbdRsQuadrantTable
+                      key={qi}
+                      rows={chunk}
+                      tdBase={tdBase}
+                      thBase={thBase}
+                      onNameClick={setSelectedStock}
+                      deltaShortLabel={`Δ${deltaShortDaysResolved}`}
+                      deltaLongLabel={`Δ${deltaLongDaysResolved}`}
+                      deltaShortTitle={deltaShortTitle}
+                      deltaLongTitle={deltaLongTitle}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </div>
