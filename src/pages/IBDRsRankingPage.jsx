@@ -627,8 +627,28 @@ function SyncProgressBar({ progress }) {
   );
 }
 
+/** 今日重點四段合併為 ←→ 導覽順序（先後：單日ΔRS／突破80／突破90／HL）；同檔多段只出現一次 */
+function mergeMajorMovesNavigationList(items, items80, items90, itemsHlHigh) {
+  const seen = new Set();
+  const out = [];
+  for (const s of [...items, ...items80, ...items90, ...itemsHlHigh]) {
+    if (!s?.id || seen.has(s.id)) continue;
+    seen.add(s.id);
+    out.push(s);
+  }
+  return out;
+}
+
+function isDomTypingTarget(target) {
+  if (!target || !(target instanceof Element)) return false;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (target.isContentEditable) return true;
+  return target.closest?.('input, textarea, select, [contenteditable="true"]') != null;
+}
+
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal */
-function RsChartModal({ stock, onClose }) {
+function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
   const [indexMap, setIndexMap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -738,6 +758,25 @@ function RsChartModal({ stock, onClose }) {
   const marketBadge = formatIbdMarketLabel(stock?.market);
   const tradingViewUrl = stock ? getTradingViewChartUrl(stock) : null;
 
+  useEffect(() => {
+    if (!stock || !onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
+    const handleKey = (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (isDomTypingTarget(e.target)) return;
+      const idx = navigationList.findIndex((s) => s.id === stock.id);
+      if (idx < 0) return;
+      if (e.key === 'ArrowLeft' && idx > 0) {
+        e.preventDefault();
+        onNavigate(navigationList[idx - 1]);
+      } else if (e.key === 'ArrowRight' && idx < navigationList.length - 1) {
+        e.preventDefault();
+        onNavigate(navigationList[idx + 1]);
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => window.removeEventListener('keydown', handleKey, true);
+  }, [stock, stock?.id, navigationList, onNavigate]);
+
   return (
     <div
       onMouseDown={onClose}
@@ -755,12 +794,16 @@ function RsChartModal({ stock, onClose }) {
       <div
         onMouseDown={(e) => e.stopPropagation()}
         style={{
+          boxSizing: 'border-box',
           width: '100%',
           maxWidth: 900,
+          minHeight: 556,
           background: '#fff',
           borderRadius: 12,
           boxShadow: '0 20px 56px rgba(0,0,0,0.28)',
           padding: '18px 20px 12px',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <div
@@ -769,6 +812,8 @@ function RsChartModal({ stock, onClose }) {
             justifyContent: 'space-between',
             alignItems: 'center',
             marginBottom: 8,
+            minHeight: 36,
+            flexShrink: 0,
           }}
         >
           <span style={{ fontWeight: 700, fontSize: 14 }}>
@@ -795,12 +840,26 @@ function RsChartModal({ stock, onClose }) {
             >
               {marketBadge.text}
             </span>
-            {closeQuote != null && (
+            {closeQuote != null ? (
               <span
                 title="Yahoo Finance 日 K 最近一筆；非交易日則為前一交易日收盤"
                 style={{ marginLeft: 8, fontSize: 13, color: '#1565c0', fontWeight: 700, verticalAlign: 'middle' }}
               >
                 {formatYmdSlash(closeQuote.dateStr)} 收盤 {closeQuote.price.toFixed(2)}
+              </span>
+            ) : (
+              <span
+                aria-hidden
+                style={{
+                  marginLeft: 8,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  verticalAlign: 'middle',
+                  visibility: 'hidden',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                0000/00/00 收盤 000.00
               </span>
             )}
           </span>
@@ -822,98 +881,106 @@ function RsChartModal({ stock, onClose }) {
           </button>
         </div>
 
-        {vcpSnapshot && !vcpSnapshot.error && (
-          <div
-            style={{
-              marginBottom: 10,
-              padding: '0 0 6px',
-              fontSize: 12,
-              color: '#6b7280',
-              lineHeight: 1.45,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              flexWrap: 'wrap',
-            }}
-            title="價格項：近10個交易日最大單日|報酬|÷近40個交易日最大（收盤）；成交量項：近10日均量÷近40日均量；各 0～1；加權 70% / 30%"
-          >
-            <span style={{ minWidth: 0 }}>
-              <span style={{ fontWeight: 600, color: '#9ca3af' }}>VCP</span>{' '}
-              {vcpSnapshot.composite != null && Number.isFinite(vcpSnapshot.composite) ? (
-                <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
-                  {vcpSnapshot.composite.toFixed(3)}
+        {/* 固定高度避免切換個股時 VCP 區塊忽有忽無造成跳動 */}
+        <div
+          style={{
+            minHeight: 44,
+            marginBottom: 8,
+            flexShrink: 0,
+            boxSizing: 'border-box',
+          }}
+        >
+          {vcpSnapshot && !vcpSnapshot.error && (
+            <div
+              style={{
+                padding: '0 0 6px',
+                fontSize: 12,
+                color: '#6b7280',
+                lineHeight: 1.45,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+              title="價格項：近10個交易日最大單日|報酬|÷近40個交易日最大（收盤）；成交量項：近10日均量÷近40日均量；各 0～1；加權 70% / 30%"
+            >
+              <span style={{ minWidth: 0 }}>
+                <span style={{ fontWeight: 600, color: '#9ca3af' }}>VCP</span>{' '}
+                {vcpSnapshot.composite != null && Number.isFinite(vcpSnapshot.composite) ? (
+                  <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
+                    {vcpSnapshot.composite.toFixed(3)}
+                  </span>
+                ) : (
+                  <span style={{ color: '#9ca3af' }}>—</span>
+                )}
+                <span style={{ marginLeft: 6, fontSize: 11, color: '#9ca3af' }}>
+                  價 {vcpSnapshot.priceRatio != null && Number.isFinite(vcpSnapshot.priceRatio)
+                    ? vcpSnapshot.priceRatio.toFixed(3)
+                    : '—'}
+                  ×{Math.round(VCP_WEIGHT_PRICE * 100)}% 量{' '}
+                  {vcpSnapshot.volRatio != null && Number.isFinite(vcpSnapshot.volRatio)
+                    ? vcpSnapshot.volRatio.toFixed(3)
+                    : '—'}
+                  ×{Math.round(VCP_WEIGHT_VOLUME * 100)}%
                 </span>
-              ) : (
-                <span style={{ color: '#9ca3af' }}>—</span>
-              )}
-              <span style={{ marginLeft: 6, fontSize: 11, color: '#9ca3af' }}>
-                價 {vcpSnapshot.priceRatio != null && Number.isFinite(vcpSnapshot.priceRatio)
-                  ? vcpSnapshot.priceRatio.toFixed(3)
-                  : '—'}
-                ×{Math.round(VCP_WEIGHT_PRICE * 100)}% 量{' '}
-                {vcpSnapshot.volRatio != null && Number.isFinite(vcpSnapshot.volRatio)
-                  ? vcpSnapshot.volRatio.toFixed(3)
-                  : '—'}
-                ×{Math.round(VCP_WEIGHT_VOLUME * 100)}%
               </span>
-            </span>
-            {tradingViewUrl && (
-              <a
-                href={tradingViewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="TradingView K 線圖（新分頁）"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#1565c0',
-                  textDecoration: 'none',
-                  borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
-                  lineHeight: 1.25,
-                  flexShrink: 0,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                K 線圖
-              </a>
-            )}
-          </div>
-        )}
-        {vcpSnapshot && vcpSnapshot.error && (
-          <div
-            style={{
-              marginBottom: 8,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 10,
-              flexWrap: 'wrap',
-            }}
-          >
-            <span style={{ fontSize: 11, color: '#b45309' }}>VCP：無法取得 Yahoo 價量</span>
-            {tradingViewUrl && (
-              <a
-                href={tradingViewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="TradingView K 線圖（新分頁）"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#1565c0',
-                  textDecoration: 'none',
-                  borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                K 線圖
-              </a>
-            )}
-          </div>
-        )}
+              {tradingViewUrl && (
+                <a
+                  href={tradingViewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="TradingView K 線圖（新分頁）"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#1565c0',
+                    textDecoration: 'none',
+                    borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
+                    lineHeight: 1.25,
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  K 線圖
+                </a>
+              )}
+            </div>
+          )}
+          {vcpSnapshot && vcpSnapshot.error && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ fontSize: 11, color: '#b45309' }}>VCP：無法取得 Yahoo 價量</span>
+              {tradingViewUrl && (
+                <a
+                  href={tradingViewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="TradingView K 線圖（新分頁）"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#1565c0',
+                    textDecoration: 'none',
+                    borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  K 線圖
+                </a>
+              )}
+            </div>
+          )}
+        </div>
 
         {loading ? (
           <div
@@ -1606,6 +1673,8 @@ export default function IBDRsRankingPage() {
   const [lastSyncDateLocal, setLastSyncDateLocal] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
+  /** 從今日重點開折線圖時：←→ 依此清單；主表點名則為 null */
+  const [chartNavOverride, setChartNavOverride] = useState(null);
   const [majorMovesOpen, setMajorMovesOpen] = useState(false);
   const [testMsg, setTestMsg] = useState(null);
   const [batchRunning, setBatchRunning] = useState(false);
@@ -1798,6 +1867,16 @@ export default function IBDRsRankingPage() {
       return true;
     });
   }, [globalSorted, filters]);
+
+  /** 折線圖 ←／→：今日重點開啟時用合併清單；否則主表 filtered／globalSorted */
+  const chartNavigationList = useMemo(() => {
+    if (Array.isArray(chartNavOverride?.list) && chartNavOverride.list.length > 0) {
+      return chartNavOverride.list;
+    }
+    if (!selectedStock) return filtered;
+    const inFiltered = filtered.some((s) => s.id === selectedStock.id);
+    return inFiltered ? filtered : globalSorted;
+  }, [chartNavOverride, selectedStock, filtered, globalSorted]);
 
   const pageCount = Math.ceil(filtered.length / PAGE_SIZE);
   /** 篩選／搜尋後筆數變少時，page state 可能大於最後一頁 → 用 safePage 切 slice 與翻頁 */
@@ -2581,7 +2660,10 @@ export default function IBDRsRankingPage() {
                       rows={chunk}
                       tdBase={tdBase}
                       thBase={thBase}
-                      onNameClick={setSelectedStock}
+                      onNameClick={(s) => {
+                        setChartNavOverride(null);
+                        setSelectedStock(s);
+                      }}
                       deltaShortLabel={`Δ${deltaShortDaysResolved}`}
                       deltaLongLabel={`Δ${deltaLongDaysResolved}`}
                       deltaShortTitle={deltaShortTitle}
@@ -2781,13 +2863,29 @@ export default function IBDRsRankingPage() {
           deltaShortTitle={deltaShortTitle}
           deltaLongTitle={deltaLongTitle}
           onPickStock={(st) => {
-            setSelectedStock(st); // 不關 majorMovesOpen：折線圖在上層，關閉後仍回到今日重點
+            setChartNavOverride({
+              list: mergeMajorMovesNavigationList(
+                majorMoveStocksToday,
+                rsBreakthrough80Today,
+                rsBreakthrough90Today,
+                hlHighList
+              ),
+            });
+            setSelectedStock(st);
           }}
         />
       )}
 
       {selectedStock && (
-        <RsChartModal stock={selectedStock} onClose={() => setSelectedStock(null)} />
+        <RsChartModal
+          stock={selectedStock}
+          navigationList={chartNavigationList}
+          onNavigate={setSelectedStock}
+          onClose={() => {
+            setSelectedStock(null);
+            setChartNavOverride(null);
+          }}
+        />
       )}
     </Layout>
   );
