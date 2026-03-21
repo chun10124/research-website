@@ -188,6 +188,37 @@ function parseChartToPriceMap(json, startStr, endStr) {
 }
 
 /**
+ * 解析 Yahoo chart：收盤價 + 成交量（同日對齊；僅在收盤有效時寫入價；量可為 0）
+ * @returns {{ priceMap: Record<string, number>, volumeMap: Record<string, number> }}
+ */
+function parseChartToPriceVolumeMaps(json, startStr, endStr) {
+  const result = json?.chart?.result?.[0];
+  if (!result) return { priceMap: {}, volumeMap: {} };
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  const timestamps = result.timestamp || [];
+  const quote = result.indicators?.quote?.[0];
+  const closes = quote?.close || result.indicators?.adjclose?.[0]?.adjclose || [];
+  const volumes = quote?.volume || [];
+  const priceMap = {};
+  const volumeMap = {};
+  for (let i = 0; i < timestamps.length; i++) {
+    const d = new Date(timestamps[i] * 1000);
+    const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    if (dateStr < start) continue;
+    if (end && dateStr > end) break;
+    const c = Number(closes[i]);
+    if (!(c > 0 && Number.isFinite(c))) continue;
+    priceMap[dateStr] = c;
+    const vol = volumes[i];
+    if (vol != null && Number.isFinite(vol) && vol >= 0) {
+      volumeMap[dateStr] = vol;
+    }
+  }
+  return { priceMap, volumeMap };
+}
+
+/**
  * 從 Yahoo Finance 抓歷史收盤價（透過 proxy），回傳 { [dateStr]: price }。
  * 先試 .TW（上市/上櫃），無資料再試 .TWO（興櫃）。績效頁每日淨值用。
  */
@@ -225,6 +256,41 @@ export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr, 
     }
   }
   return {};
+};
+
+/**
+ * 從 Yahoo Finance 抓歷史收盤價與成交量（同一請求），回傳兩個 map。
+ */
+export const fetchYahooHistoricalPriceVolumeMaps = async (stockCode, startStr, endStr, opts = {}) => {
+  const bare = toYahooBare(stockCode);
+  if (!bare) return { priceMap: {}, volumeMap: {} };
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  if (!start) return { priceMap: {}, volumeMap: {} };
+  const startDay = new Date(start).getTime() / (24 * 60 * 60 * 1000);
+  const endDay = end ? new Date(end).getTime() / (24 * 60 * 60 * 1000) : startDay + 365;
+  const days = Math.ceil(endDay - startDay) + 1;
+  const range = yahooRangeForDays(days);
+  const chartOpts = {
+    maxRetries: opts.yahooMaxRetries ?? 8,
+    baseDelayMs: opts.yahooBaseDelayMs ?? 900,
+  };
+  const suffixes =
+    opts.market === 'TPEX' ? ['.TWO', '.TW'] : opts.market === 'TWSE' ? ['.TW', '.TWO'] : ['.TW', '.TWO'];
+  for (let si = 0; si < suffixes.length; si++) {
+    if (si > 0) await sleep(400 + Math.floor(Math.random() * 200));
+    const suffix = suffixes[si];
+    const symbol = `${bare}${suffix}`;
+    try {
+      const json = await fetchYahooChart(symbol, range, chartOpts);
+      if (!json) continue;
+      const { priceMap, volumeMap } = parseChartToPriceVolumeMaps(json, start, end);
+      if (Object.keys(priceMap).length > 0) return { priceMap, volumeMap };
+    } catch (e) {
+      console.warn(`fetchYahooHistoricalPriceVolumeMaps(${symbol}) failed:`, e?.message);
+    }
+  }
+  return { priceMap: {}, volumeMap: {} };
 };
 
 /**
@@ -494,8 +560,10 @@ export const syncStockSnapshots = async (stock) => {
     }
     const latestData = await fetchCompleteStockData(stock.code, () => {}, opts);
     if (!latestData) return;
-    await updateAnalysisField(stock.code, {
+    await updateAnalysisField(stock.id, {
       ...latestData,
+      id: stock.id,
+      code: stock.code,
       estimatedEPS: stock.estimatedEPS || 0,
       targetPrice: stock.targetPrice || 0,
       notes: stock.notes || "",

@@ -803,7 +803,7 @@ export async function runIbdRsHistoryBackfill({
   }
   const N = stockList.length;
 
-  // 與全市場同步一致：用台北日曆減自然日，勿用 new Date().toISOString()（易混 UTC）
+  // 與全市場同步一致：錨點用台北日曆加減「日曆天」再取價（股價序列鍵仍為交易日）
   const backfillStartStr = taipeiYmdAddDays(todayStr, -daysBack) ?? todayStr;
 
   onProgress({

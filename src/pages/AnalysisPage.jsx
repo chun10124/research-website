@@ -5,7 +5,8 @@ import { setDoc, onSnapshot } from 'firebase/firestore';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
-import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable'; 
+import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable';
+import BigColumnDragBoard from '../features/StockAnalysis/components/BigColumnDragBoard';
 import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
 import { ANALYSIS_LAYOUT_DOC_REF } from '../utils/firebaseConfig';
 
@@ -63,6 +64,7 @@ const AnalysisPage = () => {
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
 
     const categoriesFromStocks = [...new Set((stocks || []).map(s => s.category || '未分類'))].sort();
+
     const saveBigColumnConfig = (next) => {
         setBigColumnConfig(next);
         setDoc(ANALYSIS_LAYOUT_DOC_REF, { bigColumnConfig: next }, { merge: true }).catch((e) => console.error('寫入版面設定失敗:', e));
@@ -123,17 +125,22 @@ const AnalysisPage = () => {
 
         setStatusMessage(`正在初始化 ${code}...`);
         try {
+            const docId =
+                typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                    ? crypto.randomUUID()
+                    : `w_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
             // 第一步：先在 Firebase 建立基礎文件 (讓格子先在畫面上跑出來)
-            const initialStockObj = { 
-                id: code, // 確保 ID 與代碼一致
+            // docId 與 code 分離：同一檔股票可有多筆（不同產業／備註）
+            const initialStockObj = {
+                id: docId,
                 code: code,
                 name: `讀取中...`,
                 category: '自選',
-                lastUpdate: 0, 
-                history: { priceClose: [], foreignChipFlowNet: [], foreignTotalHolding: [], revenueRaw: [], revenueYoY: [] } 
+                lastUpdate: 0,
+                history: { priceClose: [], foreignChipFlowNet: [], foreignTotalHolding: [], revenueRaw: [], revenueYoY: [] }
             };
-            
-            await updateAnalysisField(code, initialStockObj);
+
+            await updateAnalysisField(docId, initialStockObj);
 
             setStatusMessage(`正在從 API 抓取 ${code} 的詳細數據...`);
             await syncStockSnapshots(initialStockObj);
@@ -225,7 +232,7 @@ const AnalysisPage = () => {
                             alignItems: 'center',
                             gap: '15px'
                         }}>
-                            <strong style={{ fontSize: '1.1em', color: '#333' }}>新增/更新股票</strong>
+                            <strong style={{ fontSize: '1.1em', color: '#333' }}>新增股票</strong>
                             <input
                                 type="text"
                                 value={testCode}
@@ -266,7 +273,7 @@ const AnalysisPage = () => {
                             </span>
                         </div>
                         <p style={{ fontSize: '0.85em', color: '#888', marginTop: '10px', paddingLeft: '5px' }}>
-                            * 輸入股票代碼後點擊同步，系統將自動從 API 獲取最新的股價、營收與籌碼數據。
+                            * 輸入股票代碼後點擊同步，系統將自動從 API 獲取最新的股價、營收與籌碼數據。同一檔可重複新增，請在「設定產業」為各筆設定不同產業（例如同一檔放在多個產業觀察）。
                         </p>
 
                         <details style={{ marginTop: '12px' }}>
@@ -278,7 +285,7 @@ const AnalysisPage = () => {
                                     <ul style={{ margin: 0, paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                         {stocks.map(s => (
                                             <li key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', listStyle: 'none', marginLeft: '-12px' }}>
-                                                <span style={{ fontWeight: 'bold', minWidth: '42px' }}>{s.id}</span>
+                                                <span style={{ fontWeight: 'bold', minWidth: '42px' }}>{s.code || s.id}</span>
                                                 <span style={{ minWidth: '70px', color: '#666' }}>{s.name}</span>
                                                 <input
                                                     type="text"
@@ -300,37 +307,13 @@ const AnalysisPage = () => {
                         <details style={{ marginTop: '12px' }}>
                             <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: '#555', fontSize: '12px' }}>大欄設定</summary>
                             <div style={{ marginTop: '8px', padding: '10px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #eee', fontSize: '11px' }}>
-                                <p style={{ margin: '0 0 8px 0', color: '#666' }}>選擇類別要放在第幾大欄（1～8），以及該大欄內順序（數字小在上）。</p>
-                                {categoriesFromStocks.length === 0 ? (
-                                    <p style={{ margin: 0, color: '#888' }}>尚無類別，請先在「設定產業」為股票設定產業。</p>
-                                ) : (
-                                    <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        {categoriesFromStocks.map(cat => {
-                                            const c = bigColumnConfig[cat] || { column: 0, order: '' };
-                                            return (
-                                                <li key={cat} style={{ display: 'flex', alignItems: 'center', gap: '8px', listStyle: 'none', marginLeft: '-18px' }}>
-                                                    <span style={{ minWidth: '72px', fontWeight: '500' }}>{cat}</span>
-                                                    <label>大欄</label>
-                                                    <select value={c.column} onChange={(e) => saveBigColumnConfig({ ...bigColumnConfig, [cat]: { ...c, column: Number(e.target.value) } })} style={{ width: '48px', padding: '2px 4px', fontSize: '11px' }}>
-                                                        {Array.from({ length: NUM_BIG_COLUMNS }, (_, i) => i + 1).map(n => <option key={n} value={n - 1}>{n}</option>)}
-                                                    </select>
-                                                    <label style={{ marginLeft: '6px' }}>順序</label>
-                                                    <input
-                                                        type="text"
-                                                        value={c.order ?? ''}
-                                                        onChange={(e) =>
-                                                            saveBigColumnConfig({
-                                                                ...bigColumnConfig,
-                                                                [cat]: { ...c, order: e.target.value },
-                                                            })
-                                                        }
-                                                        style={{ width: '44px', padding: '2px 4px', fontSize: '11px' }}
-                                                    />
-                                                </li>
-                                            );
-                                        })}
-                                    </ul>
-                                )}
+                                <BigColumnDragBoard
+                                    categories={categoriesFromStocks}
+                                    bigColumnConfig={bigColumnConfig}
+                                    columnLabels={columnLabels}
+                                    numColumns={NUM_BIG_COLUMNS}
+                                    onCommit={saveBigColumnConfig}
+                                />
                             </div>
                         </details>
 

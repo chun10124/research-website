@@ -62,6 +62,8 @@ export const useDataSync = (stocks) => {
 
             await updateAnalysisField(stock.id, {
                 ...latestData,
+                id: stock.id,
+                code: stock.code,
                 // 確保這些新欄位被存入 Firebase
                 foreignSignal: indicators.foreignSignal,
                 foreignBCount: indicators.foreignBCount,

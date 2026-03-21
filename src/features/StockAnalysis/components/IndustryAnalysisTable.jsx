@@ -196,7 +196,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
         const stock = item;
         return (
             <React.Fragment key={blockIndex}>
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[0], minWidth: SUB_COL_WIDTHS[0], maxWidth: SUB_COL_WIDTHS[0], padding: '1px 3px', fontWeight: 'bold' }}>{stock.id}</td>
+                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[0], minWidth: SUB_COL_WIDTHS[0], maxWidth: SUB_COL_WIDTHS[0], padding: '1px 3px', fontWeight: 'bold' }}>{stock.code ?? stock.id}</td>
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[1], minWidth: SUB_COL_WIDTHS[1], maxWidth: SUB_COL_WIDTHS[1], padding: '1px 3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stock.name}</td>
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2], textAlign: 'right' }}>{stock.displayPrice}</td>
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3], textAlign: 'center', color: '#000', backgroundColor: getChangeHeatmapBg(stock.DailyChange) }}>{stock.DailyChange != null ? Number(stock.DailyChange).toFixed(1) : '--'}%</td>
@@ -343,7 +343,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                             </tr>
                             {groupedData[cat].map(stock => (
                                 <tr key={stock.id}>
-                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 3px', border: '1px solid #ddd', fontWeight: 'bold', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.id}</td>
+                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 3px', border: '1px solid #ddd', fontWeight: 'bold', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.code ?? stock.id}</td>
                                     <td style={{ minHeight: rowH, height: rowH, padding: '1px 3px', border: '1px solid #ddd', width:'50px', maxWidth:'50px', boxSizing: 'border-box', verticalAlign: 'middle', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stock.name}</td>
                                     <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'right', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.displayPrice}</td>
                                     <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle'}}>{stock.realTimePE}</td>

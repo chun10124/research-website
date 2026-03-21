@@ -19,6 +19,8 @@ export const syncStockSnapshots = async (stock) => {
 
   // 4. 更新 Firebase
   await updateAnalysisField(stock.id, {
+    id: stock.id,
+    code: stock.code,
     currentPrice: latest.currentPrice,
     change: latest.change,
     currentForeignOwnership: latest.foreignOwnership,

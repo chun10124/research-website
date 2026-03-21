@@ -12,10 +12,17 @@ export const fetchWatchlist = async () => {
   
   try {
     const snapshot = await getDocs(q); // 🟢 改用 getDocs (一次性請求)
-    const data = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data() 
-    }));
+    const data = snapshot.docs.map((docSnap) => {
+      const d = docSnap.data() || {};
+      const id = docSnap.id;
+      const codeRaw = d.code;
+      const code =
+        codeRaw != null && String(codeRaw).trim() !== ''
+          ? String(codeRaw).trim()
+          : id;
+      // id 一律以 Firestore 文件 ID 為準，避免舊資料 body 內 id 覆蓋
+      return { ...d, id, code };
+    });
     console.log(`[讀取] 成功從雲端獲取 ${data.length} 筆資料。`);
     return data;
   } catch (error) {
@@ -27,16 +34,17 @@ export const fetchWatchlist = async () => {
 /**
  * 更新或新增股票分析資料
  */
-export const updateAnalysisField = async (code, data) => {
+/** @param {string} docId Firestore 文件 ID（可為 UUID，與股票代碼分離） */
+export const updateAnalysisField = async (docId, data) => {
     try {
-        const ref = doc(STOCK_WATCHLIST_COLLECTION, code);
+        const ref = doc(STOCK_WATCHLIST_COLLECTION, docId);
         await setDoc(ref, {
             ...data,
             updatedAt: Date.now()
         }, { merge: true });
-        console.log(`[${code}] 更新成功`);
+        console.log(`[${docId}] 更新成功`);
     } catch (error) {
-        console.error(`❌ [${code}] Firebase 寫入失敗:`, error.message);
+        console.error(`❌ [${docId}] Firebase 寫入失敗:`, error.message);
         throw error;
     }
 };
