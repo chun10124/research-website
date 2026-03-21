@@ -124,3 +124,16 @@ html[data-theme='dark'] input[data-ibd-rs-filter]::-moz-placeholder {
   -webkit-text-fill-color: #e57373 !important;
   opacity: 1 !important;
 }
+
+/* 頂欄搜尋：四邊同色、避免 type=search 內建樣式造成左側視覺加粗／變色 */
+input.ibd-rs-topbar-search {
+  appearance: none;
+  -webkit-appearance: none;
+}
+input.ibd-rs-topbar-search::-webkit-search-decoration,
+input.ibd-rs-topbar-search::-webkit-search-cancel-button,
+input.ibd-rs-topbar-search::-webkit-search-results-button,
+input.ibd-rs-topbar-search::-webkit-search-results-decoration {
+  appearance: none;
+  -webkit-appearance: none;
+}

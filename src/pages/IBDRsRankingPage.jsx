@@ -21,7 +21,12 @@ import {
   startIbdRsPatchRatingFromHistory,
   stopIbdRsBackgroundTask,
 } from '../features/StockAnalysis/services/ibdRsSyncService';
-import { assignRsRatings, calcRsDelta } from '../features/StockAnalysis/utils/rsCalculator';
+import {
+  assignRsRatings,
+  calcRsDelta,
+  detectCrossUp,
+  isRsKWeeksNewHigh,
+} from '../features/StockAnalysis/utils/rsCalculator';
 
 /** 篩選 input 用 data 屬性，placeholder 顏色用 CSS 選 `input[data-ibd-rs-filter]`（見 custom.css ＋掛載時注入 head） */
 const FILTER_INPUT_MARK = { 'data-ibd-rs-filter': '1' };
@@ -1008,6 +1013,11 @@ const DEFAULT_FILTERS = {
   pct20dMax: '',
   hlMin: '',
   hlMax: '',
+  /** 近 x 天內 RS 向上突破 y（兩者皆填才套用；自然日） */
+  crossDays: '',
+  crossLevel: '',
+  /** 近 K 個曆周（K×7 自然日）內 RS 為區間最高；填數字才套用 */
+  weeksNewHigh: '',
   query: '',
 };
 
@@ -1135,6 +1145,18 @@ export default function IBDRsRankingPage() {
     const hlMax = n(filters.hlMax);
     const q = filters.query.trim().toLowerCase();
 
+    const crossDaysParsed = parseInt(String(filters.crossDays || '').trim(), 10);
+    const crossLevelParsed = parseInt(String(filters.crossLevel || '').trim(), 10);
+    const crossFilterActive =
+      Number.isFinite(crossDaysParsed) &&
+      crossDaysParsed > 0 &&
+      Number.isFinite(crossLevelParsed) &&
+      crossLevelParsed >= 1 &&
+      crossLevelParsed <= 99;
+
+    const weeksKParsed = parseInt(String(filters.weeksNewHigh || '').trim(), 10);
+    const weeksHighActive = Number.isFinite(weeksKParsed) && weeksKParsed >= 1 && weeksKParsed <= 52;
+
     return globalSorted.filter((s) => {
       const effRs = getEffectiveDisplayRs(s);
       if (rsMin != null && (effRs == null || effRs < rsMin)) return false;
@@ -1149,6 +1171,18 @@ export default function IBDRsRankingPage() {
       if (pct20dMax != null && (s.pricePct20d == null || s.pricePct20d > pct20dMax)) return false;
       if (hlMin != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m < hlMin)) return false;
       if (hlMax != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m > hlMax)) return false;
+
+      if (crossFilterActive) {
+        if (
+          !detectCrossUp(effRs, s.ibdRsHistory, crossLevelParsed, crossDaysParsed)
+        ) {
+          return false;
+        }
+      }
+      if (weeksHighActive) {
+        if (!isRsKWeeksNewHigh(s.ibdRsHistory, effRs, weeksKParsed)) return false;
+      }
+
       if (q) {
         const idMatch = String(s.id || '').toLowerCase().includes(q);
         const nameMatch = String(s.name || '').toLowerCase().includes(q);
@@ -1159,7 +1193,9 @@ export default function IBDRsRankingPage() {
   }, [globalSorted, filters]);
 
   const pageCount = Math.ceil(filtered.length / PAGE_SIZE);
-  const visible = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  /** 篩選／搜尋後筆數變少時，page state 可能大於最後一頁 → 用 safePage 切 slice 與翻頁 */
+  const safePage = pageCount > 0 ? Math.min(page, pageCount - 1) : 0;
+  const visible = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   /** 並排小表：只顯示有資料的欄，空欄不 render（篩選後筆數少時不會留空白表） */
   const parallelChunksToShow = useMemo(() => {
@@ -1325,171 +1361,169 @@ export default function IBDRsRankingPage() {
     [filtered]
   );
 
+  /** page state 與 safePage 對齊，避免內部狀態長期偏大 */
+  useEffect(() => {
+    const sp = pageCount > 0 ? Math.min(page, pageCount - 1) : 0;
+    if (page !== sp) setPage(sp);
+  }, [page, pageCount]);
+
   return (
     <Layout title="IBD RS Ranking">
       <main style={{ padding: '8px 0 12px' }}>
         <div style={{ padding: '0 10px' }}>
-          {/* ── 頂欄：標題＋狀態一行、按鈕靠右（窄螢幕自動換行） ─────────────── */}
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '8px 12px',
-              marginBottom: 8,
-            }}
-          >
-            <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-              <h2 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', lineHeight: 1.2 }}>IBD RS Ranking</h2>
-              {mounted && stocks.length > 0 && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: '#555',
-                    lineHeight: 1.45,
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  <span style={{ color: updatedTodayCount === stocks.length ? '#1e7e34' : '#666' }}>
-                    今日 <strong>{updatedTodayCount}</strong>/{stocks.length}
-                  </span>
-                  <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
-                  <span>
-                    市<strong style={{ color: '#1565c0' }}>{marketStats.tw}</strong>
-                  </span>
-                  <span style={{ color: '#bbb', margin: '0 4px' }}>·</span>
-                  <span>
-                    櫃<strong style={{ color: '#6a1b9a' }}>{marketStats.tp}</strong>
-                  </span>
-                  {marketStats.unknown > 0 && (
-                    <span style={{ color: '#999' }}>
-                      {' '}
-                      · 未標註 <strong>{marketStats.unknown}</strong>
-                    </span>
-                  )}
-                  {lastSyncDateLocal && (
-                    <>
-                      <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
-                      同步 {lastSyncDateLocal}
-                      {lastSyncAt && <span style={{ color: '#999' }}>（{formatRelativeTime(lastSyncAt)}）</span>}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+          {/* ── 頂欄：標題與「搜尋＋翻頁」同一列；統計在下一列 ─────────────── */}
+          <div style={{ marginBottom: 8 }}>
             <div
               style={{
                 display: 'flex',
                 flexWrap: 'wrap',
-                gap: 8,
                 alignItems: 'center',
-                justifyContent: 'flex-end',
-                maxWidth: '100%',
+                justifyContent: 'space-between',
+                gap: '8px 12px',
+                rowGap: 8,
               }}
             >
-              {/* 同一列：同步在左、翻頁在右（僅多頁時顯示翻頁） */}
-              <button
-                type="button"
-                onClick={handleSync}
-                disabled={loading || syncing}
-                title="按一次跑完全市場同步；Shift＝強制重抓 Yahoo"
+              <h2 style={{ margin: 0, fontSize: '1.15rem', lineHeight: 1.2, flex: '0 1 auto' }}>IBD RS Ranking</h2>
+              <div
                 style={{
-                  ...btnBase,
-                  backgroundColor: syncing ? '#aaa' : '#25c2a0',
-                  color: '#fff',
-                  cursor: syncing ? 'wait' : 'pointer',
-                  fontSize: 13,
-                  padding: '7px 14px',
+                  display: 'inline-flex',
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  alignContent: 'center',
+                  gap: 10,
+                  flex: '1 1 auto',
+                  justifyContent: 'flex-end',
+                  minWidth: 0,
                 }}
               >
-                {syncing
-                  ? `同步 ${syncProgress?.done ?? 0}/${syncProgress?.total ?? 0}…`
-                  : '同步今日 RS'}
-              </button>
-              <button
-                type="button"
-                onClick={refresh}
-                disabled={loading || syncing}
-                title="僅從資料庫重新抓列表，不重新打 Yahoo"
-                style={{ ...btnBase, background: '#fff', color: '#555', border: '1px solid #ccc' }}
-              >
-                重新載入
-              </button>
-              {syncing && (
-                <button
-                  type="button"
-                  onClick={() => stopIbdRsBackgroundTask()}
-                  title="停止目前正在執行的任務"
-                  style={{ ...btnBase, background: '#fff', color: '#e74c3c', border: '1px solid #e74c3c' }}
-                >
-                  停止
-                </button>
-              )}
-              {pageCount > 1 && (
-                <div
+                {pageCount > 1 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      alignSelf: 'center',
+                      gap: 6,
+                      flexWrap: 'wrap',
+                      flexShrink: 0,
+                      minHeight: 28,
+                    }}
+                  >
+                    {[
+                      { label: '«', target: 0, disabled: safePage === 0 },
+                      { label: '‹', target: safePage - 1, disabled: safePage === 0 },
+                    ].map(({ label, target, disabled }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setPage(target)}
+                        style={{
+                          padding: '4px 10px',
+                          border: '1px solid #ddd',
+                          borderRadius: 4,
+                          background: '#fff',
+                          cursor: disabled ? 'default' : 'pointer',
+                          opacity: disabled ? 0.4 : 1,
+                          fontSize: 12,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+
+                    <span style={{ fontSize: 12, color: '#666', margin: '0 4px' }}>
+                      第 <strong>{safePage + 1}</strong> / {pageCount}
+                    </span>
+
+                    {[
+                      { label: '›', target: safePage + 1, disabled: safePage >= pageCount - 1 },
+                      { label: '»', target: pageCount - 1, disabled: safePage >= pageCount - 1 },
+                    ].map(({ label, target, disabled }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setPage(target)}
+                        style={{
+                          padding: '4px 10px',
+                          border: '1px solid #ddd',
+                          borderRadius: 4,
+                          background: '#fff',
+                          cursor: disabled ? 'default' : 'pointer',
+                          opacity: disabled ? 0.4 : 1,
+                          fontSize: 12,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <input
+                  {...FILTER_INPUT_MARK}
+                  className="ibd-rs-filter-input ibd-rs-topbar-search"
+                  type="search"
+                  value={filters.query}
+                  onChange={(e) => setFilter('query')(e.target.value)}
+                  placeholder="搜尋代號或名稱"
+                  aria-label="搜尋代號或名稱"
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    flexWrap: 'wrap',
-                    marginLeft: 4,
-                    paddingLeft: 10,
-                    borderLeft: '1px solid #e5e5e5',
+                    margin: 0,
+                    alignSelf: 'center',
+                    padding: '4px 8px',
+                    border: '1px solid #d0d0d0',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    lineHeight: 1.25,
+                    minWidth: 100,
+                    width: 'min(100%, 200px)',
+                    maxWidth: 220,
+                    minHeight: 28,
+                    boxSizing: 'border-box',
+                    background: 'var(--ifm-background-color, #fff)',
+                    color: 'var(--ifm-font-color-base)',
+                    verticalAlign: 'middle',
                   }}
-                >
-                  {[
-                    { label: '«', target: 0, disabled: page === 0 },
-                    { label: '‹', target: page - 1, disabled: page === 0 },
-                  ].map(({ label, target, disabled }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => setPage(target)}
-                      style={{
-                        padding: '4px 10px',
-                        border: '1px solid #ddd',
-                        borderRadius: 4,
-                        background: '#fff',
-                        cursor: disabled ? 'default' : 'pointer',
-                        opacity: disabled ? 0.4 : 1,
-                        fontSize: 12,
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-
-                  <span style={{ fontSize: 12, color: '#666', margin: '0 4px' }}>
-                    第 <strong>{page + 1}</strong> / {pageCount}
-                  </span>
-
-                  {[
-                    { label: '›', target: page + 1, disabled: page >= pageCount - 1 },
-                    { label: '»', target: pageCount - 1, disabled: page >= pageCount - 1 },
-                  ].map(({ label, target, disabled }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => setPage(target)}
-                      style={{
-                        padding: '4px 10px',
-                        border: '1px solid #ddd',
-                        borderRadius: 4,
-                        background: '#fff',
-                        cursor: disabled ? 'default' : 'pointer',
-                        opacity: disabled ? 0.4 : 1,
-                        fontSize: 12,
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
+                />
+              </div>
             </div>
+            {mounted && stocks.length > 0 && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: '#555',
+                  lineHeight: 1.45,
+                  wordBreak: 'break-word',
+                  marginTop: 4,
+                }}
+              >
+                <span style={{ color: updatedTodayCount === stocks.length ? '#1e7e34' : '#666' }}>
+                  今日 <strong>{updatedTodayCount}</strong>/{stocks.length}
+                </span>
+                <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
+                <span>
+                  市<strong style={{ color: '#1565c0' }}>{marketStats.tw}</strong>
+                </span>
+                <span style={{ color: '#bbb', margin: '0 4px' }}>·</span>
+                <span>
+                  櫃<strong style={{ color: '#6a1b9a' }}>{marketStats.tp}</strong>
+                </span>
+                {marketStats.unknown > 0 && (
+                  <span style={{ color: '#999' }}>
+                    {' '}
+                    · 未標註 <strong>{marketStats.unknown}</strong>
+                  </span>
+                )}
+                {lastSyncDateLocal && (
+                  <>
+                    <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
+                    同步 {lastSyncDateLocal}
+                    {lastSyncAt && <span style={{ color: '#999' }}>（{formatRelativeTime(lastSyncAt)}）</span>}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <SyncProgressBar progress={syncProgress} />
@@ -1708,8 +1742,73 @@ export default function IBDRsRankingPage() {
                     upperPlaceholder="上限 例 0.8"
                     lowerPlaceholder="下限 例 0.3"
                   />
-                  <div style={{ gridColumn: '1 / -1', fontSize: 10, color: '#888', marginTop: -2, lineHeight: 1.35 }}>
-                    與表格「6M」欄相同：區間內最低=0、最高=1。
+
+                  <FilterSectionTitle>型態（ibdRsHistory）</FilterSectionTitle>
+                  <div
+                    style={{
+                      gridColumn: '1 / -1',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      color: '#444',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: '#134e4a' }}>向上突破</span>
+                    <span>近</span>
+                    <input
+                      {...FILTER_INPUT_MARK}
+                      className="ibd-rs-filter-input"
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={filters.crossDays}
+                      onChange={(e) => setFilter('crossDays')(e.target.value)}
+                      placeholder="x"
+                      style={{ ...FILTER_DELTA_DAYS_INPUT, width: 52 }}
+                      aria-label="突破：視窗天數"
+                    />
+                    <span>天內，RS 自下方穿越</span>
+                    <input
+                      {...FILTER_INPUT_MARK}
+                      className="ibd-rs-filter-input"
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={filters.crossLevel}
+                      onChange={(e) => setFilter('crossLevel')(e.target.value)}
+                      placeholder="y"
+                      style={{ ...FILTER_DELTA_DAYS_INPUT, width: 52 }}
+                      aria-label="突破：門檻 y"
+                    />
+                  </div>
+                  <div
+                    style={{
+                      gridColumn: '1 / -1',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      color: '#444',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: '#134e4a' }}>區間新高</span>
+                    <span>近</span>
+                    <input
+                      {...FILTER_INPUT_MARK}
+                      className="ibd-rs-filter-input"
+                      type="number"
+                      min={1}
+                      max={52}
+                      value={filters.weeksNewHigh}
+                      onChange={(e) => setFilter('weeksNewHigh')(e.target.value)}
+                      placeholder="K"
+                      style={{ ...FILTER_DELTA_DAYS_INPUT, width: 52 }}
+                      aria-label="近 K 週 RS 新高"
+                    />
+                    <span>週內 RS 最高</span>
                   </div>
 
                   <FilterSectionTitle>搜尋</FilterSectionTitle>
@@ -1883,10 +1982,62 @@ export default function IBDRsRankingPage() {
               >
                 <strong>畫線流程</strong>：試跑滿意後按<strong>「全市場·回填歷史」</strong>跑正式（通常<strong>做一次</strong>）；之後每天「同步今日 RS」只<strong>追加／更新當日</strong>（歷史最多 180 點）。
                 <br />
-                每日例行：頁面頂端「同步今日 RS」。若<strong>回填後表上 RS 仍「—」但圖表有線</strong>：按<strong>「補寫 RS 快照」</strong>（不重跑同步）。補齊＝新上櫃／缺檔；試跑＝10 檔×7 日僅測流程。
+                每日例行：頁面下方「同步今日 RS」。若<strong>回填後表上 RS 仍「—」但圖表有線</strong>：按<strong>「補寫 RS 快照」</strong>（不重跑同步）。補齊＝新上櫃／缺檔；試跑＝10 檔×7 日僅測流程。
               </p>
             </div>
           </details>
+
+          {/* ── 底欄：同步／重新載入 ─────────────────────────────────────────── */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 8,
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              marginTop: 16,
+              paddingTop: 14,
+              borderTop: '1px solid #eee',
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleSync}
+              disabled={loading || syncing}
+              title="按一次跑完全市場同步；Shift＝強制重抓 Yahoo"
+              style={{
+                ...btnBase,
+                backgroundColor: syncing ? '#aaa' : '#25c2a0',
+                color: '#fff',
+                cursor: syncing ? 'wait' : 'pointer',
+                fontSize: 13,
+                padding: '7px 14px',
+              }}
+            >
+              {syncing
+                ? `同步 ${syncProgress?.done ?? 0}/${syncProgress?.total ?? 0}…`
+                : '同步今日 RS'}
+            </button>
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={loading || syncing}
+              title="僅從資料庫重新抓列表，不重新打 Yahoo"
+              style={{ ...btnBase, background: '#fff', color: '#555', border: '1px solid #ccc' }}
+            >
+              重新載入
+            </button>
+            {syncing && (
+              <button
+                type="button"
+                onClick={() => stopIbdRsBackgroundTask()}
+                title="停止目前正在執行的任務"
+                style={{ ...btnBase, background: '#fff', color: '#e74c3c', border: '1px solid #e74c3c' }}
+              >
+                停止
+              </button>
+            )}
+          </div>
 
         </div>
       </main>

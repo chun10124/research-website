@@ -218,3 +218,39 @@ export function detectCrossUp(ibdRsRating, ibdRsHistory, level, daysAgo) {
 
   return false;
 }
+
+/**
+ * 近 K 個曆周（K×7 自然日）內，「當前 RS」是否為該區間內 RS 的最高值（平手亦算新高）。
+ * effectiveRs：與頁面一致（ibdRsRating 或歷史最後一筆）。
+ */
+export function isRsKWeeksNewHigh(ibdRsHistory, effectiveRs, weeksK) {
+  if (effectiveRs == null || !Number.isFinite(effectiveRs) || weeksK < 1) return false;
+  if (!Array.isArray(ibdRsHistory) || ibdRsHistory.length === 0) return false;
+
+  const todayStr = getTaipeiYmd();
+  const cutoffStr = taipeiYmdAddDays(todayStr, -weeksK * 7);
+  if (!cutoffStr) return false;
+
+  const sorted = [...ibdRsHistory]
+    .filter((e) => e?.d && typeof e.r === 'number' && Number.isFinite(e.r))
+    .sort((a, b) => (a.d < b.d ? -1 : 1));
+
+  const rsInWindow = [];
+  for (const e of sorted) {
+    if (e.d < cutoffStr) continue;
+    if (e.d > todayStr) break;
+    rsInWindow.push(e.r);
+  }
+
+  const lastDate = sorted.filter((e) => e.d <= todayStr).pop()?.d;
+  if (!lastDate || lastDate < todayStr) {
+    rsInWindow.push(effectiveRs);
+  } else {
+    if (rsInWindow.length > 0) rsInWindow[rsInWindow.length - 1] = effectiveRs;
+    else rsInWindow.push(effectiveRs);
+  }
+
+  if (rsInWindow.length === 0) return false;
+  const maxR = Math.max(...rsInWindow);
+  return effectiveRs === maxR;
+}
