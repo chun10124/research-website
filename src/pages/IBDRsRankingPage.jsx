@@ -1060,7 +1060,7 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
   /** 與下方 LineChart margin、雙 Y 軸寬度大致對齊，讓 K 線疊加與折線繪圖區同寬、時間軸對齊 */
   const lineChartPlotInset = { top: 10, right: 58, bottom: 28, left: 50 };
 
-  const swipeTouchRef = useRef({ x0: null, y0: null, id: null });
+  const swipeTouchRef = useRef({ x0: null, y0: null, id: null, t0: null });
 
   useEffect(() => {
     if (!stock || !onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
@@ -1081,13 +1081,18 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [stock, stock?.id, navigationList, onNavigate]);
 
-  /** 手機橫滑切換個股：左滑下一檔、右滑上一檔（與 ←／→ 相同）；需明顯水平位移以免誤觸圖表 */
+  /** 手機橫滑切換個股：須「快滑」；慢慢拖著看 RS tooltip 不觸發（與 ←／→ 方向相同） */
   const handleSwipeTouchStart = useCallback(
     (e) => {
       if (!onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
       const t = e.changedTouches[0];
       if (!t) return;
-      swipeTouchRef.current = { x0: t.clientX, y0: t.clientY, id: t.identifier };
+      swipeTouchRef.current = {
+        x0: t.clientX,
+        y0: t.clientY,
+        id: t.identifier,
+        t0: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+      };
     },
     [navigationList, onNavigate],
   );
@@ -1095,18 +1100,28 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
   const handleSwipeTouchEnd = useCallback(
     (e) => {
       const start = swipeTouchRef.current;
-      if (start.x0 == null || start.id == null) return;
+      if (start.x0 == null || start.id == null || start.t0 == null) return;
       const t =
         Array.from(e.changedTouches).find((x) => x.identifier === start.id) ?? e.changedTouches[0];
       if (!t) return;
       const dx = t.clientX - start.x0;
       const dy = t.clientY - start.y0;
-      swipeTouchRef.current = { x0: null, y0: null, id: null };
+      swipeTouchRef.current = { x0: null, y0: null, id: null, t0: null };
+
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const elapsed = now - start.t0;
+      /** 超過此時間（手指按下→放開）→ 當成慢慢拖著看 RS／tooltip，不切換 */
+      const swipeMaxElapsedMs = 400;
+      /** 水平「平均速度」下限（px/ms），避免在時間上限內慢慢磨過門檻距離 */
+      const swipeMinPxPerMs = 0.22;
+      if (elapsed > swipeMaxElapsedMs) return;
+      if (elapsed < 1) return;
 
       const absDx = Math.abs(dx);
       const absDy = Math.abs(dy);
       const minPx = 56;
       const ratio = 1.28;
+      if (absDx / elapsed < swipeMinPxPerMs) return;
       if (absDx < minPx || absDx < absDy * ratio) return;
       if (!stock || !onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
       const idx = navigationList.findIndex((s) => s.id === stock.id);
@@ -1121,7 +1136,7 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
   );
 
   const handleSwipeTouchCancel = useCallback(() => {
-    swipeTouchRef.current = { x0: null, y0: null, id: null };
+    swipeTouchRef.current = { x0: null, y0: null, id: null, t0: null };
   }, []);
 
   return (
