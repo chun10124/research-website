@@ -297,9 +297,9 @@ export function isRsKWeeksNewHigh(ibdRsHistory, effectiveRs, weeksK) {
 }
 
 /** VCP 價格項權重（與成交量項互補） */
-export const VCP_WEIGHT_PRICE = 0.7;
+export const VCP_WEIGHT_PRICE = 0.8;
 /** VCP 成交量項權重 */
-export const VCP_WEIGHT_VOLUME = 0.3;
+export const VCP_WEIGHT_VOLUME = 0.2;
 
 /** VCP 價格項：近 N 個交易日（區間最高 − 區間最低） */
 export const VCP_PRICE_DAYS_SHORT = 5;
@@ -365,7 +365,7 @@ export function calcVcpVolumeRatioFromVolumeMap(volumeMap, anchorDateStr) {
 }
 
 /**
- * 加權 VCP：價格項×0.7 + 成交量項×0.3；任一分項為 null 則整體為 null。
+ * 加權 VCP：價格項×0.8 + 成交量項×0.2；任一分項為 null 則整體為 null。
  */
 export function calcCompositeVcp(priceRatio, volumeRatio, wPrice = VCP_WEIGHT_PRICE, wVolume = VCP_WEIGHT_VOLUME) {
   if (priceRatio == null || volumeRatio == null) return null;
