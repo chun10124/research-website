@@ -128,9 +128,9 @@ const MM_FOCUS_MODAL_WIDTH_FLOOR_PX = 660;
 const IBDRS_PARALLEL_GROUPS = 4;
 
 /** 第一段「重大變動」：單日 |ΔRS| 須嚴格大於此值 */
-const IBDRS_MAJOR_MOVE_DELTA_GT = 10;
+const IBDRS_MAJOR_MOVE_DELTA_GT = 5;
 /** 第一段「重大變動」：顯示用 RS 須嚴格大於此值 */
-const IBDRS_MAJOR_MOVE_RS_GT = 60;
+const IBDRS_MAJOR_MOVE_RS_GT = 80;
 
 /** 「突破」門檻：前一歷史點 < 門檻、最後一點 ≥ 門檻（由下向上穿越） */
 const IBDRS_RS_BREAK_LEVEL_80 = 80;
@@ -139,7 +139,7 @@ const IBDRS_RS_BREAK_LEVEL_90 = 90;
 /** 觀察窗第三段：HL（6M 區間價位 0～1）須嚴格大於此值 */
 const IBDRS_MODAL_HL_GT = 0.98;
 /** 觀察窗第三段：與 HL 條件並用，RS 須嚴格大於此值 */
-const IBDRS_MODAL_HL_RS_GT = 75;
+const IBDRS_MODAL_HL_RS_GT = 80;
 
 /** 每個大欄（一張小表）一頁幾筆；總筆數 = 此值 × 大欄數 */
 const IBDRS_ROWS_PER_QUADRANT = 100;
@@ -2635,7 +2635,7 @@ export default function IBDRsRankingPage() {
   );
   const filterSummaryLine = filterSummaryParts.join(', ');
 
-  /** 基準日已同步：單日 |ΔRS| &gt; 10 且 顯示 RS &gt; 60 */
+  /** 基準日已同步：單日 |ΔRS| &gt; 5 且 顯示 RS &gt; 80 */
   const majorMoveStocksToday = useMemo(() => {
     if (!focusPanelRefYmd) return [];
     const list = [];
