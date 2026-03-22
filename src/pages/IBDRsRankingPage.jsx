@@ -1,10 +1,9 @@
 /* src/pages/IBDRsRankingPage.jsx */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Layout from '@theme/Layout';
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -593,6 +592,173 @@ function isDomTypingTarget(target) {
   return target.closest?.('input, textarea, select, [contenteditable="true"]') != null;
 }
 
+/** Yahoo 日 K：SVG 蠟燭（台股 紅漲／綠跌）
+ * @param {'default'|'overlay'} [variant] overlay＝無座標、寬度撐滿容器，供疊在折線圖上半透明參考
+ */
+function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'default' }) {
+  const wrapRef = useRef(null);
+  const [box, setBox] = useState({ w: 640, h: height });
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = Math.max(200, el.clientWidth || 200);
+      const h = fillHeight ? Math.max(200, el.clientHeight || height) : height;
+      setBox({ w, h });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fillHeight, height]);
+
+  const svg = useMemo(() => {
+    if (!Array.isArray(series) || series.length === 0) return null;
+    const cw = box.w;
+    const plotH = box.h;
+    const n = series.length;
+    const MIN_SLOT_PER_BAR = 7.5;
+    const isOverlay = variant === 'overlay';
+    const padL = isOverlay ? 0 : 54;
+    const padR = isOverlay ? 0 : 10;
+    const padT = isOverlay ? 2 : 10;
+    const padB = isOverlay ? 2 : 22;
+
+    let minP = Infinity;
+    let maxP = -Infinity;
+    for (const o of series) {
+      minP = Math.min(minP, o.low);
+      maxP = Math.max(maxP, o.high);
+    }
+    if (!Number.isFinite(minP) || !Number.isFinite(maxP)) return null;
+    const span = maxP - minP || Math.abs(maxP) * 0.01 || 1;
+    const padPrice = span * 0.03;
+    const yMin = minP - padPrice;
+    const yMax = maxP + padPrice;
+
+    const containerInner = Math.max(40, cw - padL - padR);
+    const innerW = isOverlay ? containerInner : Math.max(n * MIN_SLOT_PER_BAR, containerInner);
+    const svgWidth = padL + innerW + padR;
+    const innerH = Math.max(60, plotH - padT - padB);
+    const slot = innerW / n;
+    const barW = Math.min(11, Math.max(1.5, slot * 0.55));
+    const yAt = (p) => padT + innerH - ((p - yMin) / (yMax - yMin)) * innerH;
+
+    const candles = series.map((o, i) => {
+      const xc = padL + (i + 0.5) * slot;
+      const yH = yAt(o.high);
+      const yL = yAt(o.low);
+      const yO = yAt(o.open);
+      const yC = yAt(o.close);
+      const up = o.close >= o.open;
+      const fill = up ? '#e53935' : '#2e7d32';
+      const stroke = up ? '#c62828' : '#1b5e20';
+      const bodyTop = Math.min(yO, yC);
+      const bodyBot = Math.max(yO, yC);
+      const bodyH = Math.max(bodyBot - bodyTop, 1);
+      return (
+        <g key={o.dateStr + i}>
+          <line x1={xc} y1={yH} x2={xc} y2={yL} stroke={stroke} strokeWidth={isOverlay ? 0.9 : 1} />
+          <rect
+            x={xc - barW / 2}
+            y={bodyTop}
+            width={barW}
+            height={bodyH}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={1}
+          />
+        </g>
+      );
+    });
+
+    if (isOverlay) {
+      return (
+        <svg width={svgWidth} height={plotH} style={{ display: 'block', width: '100%' }}>
+          <g style={{ opacity: 0.9 }}>{candles}</g>
+        </svg>
+      );
+    }
+
+    const priceTickCount = 4;
+    const tickVals = [];
+    for (let t = 0; t < priceTickCount; t++) {
+      tickVals.push(yMin + ((yMax - yMin) * t) / (priceTickCount - 1));
+    }
+
+    const xLabel = series.map((o, i) => {
+      if (n <= 8 || i === 0 || i === n - 1 || i === Math.floor(n / 2)) {
+        const xc = padL + (i + 0.5) * slot;
+        const short = o.dateStr.slice(5);
+        return (
+          <text key={`xl-${i}`} x={xc} y={plotH - 6} textAnchor="middle" fontSize={10} fill="#64748b">
+            {short}
+          </text>
+        );
+      }
+      return null;
+    });
+
+    return (
+      <svg width={svgWidth} height={plotH} style={{ display: 'block', minWidth: svgWidth }}>
+        <rect x={padL} y={padT} width={innerW} height={innerH} rx={4} fill="#fff" stroke="#e5e7eb" strokeWidth={1} />
+        {tickVals.map((tv, i) => {
+          const y = yAt(tv);
+          return (
+            <g key={`g-${i}`}>
+              <line x1={padL} y1={y} x2={padL + innerW} y2={y} stroke="#f1f5f9" strokeWidth={1} />
+              <text x={padL - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#64748b" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {tv.toFixed(2)}
+              </text>
+            </g>
+          );
+        })}
+        {candles}
+        {xLabel}
+      </svg>
+    );
+  }, [series, box.w, box.h, variant]);
+
+  const outerH = fillHeight ? '100%' : height;
+
+  return (
+    <div
+      ref={wrapRef}
+      style={{
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        height: outerH,
+        minHeight: fillHeight ? 168 : undefined,
+        flex: fillHeight ? '1 1 0' : undefined,
+        overflowX: variant === 'overlay' ? 'hidden' : 'auto',
+        overflowY: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehaviorX: 'contain',
+        borderRadius: variant === 'overlay' ? 0 : 6,
+        background: variant === 'overlay' ? 'transparent' : '#f8fafc',
+      }}
+    >
+      {svg || (
+        <div
+          style={{
+            height: fillHeight ? '100%' : height,
+            minHeight: 120,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#9ca3af',
+            fontSize: 12,
+          }}
+        >
+          無 K 線資料
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal */
 function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
   const [indexMap, setIndexMap] = useState(null);
@@ -602,6 +768,8 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
   const [closeQuote, setCloseQuote] = useState(null);
   /** VCP：價格項／成交量項／加權合成；error 表示 Yahoo 失敗 */
   const [vcpSnapshot, setVcpSnapshot] = useState(null);
+  /** Yahoo 日 K OHLC，與 VCP 同一請求 */
+  const [ohlcSeries, setOhlcSeries] = useState([]);
 
   /** 同一「交易日」只保留一點（台灣曆週六／週日併入週五）；舊資料若同週內多筆則取曆日較新那筆的 r */
   const history = useMemo(() => {
@@ -626,6 +794,7 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
     setIndexMap(null);
     setCloseQuote(null);
     setVcpSnapshot(null);
+    setOhlcSeries([]);
 
     const endStr = new Date().toISOString().slice(0, 10);
     const startDate = new Date();
@@ -638,8 +807,9 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
     quoteStartBuf.setDate(quoteStartBuf.getDate() - 120);
     const quoteStart = quoteStartBuf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     void fetchYahooHistoricalPriceVolumeMaps(stock.id, quoteStart, quoteEnd, { market: stock.market })
-      .then(({ priceMap, volumeMap }) => {
+      .then(({ priceMap, volumeMap, ohlcSeries: ohlc }) => {
         if (cancelled) return;
+        setOhlcSeries(Array.isArray(ohlc) ? ohlc : []);
         if (priceMap && typeof priceMap === 'object') {
           const dates = Object.keys(priceMap).sort();
           const lastD = dates[dates.length - 1];
@@ -662,6 +832,7 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
         if (!cancelled) {
           setCloseQuote(null);
           setVcpSnapshot({ error: true });
+          setOhlcSeries([]);
         }
       });
 
@@ -681,9 +852,31 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
     };
   }, [stock?.id, earliestHistoryDate]);
 
+  /** 有日 K 時以 Yahoo 交易日為 X（與疊加 K 線逐根對齊）；否則退回 RS 歷史日序 */
   const chartData = useMemo(() => {
-    if (history.length === 0 || !indexMap) return [];
+    if (!indexMap) return [];
     const indexDates = Object.keys(indexMap).sort();
+    const rsMap = new Map(history.map((h) => [h.d, h.r]));
+
+    if (ohlcSeries.length > 0) {
+      return ohlcSeries.map((o) => {
+        const ymd = o.dateStr;
+        const r = rsMap.get(ymd);
+        let closestIdx = null;
+        for (const id of indexDates) {
+          if (id <= ymd) closestIdx = indexMap[id];
+          else break;
+        }
+        return {
+          dateKey: ymd,
+          date: ymd.slice(5),
+          rs: r != null && Number.isFinite(r) ? r : null,
+          idx: closestIdx != null && Number.isFinite(closestIdx) ? Math.round(closestIdx) : null,
+        };
+      });
+    }
+
+    if (history.length === 0) return [];
     return history.map(({ d, r }) => {
       let closestIdx = null;
       for (const id of indexDates) {
@@ -691,18 +884,21 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
         else break;
       }
       return {
+        dateKey: d,
         date: d.slice(5),
         rs: r,
         idx: closestIdx != null ? Math.round(closestIdx) : null,
       };
     });
-  }, [history, indexMap]);
+  }, [ohlcSeries, history, indexMap]);
 
   const noHistory = history.length === 0;
   const indexEmpty = indexMap != null && Object.keys(indexMap).length === 0;
   const isEmpty = !loading && !error && chartData.length === 0;
   const marketBadge = formatIbdMarketLabel(stock?.market);
   const tradingViewUrl = stock ? getTradingViewChartUrl(stock) : null;
+  /** 與下方 LineChart margin、雙 Y 軸寬度大致對齊，讓 K 線疊加與折線繪圖區同寬、時間軸對齊 */
+  const lineChartPlotInset = { top: 10, right: 58, bottom: 28, left: 50 };
 
   useEffect(() => {
     if (!stock || !onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
@@ -734,7 +930,8 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 16,
+        padding: 'max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom))',
+        overflowY: 'auto',
       }}
     >
       <div
@@ -742,14 +939,18 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
         style={{
           boxSizing: 'border-box',
           width: '100%',
-          maxWidth: 900,
-          minHeight: 556,
+          maxWidth: 800,
+          height: 'min(90vh, 860px)',
+          maxHeight: 'min(90vh, 860px)',
+          overflow: 'hidden',
           background: '#fff',
           borderRadius: 12,
           boxShadow: '0 20px 56px rgba(0,0,0,0.28)',
-          padding: '18px 20px 12px',
+          padding: '12px 14px 8px',
           display: 'flex',
           flexDirection: 'column',
+          flexShrink: 0,
+          minHeight: 0,
         }}
       >
         <div
@@ -757,14 +958,25 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            gap: 10,
             marginBottom: 8,
             minHeight: 36,
             flexShrink: 0,
           }}
         >
-          <span style={{ fontWeight: 700, fontSize: 14 }}>
-            {stock.id}
-            <span style={{ marginLeft: 6, fontWeight: 500 }}>{stock.name}</span>
+          <div
+            style={{
+              display: 'flex',
+              flexFlow: 'row wrap',
+              alignItems: 'baseline',
+              columnGap: 8,
+              rowGap: 4,
+              minWidth: 0,
+              flex: '1 1 auto',
+            }}
+          >
+            <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>{stock.id}</span>
+            <span style={{ fontWeight: 500, fontSize: 14, lineHeight: 1.2 }}>{stock.name}</span>
             <span
               title={
                 stock.market === 'TWSE'
@@ -774,14 +986,13 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
                     : undefined
               }
               style={{
-                marginLeft: 8,
                 fontSize: 11,
                 fontWeight: 700,
+                lineHeight: 1.2,
                 color: marketBadge.color,
                 padding: '2px 7px',
                 borderRadius: 6,
                 background: marketBadge.bg,
-                verticalAlign: 'middle',
               }}
             >
               {marketBadge.text}
@@ -789,7 +1000,7 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
             {closeQuote != null ? (
               <span
                 title="Yahoo Finance 日 K 最近一筆；非交易日則為前一交易日收盤"
-                style={{ marginLeft: 8, fontSize: 13, color: '#1565c0', fontWeight: 700, verticalAlign: 'middle' }}
+                style={{ fontSize: 13, color: '#1565c0', fontWeight: 700, lineHeight: 1.2 }}
               >
                 {formatYmdSlash(closeQuote.dateStr)} 收盤 {closeQuote.price.toFixed(2)}
               </span>
@@ -797,10 +1008,9 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
               <span
                 aria-hidden
                 style={{
-                  marginLeft: 8,
                   fontSize: 13,
                   fontWeight: 700,
-                  verticalAlign: 'middle',
+                  lineHeight: 1.2,
                   visibility: 'hidden',
                   whiteSpace: 'nowrap',
                 }}
@@ -808,7 +1018,75 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
                 0000/00/00 收盤 000.00
               </span>
             )}
-          </span>
+            {/* VCP：與收盤價同一基線；載入中占位避免版面跳動 */}
+            <span
+              title="價格項：近10個交易日最大單日|報酬|÷近40個交易日最大（收盤）；成交量項：近10日均量÷近40日均量；各 0～1；加權 70% / 30%"
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                lineHeight: 1.2,
+                color: '#6b7280',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 'min(100%, 52vw)',
+                flexShrink: 1,
+                ...(vcpSnapshot ? {} : { visibility: 'hidden' }),
+              }}
+              aria-hidden={!vcpSnapshot}
+            >
+              {!vcpSnapshot ? (
+                <>
+                  <span style={{ fontWeight: 600, color: '#9ca3af' }}>VCP</span> — 價 —×{Math.round(VCP_WEIGHT_PRICE * 100)}% 量 —×
+                  {Math.round(VCP_WEIGHT_VOLUME * 100)}%
+                </>
+              ) : vcpSnapshot.error ? (
+                <span style={{ color: '#b45309', fontSize: 11 }}>VCP：無法取得 Yahoo 價量</span>
+              ) : (
+                <>
+                  <span style={{ fontWeight: 600, color: '#9ca3af' }}>VCP</span>{' '}
+                  {vcpSnapshot.composite != null && Number.isFinite(vcpSnapshot.composite) ? (
+                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
+                      {vcpSnapshot.composite.toFixed(3)}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#9ca3af' }}>—</span>
+                  )}
+                  <span style={{ marginLeft: 6, fontSize: 11, color: '#9ca3af' }}>
+                    價 {vcpSnapshot.priceRatio != null && Number.isFinite(vcpSnapshot.priceRatio)
+                      ? vcpSnapshot.priceRatio.toFixed(3)
+                      : '—'}
+                    ×{Math.round(VCP_WEIGHT_PRICE * 100)}% 量{' '}
+                    {vcpSnapshot.volRatio != null && Number.isFinite(vcpSnapshot.volRatio)
+                      ? vcpSnapshot.volRatio.toFixed(3)
+                      : '—'}
+                    ×{Math.round(VCP_WEIGHT_VOLUME * 100)}%
+                  </span>
+                </>
+              )}
+            </span>
+            {tradingViewUrl && (
+              <a
+                href={tradingViewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="TradingView K 線圖（新分頁）"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: '#1565c0',
+                  textDecoration: 'none',
+                  borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
+                  lineHeight: 1.2,
+                  flexShrink: 0,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                K 線圖
+              </a>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -827,111 +1105,12 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
           </button>
         </div>
 
-        {/* 固定高度避免切換個股時 VCP 區塊忽有忽無造成跳動 */}
-        <div
-          style={{
-            minHeight: 44,
-            marginBottom: 8,
-            flexShrink: 0,
-            boxSizing: 'border-box',
-          }}
-        >
-          {vcpSnapshot && !vcpSnapshot.error && (
-            <div
-              style={{
-                padding: '0 0 6px',
-                fontSize: 12,
-                color: '#6b7280',
-                lineHeight: 1.45,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-                flexWrap: 'wrap',
-              }}
-              title="價格項：近10個交易日最大單日|報酬|÷近40個交易日最大（收盤）；成交量項：近10日均量÷近40日均量；各 0～1；加權 70% / 30%"
-            >
-              <span style={{ minWidth: 0 }}>
-                <span style={{ fontWeight: 600, color: '#9ca3af' }}>VCP</span>{' '}
-                {vcpSnapshot.composite != null && Number.isFinite(vcpSnapshot.composite) ? (
-                  <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
-                    {vcpSnapshot.composite.toFixed(3)}
-                  </span>
-                ) : (
-                  <span style={{ color: '#9ca3af' }}>—</span>
-                )}
-                <span style={{ marginLeft: 6, fontSize: 11, color: '#9ca3af' }}>
-                  價 {vcpSnapshot.priceRatio != null && Number.isFinite(vcpSnapshot.priceRatio)
-                    ? vcpSnapshot.priceRatio.toFixed(3)
-                    : '—'}
-                  ×{Math.round(VCP_WEIGHT_PRICE * 100)}% 量{' '}
-                  {vcpSnapshot.volRatio != null && Number.isFinite(vcpSnapshot.volRatio)
-                    ? vcpSnapshot.volRatio.toFixed(3)
-                    : '—'}
-                  ×{Math.round(VCP_WEIGHT_VOLUME * 100)}%
-                </span>
-              </span>
-              {tradingViewUrl && (
-                <a
-                  href={tradingViewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="TradingView K 線圖（新分頁）"
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: '#1565c0',
-                    textDecoration: 'none',
-                    borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
-                    lineHeight: 1.25,
-                    flexShrink: 0,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  K 線圖
-                </a>
-              )}
-            </div>
-          )}
-          {vcpSnapshot && vcpSnapshot.error && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-                flexWrap: 'wrap',
-              }}
-            >
-              <span style={{ fontSize: 11, color: '#b45309' }}>VCP：無法取得 Yahoo 價量</span>
-              {tradingViewUrl && (
-                <a
-                  href={tradingViewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="TradingView K 線圖（新分頁）"
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: '#1565c0',
-                    textDecoration: 'none',
-                    borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  K 線圖
-                </a>
-              )}
-            </div>
-          )}
-        </div>
-
         {loading ? (
           <div
             style={{
-              height: 420,
+              flex: '1 1 0px',
+              minHeight: 0,
+              height: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -944,7 +1123,9 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
         ) : error ? (
           <div
             style={{
-              height: 420,
+              flex: '1 1 0px',
+              minHeight: 0,
+              height: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -957,7 +1138,9 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
         ) : isEmpty ? (
           <div
             style={{
-              height: 420,
+              flex: '1 1 0px',
+              minHeight: 0,
+              height: 0,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -974,72 +1157,195 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
             {indexEmpty && <span style={{ fontSize: 11 }}>加權指數（^TWII）回傳空</span>}
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={420}>
-            {/* margin.right 勿與右側 YAxis width 重複加總，否則右側會空一大塊 */}
-            <LineChart data={chartData} margin={{ top: 8, right: 4, left: 6, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 10 }}
-                interval="preserveStartEnd"
-                tickLine={false}
-              />
-              {/* 左軸：RS Rating 1-99 */}
-              <YAxis
-                yAxisId="rs"
-                orientation="left"
-                domain={[1, 99]}
-                ticks={[1, 25, 50, 75, 99]}
-                tick={{ fontSize: 10, fill: '#c0392b' }}
-                tickLine={false}
-                axisLine={false}
-                width={38}
-                tickFormatter={(v) => v}
-              />
-              {/* 右軸：加權指數原始點數 */}
-              <YAxis
-                yAxisId="idx"
-                orientation="right"
-                domain={['auto', 'auto']}
-                tick={{ fontSize: 10, fill: '#1565c0' }}
-                tickLine={false}
-                axisLine={false}
-                width={48}
-                tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v)}
-              />
-              <Tooltip
-                formatter={(val, name) =>
-                  name === 'RS Rating'
-                    ? [`${val}`, 'RS Rating (1-99)']
-                    : [val.toLocaleString(), '加權指數']
-                }
-                contentStyle={{ fontSize: 12 }}
-              />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line
-                yAxisId="rs"
-                dataKey="rs"
-                name="RS Rating"
-                stroke="#c0392b"
-                strokeWidth={2}
-                dot={false}
-                connectNulls
-              />
-              <Line
-                yAxisId="idx"
-                dataKey="idx"
-                name="加權指數"
-                stroke="#1565c0"
-                strokeWidth={1.5}
-                dot={false}
-                connectNulls
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <div
+            style={{
+              // height:0 + flex-grow：讓此區在 column flex 裡「真的」吃掉 VCP 下方剩餘高度（否則常只剩內容高、底部空白）
+              flex: '1 1 0px',
+              minHeight: 0,
+              height: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 0,
+              width: '100%',
+              overflow: 'auto',
+              WebkitOverflowScrolling: 'touch',
+            }}
+          >
+            <section
+              style={{
+                flex: '1 1 0',
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 'max(300px, 46vh)',
+                alignSelf: 'center',
+                width: '100%',
+                maxWidth: 760,
+                border: '1px solid #e5e7eb',
+                borderRadius: 10,
+                padding: '10px 12px 8px',
+                background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+              }}
+            >
+              <header
+                style={{
+                  display: 'flex',
+                  flexWrap: 'nowrap',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 4,
+                  paddingBottom: 6,
+                  borderBottom: '1px solid #f1f5f9',
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    width: 4,
+                    alignSelf: 'stretch',
+                    minHeight: 22,
+                    borderRadius: 3,
+                    background: '#c0392b',
+                    flexShrink: 0,
+                  }}
+                  aria-hidden
+                />
+                <div
+                  style={{
+                    flex: '1 1 0',
+                    minWidth: 0,
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    flexWrap: 'nowrap',
+                    gap: 8,
+                    fontSize: 11,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  <span style={{ fontSize: 14, fontWeight: 800, color: '#111827', letterSpacing: '-0.02em', flexShrink: 0 }}>
+                    RS 與大盤
+                  </span>
+                  <span
+                    style={{
+                      color: '#64748b',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      minWidth: 0,
+                    }}
+                  >
+                    <strong style={{ color: '#c0392b' }}>紅線</strong>＝RS（左）　
+                    <strong style={{ color: '#1565c0' }}>藍線</strong>＝加權 ^TWII（右）；K 線與折線共用 Yahoo 交易日對齊
+                  </span>
+                </div>
+              </header>
+              <div
+                style={{
+                  flex: '1 1 0',
+                  minHeight: 0,
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  position: 'relative',
+                }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 10, right: 6, left: 0, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#eceff1" vertical={false} />
+                    <XAxis
+                      dataKey="dateKey"
+                      tick={{ fontSize: 11, fill: '#64748b', dy: 2 }}
+                      tickFormatter={(v) => (typeof v === 'string' && v.length >= 10 ? v.slice(5) : String(v))}
+                      interval="preserveStartEnd"
+                      tickLine={false}
+                      axisLine={{ stroke: '#e2e8f0' }}
+                    />
+                    <YAxis
+                      yAxisId="rs"
+                      orientation="left"
+                      domain={[1, 99]}
+                      ticks={[1, 25, 50, 75, 99]}
+                      tick={{ fontSize: 11, fill: '#c0392b' }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={42}
+                      tickFormatter={(v) => v}
+                      label={{ value: 'RS', angle: -90, position: 'insideLeft', fill: '#c0392b', fontSize: 11, offset: 4 }}
+                    />
+                    <YAxis
+                      yAxisId="idx"
+                      orientation="right"
+                      domain={['auto', 'auto']}
+                      tick={{ fontSize: 11, fill: '#1565c0' }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={52}
+                      tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v)}
+                      label={{ value: '加權', angle: 90, position: 'insideRight', fill: '#1565c0', fontSize: 11, offset: 6 }}
+                    />
+                    <Tooltip
+                      labelFormatter={(label) => (typeof label === 'string' ? label : '')}
+                      formatter={(val, name) =>
+                        name === 'RS Rating'
+                          ? [`${val}`, 'RS (1–99)']
+                          : [val != null ? Number(val).toLocaleString() : '—', '加權指數']
+                      }
+                      contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
+                    />
+                    <Line
+                      yAxisId="rs"
+                      dataKey="rs"
+                      name="RS Rating"
+                      stroke="#c0392b"
+                      strokeWidth={2.25}
+                      dot={false}
+                      connectNulls
+                    />
+                    <Line
+                      yAxisId="idx"
+                      dataKey="idx"
+                      name="加權指數"
+                      stroke="#1565c0"
+                      strokeWidth={1.75}
+                      dot={false}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+                {ohlcSeries.length > 0 && chartData.length === ohlcSeries.length && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: lineChartPlotInset.top,
+                      left: lineChartPlotInset.left,
+                      right: lineChartPlotInset.right,
+                      bottom: lineChartPlotInset.bottom,
+                      zIndex: 2,
+                      pointerEvents: 'none',
+                      opacity: 0.38,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <IbdRsOhlcChart series={ohlcSeries} fillHeight variant="overlay" />
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
         )}
 
-        <div style={{ textAlign: 'center', fontSize: 10, color: '#ccc', marginTop: 4 }}>
-          RS Rating（左軸）= 每次 sync 算出的 1-99　　加權指數（右軸）= ^TWII 點數　　每天 sync 可累積更多歷史點
+        <div
+          style={{
+            textAlign: 'center',
+            fontSize: 10,
+            color: '#94a3b8',
+            marginTop: 6,
+            lineHeight: 1.5,
+            padding: '4px 8px 0',
+            flexShrink: 0,
+          }}
+        >
+          RS 歷史隨每日 sync 累積；股價與 VCP 同源（Yahoo）
         </div>
       </div>
     </div>

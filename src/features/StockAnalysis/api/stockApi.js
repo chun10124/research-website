@@ -219,6 +219,82 @@ function parseChartToPriceVolumeMaps(json, startStr, endStr) {
 }
 
 /**
+ * Yahoo chart → 日 K OHLC 序列（台北日曆日），供 K 線圖用。
+ * 與 parseChartToPriceVolumeMaps 一致：收盤優先 quote.close，缺則用 adjclose（同列索引）。
+ * Yahoo 在日線上 O/H/L 常為 null（盤中未收盤、或 API 缺欄）— 以當根收盤與合理範圍補齊，避免怪 K。
+ * @returns {Array<{ dateStr: string, open: number, high: number, low: number, close: number, volume: number }>}
+ */
+function parseChartToOhlcSeries(json, startStr, endStr) {
+  const result = json?.chart?.result?.[0];
+  if (!result) return [];
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  const timestamps = result.timestamp || [];
+  const quote = result.indicators?.quote?.[0];
+  const opens = quote?.open || [];
+  const highs = quote?.high || [];
+  const lows = quote?.low || [];
+  const closes = quote?.close || [];
+  const adjcloses = result.indicators?.adjclose?.[0]?.adjclose || [];
+  const volumes = quote?.volume || [];
+
+  const pickClose = (i) => {
+    const c = Number(closes[i]);
+    if (Number.isFinite(c) && c > 0) return c;
+    const a = Number(adjcloses[i]);
+    if (Number.isFinite(a) && a > 0) return a;
+    return null;
+  };
+
+  const out = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const d = new Date(timestamps[i] * 1000);
+    const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    if (dateStr < start) continue;
+    if (end && dateStr > end) continue;
+
+    const c = pickClose(i);
+    if (c == null) continue;
+
+    const o = opens[i];
+    const h = highs[i];
+    const l = lows[i];
+    const oN = Number(o);
+    const hN = Number(h);
+    const lN = Number(l);
+
+    let open = Number.isFinite(oN) && oN > 0 ? oN : c;
+    let high = Number.isFinite(hN) && hN > 0 ? hN : c;
+    let low = Number.isFinite(lN) && lN > 0 ? lN : c;
+
+    high = Math.max(high, open, c);
+    low = Math.min(low, open, c);
+    if (low > high) {
+      const t = low;
+      low = high;
+      high = t;
+    }
+
+    const vol = volumes[i];
+    out.push({
+      dateStr,
+      open,
+      high,
+      low,
+      close: c,
+      volume: vol != null && Number.isFinite(vol) && vol >= 0 ? vol : 0,
+    });
+  }
+
+  out.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+  const byDate = new Map();
+  for (const row of out) {
+    byDate.set(row.dateStr, row);
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+}
+
+/**
  * 從 Yahoo Finance 抓歷史收盤價（透過 proxy），回傳 { [dateStr]: price }。
  * 先試 .TW（上市/上櫃），無資料再試 .TWO（興櫃）。績效頁每日淨值用。
  */
@@ -263,10 +339,10 @@ export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr, 
  */
 export const fetchYahooHistoricalPriceVolumeMaps = async (stockCode, startStr, endStr, opts = {}) => {
   const bare = toYahooBare(stockCode);
-  if (!bare) return { priceMap: {}, volumeMap: {} };
+  if (!bare) return { priceMap: {}, volumeMap: {}, ohlcSeries: [] };
   const start = (startStr || '').slice(0, 10);
   const end = (endStr || '').slice(0, 10);
-  if (!start) return { priceMap: {}, volumeMap: {} };
+  if (!start) return { priceMap: {}, volumeMap: {}, ohlcSeries: [] };
   const startDay = new Date(start).getTime() / (24 * 60 * 60 * 1000);
   const endDay = end ? new Date(end).getTime() / (24 * 60 * 60 * 1000) : startDay + 365;
   const days = Math.ceil(endDay - startDay) + 1;
@@ -285,12 +361,13 @@ export const fetchYahooHistoricalPriceVolumeMaps = async (stockCode, startStr, e
       const json = await fetchYahooChart(symbol, range, chartOpts);
       if (!json) continue;
       const { priceMap, volumeMap } = parseChartToPriceVolumeMaps(json, start, end);
-      if (Object.keys(priceMap).length > 0) return { priceMap, volumeMap };
+      const ohlcSeries = parseChartToOhlcSeries(json, start, end);
+      if (Object.keys(priceMap).length > 0) return { priceMap, volumeMap, ohlcSeries };
     } catch (e) {
       console.warn(`fetchYahooHistoricalPriceVolumeMaps(${symbol}) failed:`, e?.message);
     }
   }
-  return { priceMap: {}, volumeMap: {} };
+  return { priceMap: {}, volumeMap: {}, ohlcSeries: [] };
 };
 
 /**
