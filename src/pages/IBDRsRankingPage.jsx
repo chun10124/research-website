@@ -23,7 +23,7 @@ import {
 import {
   calcCompositeVcp,
   calcRsDelta,
-  calcVcpPriceRatioFromCloseMap,
+  calcVcpPriceRatioFromHighLowMaps,
   calcVcpVolumeRatioFromVolumeMap,
   detectCrossUp,
   isRsKWeeksNewHigh,
@@ -807,7 +807,7 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
     quoteStartBuf.setDate(quoteStartBuf.getDate() - 120);
     const quoteStart = quoteStartBuf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     void fetchYahooHistoricalPriceVolumeMaps(stock.id, quoteStart, quoteEnd, { market: stock.market })
-      .then(({ priceMap, volumeMap, ohlcSeries: ohlc }) => {
+      .then(({ priceMap, highMap, lowMap, volumeMap, ohlcSeries: ohlc }) => {
         if (cancelled) return;
         setOhlcSeries(Array.isArray(ohlc) ? ohlc : []);
         if (priceMap && typeof priceMap === 'object') {
@@ -819,7 +819,7 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
           } else {
             setCloseQuote(null);
           }
-          const pr = calcVcpPriceRatioFromCloseMap(priceMap, quoteEnd);
+          const pr = calcVcpPriceRatioFromHighLowMaps(highMap || {}, lowMap || {}, quoteEnd);
           const vr = calcVcpVolumeRatioFromVolumeMap(volumeMap || {}, quoteEnd);
           const comp = calcCompositeVcp(pr, vr);
           setVcpSnapshot({ composite: comp, priceRatio: pr, volRatio: vr });
@@ -1284,13 +1284,62 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
                       label={{ value: '加權', angle: 90, position: 'insideRight', fill: '#1565c0', fontSize: 11, offset: 6 }}
                     />
                     <Tooltip
-                      labelFormatter={(label) => (typeof label === 'string' ? label : '')}
-                      formatter={(val, name) =>
-                        name === 'RS Rating'
-                          ? [`${val}`, 'RS (1–99)']
-                          : [val != null ? Number(val).toLocaleString() : '—', '加權指數']
-                      }
-                      contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
+                      /** 疊在 K 線 overlay（z-index:2）之上，否則字會被半透明層蓋住、難辨識 */
+                      wrapperStyle={{ zIndex: 12, outline: 'none' }}
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        const rsStroke = '#c0392b';
+                        const idxStroke = '#1565c0';
+                        return (
+                          <div
+                            style={{
+                              fontSize: 12,
+                              lineHeight: 1.45,
+                              borderRadius: 8,
+                              border: '1px solid #cbd5e1',
+                              backgroundColor: '#ffffff',
+                              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.18)',
+                              padding: '10px 12px',
+                            }}
+                          >
+                            <div
+                              style={{
+                                color: '#64748b',
+                                fontWeight: 700,
+                                marginBottom: 6,
+                                borderBottom: '1px solid #e2e8f0',
+                                paddingBottom: 6,
+                              }}
+                            >
+                              {typeof label === 'string' ? label : ''}
+                            </div>
+                            {payload.map((p, i) => {
+                              const isRs = p.dataKey === 'rs' || p.name === 'RS Rating';
+                              const lineColor = p.color || (isRs ? rsStroke : idxStroke);
+                              const v = p.value;
+                              const valueText = isRs
+                                ? `${v ?? '—'}`
+                                : v != null && Number.isFinite(Number(v))
+                                  ? Number(v).toLocaleString()
+                                  : '—';
+                              const titleText = isRs ? 'RS (1–99)' : '加權指數';
+                              return (
+                                <div
+                                  key={i}
+                                  style={{
+                                    color: lineColor,
+                                    paddingTop: 2,
+                                    paddingBottom: 2,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {titleText}：{valueText}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      }}
                     />
                     <Line
                       yAxisId="rs"
@@ -2262,10 +2311,10 @@ export default function IBDRsRankingPage() {
 
     const runOne = async (s) => {
       try {
-        const { priceMap, volumeMap } = await fetchYahooHistoricalPriceVolumeMaps(s.id, quoteStart, quoteEnd, {
+        const { highMap, lowMap, volumeMap } = await fetchYahooHistoricalPriceVolumeMaps(s.id, quoteStart, quoteEnd, {
           market: s.market,
         });
-        const pr = calcVcpPriceRatioFromCloseMap(priceMap, quoteEnd);
+        const pr = calcVcpPriceRatioFromHighLowMaps(highMap || {}, lowMap || {}, quoteEnd);
         const vr = calcVcpVolumeRatioFromVolumeMap(volumeMap || {}, quoteEnd);
         return calcCompositeVcp(pr, vr);
       } catch {

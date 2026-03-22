@@ -188,19 +188,23 @@ function parseChartToPriceMap(json, startStr, endStr) {
 }
 
 /**
- * 解析 Yahoo chart：收盤價 + 成交量（同日對齊；僅在收盤有效時寫入價；量可為 0）
- * @returns {{ priceMap: Record<string, number>, volumeMap: Record<string, number> }}
+ * 解析 Yahoo chart：收盤價 + 高／低 + 成交量（同日對齊；僅在收盤有效時寫入價；H/L 缺則以收盤補；量可為 0）
+ * @returns {{ priceMap: Record<string, number>, highMap: Record<string, number>, lowMap: Record<string, number>, volumeMap: Record<string, number> }}
  */
 function parseChartToPriceVolumeMaps(json, startStr, endStr) {
   const result = json?.chart?.result?.[0];
-  if (!result) return { priceMap: {}, volumeMap: {} };
+  if (!result) return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {} };
   const start = (startStr || '').slice(0, 10);
   const end = (endStr || '').slice(0, 10);
   const timestamps = result.timestamp || [];
   const quote = result.indicators?.quote?.[0];
   const closes = quote?.close || result.indicators?.adjclose?.[0]?.adjclose || [];
+  const highs = quote?.high || [];
+  const lows = quote?.low || [];
   const volumes = quote?.volume || [];
   const priceMap = {};
+  const highMap = {};
+  const lowMap = {};
   const volumeMap = {};
   for (let i = 0; i < timestamps.length; i++) {
     const d = new Date(timestamps[i] * 1000);
@@ -209,13 +213,26 @@ function parseChartToPriceVolumeMaps(json, startStr, endStr) {
     if (end && dateStr > end) break;
     const c = Number(closes[i]);
     if (!(c > 0 && Number.isFinite(c))) continue;
+    const hRaw = Number(highs[i]);
+    const lRaw = Number(lows[i]);
+    let hi = Number.isFinite(hRaw) && hRaw > 0 ? hRaw : c;
+    let lo = Number.isFinite(lRaw) && lRaw > 0 ? lRaw : c;
+    hi = Math.max(hi, c);
+    lo = Math.min(lo, c);
+    if (lo > hi) {
+      const t = lo;
+      lo = hi;
+      hi = t;
+    }
     priceMap[dateStr] = c;
+    highMap[dateStr] = hi;
+    lowMap[dateStr] = lo;
     const vol = volumes[i];
     if (vol != null && Number.isFinite(vol) && vol >= 0) {
       volumeMap[dateStr] = vol;
     }
   }
-  return { priceMap, volumeMap };
+  return { priceMap, highMap, lowMap, volumeMap };
 }
 
 /**
@@ -339,10 +356,10 @@ export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr, 
  */
 export const fetchYahooHistoricalPriceVolumeMaps = async (stockCode, startStr, endStr, opts = {}) => {
   const bare = toYahooBare(stockCode);
-  if (!bare) return { priceMap: {}, volumeMap: {}, ohlcSeries: [] };
+  if (!bare) return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {}, ohlcSeries: [] };
   const start = (startStr || '').slice(0, 10);
   const end = (endStr || '').slice(0, 10);
-  if (!start) return { priceMap: {}, volumeMap: {}, ohlcSeries: [] };
+  if (!start) return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {}, ohlcSeries: [] };
   const startDay = new Date(start).getTime() / (24 * 60 * 60 * 1000);
   const endDay = end ? new Date(end).getTime() / (24 * 60 * 60 * 1000) : startDay + 365;
   const days = Math.ceil(endDay - startDay) + 1;
@@ -360,14 +377,14 @@ export const fetchYahooHistoricalPriceVolumeMaps = async (stockCode, startStr, e
     try {
       const json = await fetchYahooChart(symbol, range, chartOpts);
       if (!json) continue;
-      const { priceMap, volumeMap } = parseChartToPriceVolumeMaps(json, start, end);
+      const { priceMap, highMap, lowMap, volumeMap } = parseChartToPriceVolumeMaps(json, start, end);
       const ohlcSeries = parseChartToOhlcSeries(json, start, end);
-      if (Object.keys(priceMap).length > 0) return { priceMap, volumeMap, ohlcSeries };
+      if (Object.keys(priceMap).length > 0) return { priceMap, highMap, lowMap, volumeMap, ohlcSeries };
     } catch (e) {
       console.warn(`fetchYahooHistoricalPriceVolumeMaps(${symbol}) failed:`, e?.message);
     }
   }
-  return { priceMap: {}, volumeMap: {}, ohlcSeries: [] };
+  return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {}, ohlcSeries: [] };
 };
 
 /**

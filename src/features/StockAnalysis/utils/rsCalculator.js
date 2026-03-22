@@ -301,53 +301,65 @@ export const VCP_WEIGHT_PRICE = 0.7;
 /** VCP 成交量項權重 */
 export const VCP_WEIGHT_VOLUME = 0.3;
 
+/** VCP 價格項：近 N 個交易日（區間最高 − 區間最低） */
+export const VCP_PRICE_DAYS_SHORT = 5;
+export const VCP_PRICE_DAYS_LONG = 20;
+
 /**
- * VCP 價格項：近 10 個交易日最大單日 |報酬| ÷ 近 40 個交易日最大單日 |報酬|（收盤價），0～1。
+ * VCP 價格項：近 5 個交易日（最高價−最低價）÷ 近 20 個交易日（最高價−最低價），0～1。
+ * highMap／lowMap 須與同一 anchor 前交易日序列對齊（Yahoo parseChartToPriceVolumeMaps）。
  */
-export function calcVcpPriceRatioFromCloseMap(priceMap, anchorDateStr) {
-  if (!priceMap || typeof priceMap !== 'object') return null;
-  const dates = Object.keys(priceMap)
-    .filter((d) => d <= anchorDateStr)
+export function calcVcpPriceRatioFromHighLowMaps(highMap, lowMap, anchorDateStr) {
+  if (!highMap || !lowMap || typeof highMap !== 'object' || typeof lowMap !== 'object') return null;
+  const dates = Object.keys(highMap)
+    .filter(
+      (d) =>
+        d <= anchorDateStr &&
+        highMap[d] != null &&
+        lowMap[d] != null &&
+        Number.isFinite(highMap[d]) &&
+        Number.isFinite(lowMap[d]) &&
+        highMap[d] > 0 &&
+        lowMap[d] > 0,
+    )
     .sort();
-  if (dates.length < 41) return null;
-  const last41 = dates.slice(-41);
-  const closes = last41.map((d) => priceMap[d]).filter((p) => p != null && p > 0 && Number.isFinite(p));
-  if (closes.length !== 41) return null;
-  const dayAmp = (p0, p1) => Math.abs(p1 - p0) / p0;
-  const amps40 = [];
-  for (let i = 1; i < 41; i++) {
-    amps40.push(dayAmp(closes[i - 1], closes[i]));
-  }
-  const max40 = Math.max(...amps40);
-  const last11 = closes.slice(-11);
-  const amps10 = [];
-  for (let i = 1; i < 11; i++) {
-    amps10.push(dayAmp(last11[i - 1], last11[i]));
-  }
-  const max10 = Math.max(...amps10);
-  if (max40 === 0) return max10 === 0 ? 1 : null;
-  const ratio = max10 / max40;
+  if (dates.length < VCP_PRICE_DAYS_LONG) return null;
+  const lastLong = dates.slice(-VCP_PRICE_DAYS_LONG);
+  const lastShort = dates.slice(-VCP_PRICE_DAYS_SHORT);
+  const highsL = lastLong.map((d) => highMap[d]);
+  const lowsL = lastLong.map((d) => lowMap[d]);
+  const highsS = lastShort.map((d) => highMap[d]);
+  const lowsS = lastShort.map((d) => lowMap[d]);
+  const rangeLong = Math.max(...highsL) - Math.min(...lowsL);
+  const rangeShort = Math.max(...highsS) - Math.min(...lowsS);
+  if (!Number.isFinite(rangeLong) || !Number.isFinite(rangeShort)) return null;
+  if (rangeLong <= 0) return rangeShort <= 0 ? 1 : null;
+  const ratio = rangeShort / rangeLong;
   if (!Number.isFinite(ratio)) return null;
   return Math.min(1, Math.max(0, ratio));
 }
 
+/** VCP 量能：近 N 日均量 */
+export const VCP_VOL_DAYS_SHORT = 5;
+export const VCP_VOL_DAYS_LONG = 20;
+
 /**
- * VCP 成交量項：近 10 日均量 ÷ 近 40 日均量（同一 volumeMap 交易日序列），0～1。
+ * VCP 成交量項：近 5 日均量 ÷ 近 20 日均量（同一 volumeMap 交易日序列），0～1。
  */
 export function calcVcpVolumeRatioFromVolumeMap(volumeMap, anchorDateStr) {
   if (!volumeMap || typeof volumeMap !== 'object') return null;
   const dates = Object.keys(volumeMap)
     .filter((d) => d <= anchorDateStr)
     .sort();
-  if (dates.length < 40) return null;
-  const last40 = dates.slice(-40);
-  const vols = last40.map((d) => volumeMap[d]);
+  if (dates.length < VCP_VOL_DAYS_LONG) return null;
+  const lastLong = dates.slice(-VCP_VOL_DAYS_LONG);
+  const vols = lastLong.map((d) => volumeMap[d]);
   if (vols.some((v) => v == null || !Number.isFinite(v) || v < 0)) return null;
-  const last10 = vols.slice(-10);
-  const avg10 = last10.reduce((a, b) => a + b, 0) / 10;
-  const avg40 = vols.reduce((a, b) => a + b, 0) / 40;
-  if (avg40 === 0) return avg10 === 0 ? 1 : null;
-  const ratio = avg10 / avg40;
+  const short = vols.slice(-VCP_VOL_DAYS_SHORT);
+  const avgShort = short.reduce((a, b) => a + b, 0) / VCP_VOL_DAYS_SHORT;
+  const avgLong = vols.reduce((a, b) => a + b, 0) / VCP_VOL_DAYS_LONG;
+  if (avgLong === 0) return avgShort === 0 ? 1 : null;
+  const ratio = avgShort / avgLong;
   if (!Number.isFinite(ratio)) return null;
   return Math.min(1, Math.max(0, ratio));
 }
