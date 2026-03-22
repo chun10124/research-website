@@ -1060,6 +1060,8 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
   /** 與下方 LineChart margin、雙 Y 軸寬度大致對齊，讓 K 線疊加與折線繪圖區同寬、時間軸對齊 */
   const lineChartPlotInset = { top: 10, right: 58, bottom: 28, left: 50 };
 
+  const swipeTouchRef = useRef({ x0: null, y0: null, id: null });
+
   useEffect(() => {
     if (!stock || !onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
     const handleKey = (e) => {
@@ -1079,6 +1081,49 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [stock, stock?.id, navigationList, onNavigate]);
 
+  /** 手機橫滑切換個股：左滑下一檔、右滑上一檔（與 ←／→ 相同）；需明顯水平位移以免誤觸圖表 */
+  const handleSwipeTouchStart = useCallback(
+    (e) => {
+      if (!onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      swipeTouchRef.current = { x0: t.clientX, y0: t.clientY, id: t.identifier };
+    },
+    [navigationList, onNavigate],
+  );
+
+  const handleSwipeTouchEnd = useCallback(
+    (e) => {
+      const start = swipeTouchRef.current;
+      if (start.x0 == null || start.id == null) return;
+      const t =
+        Array.from(e.changedTouches).find((x) => x.identifier === start.id) ?? e.changedTouches[0];
+      if (!t) return;
+      const dx = t.clientX - start.x0;
+      const dy = t.clientY - start.y0;
+      swipeTouchRef.current = { x0: null, y0: null, id: null };
+
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+      const minPx = 56;
+      const ratio = 1.28;
+      if (absDx < minPx || absDx < absDy * ratio) return;
+      if (!stock || !onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
+      const idx = navigationList.findIndex((s) => s.id === stock.id);
+      if (idx < 0) return;
+      if (dx < 0 && idx < navigationList.length - 1) {
+        onNavigate(navigationList[idx + 1]);
+      } else if (dx > 0 && idx > 0) {
+        onNavigate(navigationList[idx - 1]);
+      }
+    },
+    [stock, navigationList, onNavigate],
+  );
+
+  const handleSwipeTouchCancel = useCallback(() => {
+    swipeTouchRef.current = { x0: null, y0: null, id: null };
+  }, []);
+
   return (
     <div
       onMouseDown={onClose}
@@ -1096,6 +1141,9 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
     >
       <div
         onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={handleSwipeTouchStart}
+        onTouchEnd={handleSwipeTouchEnd}
+        onTouchCancel={handleSwipeTouchCancel}
         style={{
           boxSizing: 'border-box',
           width: '100%',
@@ -1111,6 +1159,7 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
           flexDirection: 'column',
           flexShrink: 0,
           minHeight: 0,
+          touchAction: 'pan-y',
         }}
       >
         <div
