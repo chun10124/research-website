@@ -592,6 +592,91 @@ function isDomTypingTarget(target) {
   return target.closest?.('input, textarea, select, [contenteditable="true"]') != null;
 }
 
+/** 左右各 N 根內最高價嚴格較高 → 波段高點 */
+function findOhlcSwingHighIndices(series, half) {
+  const n = series.length;
+  const out = [];
+  for (let i = half; i < n - half; i++) {
+    const h = series[i].high;
+    let ok = true;
+    for (let k = 1; k <= half; k++) {
+      if (h <= series[i - k].high || h <= series[i + k].high) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) out.push(i);
+  }
+  return out;
+}
+
+/** 左右各 N 根內最低價嚴格較低 → 波段低點 */
+function findOhlcSwingLowIndices(series, half) {
+  const n = series.length;
+  const out = [];
+  for (let i = half; i < n - half; i++) {
+    const lo = series[i].low;
+    let ok = true;
+    for (let k = 1; k <= half; k++) {
+      if (lo >= series[i - k].low || lo >= series[i + k].low) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) out.push(i);
+  }
+  return out;
+}
+
+/** 同側轉折若太近（根數）只保留較極端者 */
+function dedupeSwingHighsBySeparation(indices, series, minSepBars) {
+  const sorted = [...indices].sort((a, b) => a - b);
+  const out = [];
+  for (const i of sorted) {
+    if (out.length === 0) {
+      out.push(i);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    if (i - prev < minSepBars) {
+      if (series[i].high > series[prev].high) out[out.length - 1] = i;
+    } else {
+      out.push(i);
+    }
+  }
+  return out;
+}
+
+function dedupeSwingLowsBySeparation(indices, series, minSepBars) {
+  const sorted = [...indices].sort((a, b) => a - b);
+  const out = [];
+  for (const i of sorted) {
+    if (out.length === 0) {
+      out.push(i);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    if (i - prev < minSepBars) {
+      if (series[i].low < series[prev].low) out[out.length - 1] = i;
+    } else {
+      out.push(i);
+    }
+  }
+  return out;
+}
+
+/** 標籤過多時沿時間軸大致均勻抽樣 */
+function thinSwingIndicesEvenly(indices, maxKeep) {
+  if (indices.length <= maxKeep) return indices;
+  const sorted = [...indices].sort((a, b) => a - b);
+  const out = [];
+  const step = (sorted.length - 1) / Math.max(1, maxKeep - 1);
+  for (let k = 0; k < maxKeep; k++) {
+    out.push(sorted[Math.round(k * step)]);
+  }
+  return [...new Set(out)].sort((a, b) => a - b);
+}
+
 /** Yahoo 日 K：SVG 蠟燭（台股 紅漲／綠跌）
  * @param {'default'|'overlay'} [variant] overlay＝無座標、寬度撐滿容器，供疊在折線圖上半透明參考
  */
@@ -673,10 +758,84 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
       );
     });
 
+    const SWING_HALF = 5;
+    const SWING_MIN_SEP = 12;
+    const SWING_MAX_EACH = 8;
+    let swingHighIdx =
+      n >= SWING_HALF * 2 + 1
+        ? dedupeSwingHighsBySeparation(findOhlcSwingHighIndices(series, SWING_HALF), series, SWING_MIN_SEP)
+        : [];
+    let swingLowIdx =
+      n >= SWING_HALF * 2 + 1
+        ? dedupeSwingLowsBySeparation(findOhlcSwingLowIndices(series, SWING_HALF), series, SWING_MIN_SEP)
+        : [];
+    swingHighIdx = thinSwingIndicesEvenly(swingHighIdx, SWING_MAX_EACH);
+    swingLowIdx = thinSwingIndicesEvenly(swingLowIdx, SWING_MAX_EACH);
+
+    const hiFill = '#c62828';
+    const loFill = '#1b5e20';
+    const labelFontSize = 10;
+    const labelTextStroke = 'rgba(255,255,255,0.92)';
+    const labelStrokeW = 2.95;
+
+    const swingLabels = (
+      <g style={{ pointerEvents: 'none' }}>
+        {swingHighIdx.map((i) => {
+          const xc = padL + (i + 0.5) * slot;
+          const yH = yAt(series[i].high);
+          const txt = String(Math.round(series[i].high));
+          const placeBelow = yH - 26 < padT + 1;
+          const textY = placeBelow ? yH + 15 : yH - 13;
+          return (
+            <text
+              key={`sw-h-${i}`}
+              x={xc}
+              y={textY}
+              textAnchor="middle"
+              fontSize={labelFontSize}
+              fontWeight={700}
+              fill={hiFill}
+              stroke={labelTextStroke}
+              strokeWidth={labelStrokeW}
+              paintOrder="stroke"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              {txt}
+            </text>
+          );
+        })}
+        {swingLowIdx.map((i) => {
+          const xc = padL + (i + 0.5) * slot;
+          const yL = yAt(series[i].low);
+          const txt = String(Math.round(series[i].low));
+          const placeAbove = yL + 24 > plotH - 3;
+          const textY = placeAbove ? yL - 9 : yL + 17;
+          return (
+            <text
+              key={`sw-l-${i}`}
+              x={xc}
+              y={textY}
+              textAnchor="middle"
+              fontSize={labelFontSize}
+              fontWeight={700}
+              fill={loFill}
+              stroke={labelTextStroke}
+              strokeWidth={labelStrokeW}
+              paintOrder="stroke"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              {txt}
+            </text>
+          );
+        })}
+      </g>
+    );
+
     if (isOverlay) {
       return (
         <svg width={svgWidth} height={plotH} style={{ display: 'block', width: '100%' }}>
           <g style={{ opacity: 0.9 }}>{candles}</g>
+          {swingLabels}
         </svg>
       );
     }
@@ -715,6 +874,7 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
           );
         })}
         {candles}
+        {swingLabels}
         {xLabel}
       </svg>
     );
