@@ -349,62 +349,8 @@ function computeDeltaForLookback(s, days) {
   return calcRsDelta(curRs, s.ibdRsHistory, days);
 }
 
-// ─── 子元件：篩選條件輸入框 ──────────────────────────────────────────────────
+// ─── 子元件：篩選區塊標題 ────────────────────────────────────────────────────
 // placeholder 顏色：FILTER_INPUT_MARK + custom.css / IBD_RS_PLACEHOLDER_CSS（行內 style 無法設 ::placeholder）
-
-function FilterInput({ label, value, onChange, placeholder, type = 'number', hint, inline }) {
-  const inputStyle = {
-    padding: inline ? '6px 10px' : '7px 10px',
-    border: '1px solid #d0d0d0',
-    borderRadius: 6,
-    fontSize: 12,
-    width: '100%',
-    minWidth: 0,
-    boxSizing: 'border-box',
-    background: 'var(--ifm-background-color, #fff)',
-    color: 'var(--ifm-font-color-base)',
-  };
-  if (inline) {
-    return (
-      <label
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 12,
-          color: '#444',
-          minWidth: 0,
-        }}
-      >
-        <span style={{ flex: '0 0 auto', color: '#555', whiteSpace: 'nowrap', fontWeight: 600 }}>{label}</span>
-        <input
-          {...FILTER_INPUT_MARK}
-          className="ibd-rs-filter-input"
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          style={{ ...inputStyle, flex: '0 1 auto', width: 'min(100%, 240px)', maxWidth: 240 }}
-        />
-      </label>
-    );
-  }
-  return (
-    <div style={{ minWidth: 0 }}>
-      <label style={{ fontSize: 12, color: '#555', display: 'block', marginBottom: 4, fontWeight: 600 }}>{label}</label>
-      <input
-        {...FILTER_INPUT_MARK}
-        className="ibd-rs-filter-input"
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={inputStyle}
-      />
-      {hint && <div style={{ fontSize: 10, color: '#999', marginTop: 4 }}>{hint}</div>}
-    </div>
-  );
-}
 
 function FilterSectionTitle({ children, first }) {
   return (
@@ -1641,6 +1587,71 @@ function IbdRsQuadrantTable({
 
 // ─── 主頁面 ──────────────────────────────────────────────────────────────────
 
+/**
+ * RS／Δ／漲跌幅／HL／型態／搜尋等；不含 VCP（與主表邏輯一致）。
+ * 先過此關再決定要對哪些檔抓 Yahoo VCP，可減少請求數。
+ */
+function stockPassesNonVcpFilters(s, filters) {
+  const n = (v) => {
+    if (v === '' || v == null) return null;
+    const x = parseFloat(String(v).trim());
+    return Number.isFinite(x) ? x : null;
+  };
+  const rsMin = n(filters.rsMin);
+  const rsMax = n(filters.rsMax);
+  const d7min = n(filters.delta7dMin);
+  const d7max = n(filters.delta7dMax);
+  const d30min = n(filters.delta30dMin);
+  const d30max = n(filters.delta30dMax);
+  const pct5dMin = n(filters.pct5dMin);
+  const pct5dMax = n(filters.pct5dMax);
+  const pct20dMin = n(filters.pct20dMin);
+  const pct20dMax = n(filters.pct20dMax);
+  const hlMin = n(filters.hlMin);
+  const hlMax = n(filters.hlMax);
+  const q = filters.query.trim().toLowerCase();
+
+  const crossDaysParsed = parseInt(String(filters.crossDays || '').trim(), 10);
+  const crossLevelParsed = parseInt(String(filters.crossLevel || '').trim(), 10);
+  const crossFilterActive =
+    Number.isFinite(crossDaysParsed) &&
+    crossDaysParsed > 0 &&
+    Number.isFinite(crossLevelParsed) &&
+    crossLevelParsed >= 1 &&
+    crossLevelParsed <= 99;
+
+  const weeksKParsed = parseInt(String(filters.weeksNewHigh || '').trim(), 10);
+  const weeksHighActive = Number.isFinite(weeksKParsed) && weeksKParsed >= 1 && weeksKParsed <= 52;
+
+  const effRs = getEffectiveDisplayRs(s);
+  if (rsMin != null && (effRs == null || effRs < rsMin)) return false;
+  if (rsMax != null && (effRs == null || effRs > rsMax)) return false;
+  if (d7min != null && (s.delta7d == null || s.delta7d < d7min)) return false;
+  if (d7max != null && (s.delta7d == null || s.delta7d > d7max)) return false;
+  if (d30min != null && (s.delta30d == null || s.delta30d < d30min)) return false;
+  if (d30max != null && (s.delta30d == null || s.delta30d > d30max)) return false;
+  if (pct5dMin != null && (s.pricePct5d == null || s.pricePct5d < pct5dMin)) return false;
+  if (pct5dMax != null && (s.pricePct5d == null || s.pricePct5d > pct5dMax)) return false;
+  if (pct20dMin != null && (s.pricePct20d == null || s.pricePct20d < pct20dMin)) return false;
+  if (pct20dMax != null && (s.pricePct20d == null || s.pricePct20d > pct20dMax)) return false;
+  if (hlMin != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m < hlMin)) return false;
+  if (hlMax != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m > hlMax)) return false;
+
+  if (crossFilterActive) {
+    if (!detectCrossUp(effRs, s.ibdRsHistory, crossLevelParsed, crossDaysParsed)) return false;
+  }
+  if (weeksHighActive) {
+    if (!isRsKWeeksNewHigh(s.ibdRsHistory, effRs, weeksKParsed)) return false;
+  }
+
+  if (q) {
+    const idMatch = String(s.id || '').toLowerCase().includes(q);
+    const nameMatch = String(s.name || '').toLowerCase().includes(q);
+    if (!idMatch && !nameMatch) return false;
+  }
+  return true;
+}
+
 const DEFAULT_FILTERS = {
   rsMin: '',
   rsMax: '',
@@ -1662,8 +1673,72 @@ const DEFAULT_FILTERS = {
   crossLevel: '',
   /** 近 K「週」＝ K×5 交易日內 RS 為區間最高；填數字才套用 */
   weeksNewHigh: '',
+  /** VCP 加權合成（0～1）；與圖表區塊相同公式，需即時抓 Yahoo */
+  vcpMin: '',
+  vcpMax: '',
   query: '',
 };
+
+/**
+ * 與篩選三明治一致：右欄＝下限、左欄＝上限 → 下限 ≤ 指標 ≤ 上限。
+ * 只填一邊時用 ≥／≤，避免「85～—」難讀。
+ */
+function summarizeMinMaxLine(label, lowerStr, upperStr) {
+  const lo = lowerStr !== '' && String(lowerStr).trim() !== '' ? String(lowerStr).trim() : null;
+  const hi = upperStr !== '' && String(upperStr).trim() !== '' ? String(upperStr).trim() : null;
+  if (lo == null && hi == null) return null;
+  if (lo != null && hi != null) return `${lo} ≤ ${label} ≤ ${hi}`;
+  if (lo != null) return `${label} ≥ ${lo}`;
+  return `${label} ≤ ${hi}`;
+}
+
+/**
+ * 頂欄用：列出與預設不同的篩選條件（繁中簡述）。
+ */
+function summarizeIbdRsFilters(filters, deltaShortResolved, deltaLongResolved) {
+  const parts = [];
+  const f = filters;
+
+  const rsLine = summarizeMinMaxLine('RS', f.rsMin, f.rsMax);
+  if (rsLine) parts.push(rsLine);
+  if (f.deltaShortDays !== DEFAULT_FILTERS.deltaShortDays) {
+    parts.push(`短區間 ${f.deltaShortDays} 交易日`);
+  }
+  if (f.deltaLongDays !== DEFAULT_FILTERS.deltaLongDays) {
+    parts.push(`長區間 ${f.deltaLongDays} 交易日`);
+  }
+  const dShortLine = summarizeMinMaxLine(`Δ${deltaShortResolved}`, f.delta7dMin, f.delta7dMax);
+  if (dShortLine) parts.push(dShortLine);
+  const dLongLine = summarizeMinMaxLine(`Δ${deltaLongResolved}`, f.delta30dMin, f.delta30dMax);
+  if (dLongLine) parts.push(dLongLine);
+  const pct5Line = summarizeMinMaxLine('5D', f.pct5dMin, f.pct5dMax);
+  if (pct5Line) parts.push(pct5Line);
+  const pct20Line = summarizeMinMaxLine('20D', f.pct20dMin, f.pct20dMax);
+  if (pct20Line) parts.push(pct20Line);
+  const hlLine = summarizeMinMaxLine('HL', f.hlMin, f.hlMax);
+  if (hlLine) parts.push(hlLine);
+  const crossDaysParsed = parseInt(String(f.crossDays || '').trim(), 10);
+  const crossLevelParsed = parseInt(String(f.crossLevel || '').trim(), 10);
+  if (
+    Number.isFinite(crossDaysParsed) &&
+    crossDaysParsed > 0 &&
+    Number.isFinite(crossLevelParsed) &&
+    crossLevelParsed >= 1 &&
+    crossLevelParsed <= 99
+  ) {
+    parts.push(`向上突破：近 ${crossDaysParsed} 交易日穿越 ${crossLevelParsed}`);
+  }
+  const wk = parseInt(String(f.weeksNewHigh || '').trim(), 10);
+  if (Number.isFinite(wk) && wk >= 1 && wk <= 52) {
+    parts.push(`近 ${wk} 週區間新高`);
+  }
+  if (f.query.trim()) {
+    parts.push(`搜尋「${f.query.trim()}」`);
+  }
+  const vcpLine = summarizeMinMaxLine('VCP', f.vcpMin, f.vcpMax);
+  if (vcpLine) parts.push(vcpLine);
+  return parts;
+}
 
 export default function IBDRsRankingPage() {
   const { stocks, loading, syncing, syncProgress, syncRs, lastSyncAt, refresh } = useIbdRsData();
@@ -1679,6 +1754,20 @@ export default function IBDRsRankingPage() {
   const [testMsg, setTestMsg] = useState(null);
   const [batchRunning, setBatchRunning] = useState(false);
   const batchAbortRef = useRef(null);
+
+  /** VCP 篩選：id → 加權合成值；僅在設了 vcp 上下限時向 Yahoo 批次抓取 */
+  const [vcpById, setVcpById] = useState(() => new Map());
+  const [vcpLoading, setVcpLoading] = useState(false);
+  const vcpFetchGenRef = useRef(0);
+
+  const vcpFilterActive = useMemo(() => {
+    const pn = (v) => {
+      if (v === '' || v == null) return null;
+      const x = parseFloat(String(v).trim());
+      return Number.isFinite(x) ? x : null;
+    };
+    return pn(filters.vcpMin) != null || pn(filters.vcpMax) != null;
+  }, [filters.vcpMin, filters.vcpMax]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -1800,6 +1889,113 @@ export default function IBDRsRankingPage() {
     return [...withRs, ...noRs];
   }, [enriched]);
 
+  /**
+   * 先通過其餘條件後才需抓 VCP 的候選檔。
+   * deps 不含 vcpMin／vcpMax：只調整 VCP 上下限時不重算、不重抓 Yahoo。
+   */
+  const stocksNeedingVcpFetch = useMemo(() => {
+    if (!vcpFilterActive) return [];
+    return globalSorted.filter((s) => stockPassesNonVcpFilters(s, filters));
+  }, [
+    globalSorted,
+    vcpFilterActive,
+    filters.rsMin,
+    filters.rsMax,
+    filters.deltaShortDays,
+    filters.deltaLongDays,
+    filters.delta7dMin,
+    filters.delta7dMax,
+    filters.delta30dMin,
+    filters.delta30dMax,
+    filters.pct5dMin,
+    filters.pct5dMax,
+    filters.pct20dMin,
+    filters.pct20dMax,
+    filters.hlMin,
+    filters.hlMax,
+    filters.crossDays,
+    filters.crossLevel,
+    filters.weeksNewHigh,
+    filters.query,
+  ]);
+
+  useEffect(() => {
+    vcpFetchGenRef.current += 1;
+    const myGen = vcpFetchGenRef.current;
+
+    if (!vcpFilterActive) {
+      setVcpById(new Map());
+      setVcpLoading(false);
+      return;
+    }
+
+    if (stocksNeedingVcpFetch.length === 0) {
+      setVcpById(new Map());
+      setVcpLoading(false);
+      return;
+    }
+
+    setVcpLoading(true);
+    setVcpById(new Map());
+
+    const quoteEnd = getTaiwanYmd();
+    const quoteStartBuf = new Date();
+    quoteStartBuf.setDate(quoteStartBuf.getDate() - 120);
+    const quoteStart = quoteStartBuf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+
+    const list = stocksNeedingVcpFetch.slice();
+    const map = new Map();
+    const BATCH_UI = 14;
+    const CONCURRENCY = 4;
+    let cancelled = false;
+
+    const pumpUi = () => {
+      if (cancelled || vcpFetchGenRef.current !== myGen) return;
+      setVcpById(new Map(map));
+    };
+
+    const runOne = async (s) => {
+      try {
+        const { priceMap, volumeMap } = await fetchYahooHistoricalPriceVolumeMaps(s.id, quoteStart, quoteEnd, {
+          market: s.market,
+        });
+        const pr = calcVcpPriceRatioFromCloseMap(priceMap, quoteEnd);
+        const vr = calcVcpVolumeRatioFromVolumeMap(volumeMap || {}, quoteEnd);
+        return calcCompositeVcp(pr, vr);
+      } catch {
+        return null;
+      }
+    };
+
+    void (async () => {
+      let index = 0;
+      const worker = async () => {
+        while (true) {
+          if (cancelled || vcpFetchGenRef.current !== myGen) return;
+          const i = index++;
+          if (i >= list.length) return;
+          const s = list[i];
+          const comp = await runOne(s);
+          if (cancelled || vcpFetchGenRef.current !== myGen) return;
+          map.set(s.id, comp);
+          const sz = map.size;
+          if (sz % BATCH_UI === 0 || sz === list.length) pumpUi();
+        }
+      };
+
+      await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+
+      if (!cancelled && vcpFetchGenRef.current === myGen) {
+        setVcpById(new Map(map));
+        setVcpLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stocksNeedingVcpFetch, vcpFilterActive]);
+
   // ── Step 3：套用篩選
   const filtered = useMemo(() => {
     const n = (v) => {
@@ -1807,66 +2003,21 @@ export default function IBDRsRankingPage() {
       const x = parseFloat(String(v).trim());
       return Number.isFinite(x) ? x : null;
     };
-    const rsMin = n(filters.rsMin);
-    const rsMax = n(filters.rsMax);
-    const d7min = n(filters.delta7dMin);
-    const d7max = n(filters.delta7dMax);
-    const d30min = n(filters.delta30dMin);
-    const d30max = n(filters.delta30dMax);
-    const pct5dMin = n(filters.pct5dMin);
-    const pct5dMax = n(filters.pct5dMax);
-    const pct20dMin = n(filters.pct20dMin);
-    const pct20dMax = n(filters.pct20dMax);
-    const hlMin = n(filters.hlMin);
-    const hlMax = n(filters.hlMax);
-    const q = filters.query.trim().toLowerCase();
-
-    const crossDaysParsed = parseInt(String(filters.crossDays || '').trim(), 10);
-    const crossLevelParsed = parseInt(String(filters.crossLevel || '').trim(), 10);
-    const crossFilterActive =
-      Number.isFinite(crossDaysParsed) &&
-      crossDaysParsed > 0 &&
-      Number.isFinite(crossLevelParsed) &&
-      crossLevelParsed >= 1 &&
-      crossLevelParsed <= 99;
-
-    const weeksKParsed = parseInt(String(filters.weeksNewHigh || '').trim(), 10);
-    const weeksHighActive = Number.isFinite(weeksKParsed) && weeksKParsed >= 1 && weeksKParsed <= 52;
+    const vcpLo = n(filters.vcpMin);
+    const vcpHi = n(filters.vcpMax);
+    const vcpBoundsActive = vcpFilterActive && !vcpLoading;
 
     return globalSorted.filter((s) => {
-      const effRs = getEffectiveDisplayRs(s);
-      if (rsMin != null && (effRs == null || effRs < rsMin)) return false;
-      if (rsMax != null && (effRs == null || effRs > rsMax)) return false;
-      if (d7min != null && (s.delta7d == null || s.delta7d < d7min)) return false;
-      if (d7max != null && (s.delta7d == null || s.delta7d > d7max)) return false;
-      if (d30min != null && (s.delta30d == null || s.delta30d < d30min)) return false;
-      if (d30max != null && (s.delta30d == null || s.delta30d > d30max)) return false;
-      if (pct5dMin != null && (s.pricePct5d == null || s.pricePct5d < pct5dMin)) return false;
-      if (pct5dMax != null && (s.pricePct5d == null || s.pricePct5d > pct5dMax)) return false;
-      if (pct20dMin != null && (s.pricePct20d == null || s.pricePct20d < pct20dMin)) return false;
-      if (pct20dMax != null && (s.pricePct20d == null || s.pricePct20d > pct20dMax)) return false;
-      if (hlMin != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m < hlMin)) return false;
-      if (hlMax != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m > hlMax)) return false;
-
-      if (crossFilterActive) {
-        if (
-          !detectCrossUp(effRs, s.ibdRsHistory, crossLevelParsed, crossDaysParsed)
-        ) {
-          return false;
-        }
-      }
-      if (weeksHighActive) {
-        if (!isRsKWeeksNewHigh(s.ibdRsHistory, effRs, weeksKParsed)) return false;
-      }
-
-      if (q) {
-        const idMatch = String(s.id || '').toLowerCase().includes(q);
-        const nameMatch = String(s.name || '').toLowerCase().includes(q);
-        if (!idMatch && !nameMatch) return false;
+      if (!stockPassesNonVcpFilters(s, filters)) return false;
+      if (vcpBoundsActive) {
+        const comp = vcpById.get(s.id);
+        if (comp == null || !Number.isFinite(comp)) return false;
+        if (vcpLo != null && comp < vcpLo) return false;
+        if (vcpHi != null && comp > vcpHi) return false;
       }
       return true;
     });
-  }, [globalSorted, filters]);
+  }, [globalSorted, filters, vcpById, vcpLoading, vcpFilterActive]);
 
   /** 折線圖 ←／→：今日重點開啟時用合併清單；否則主表 filtered／globalSorted */
   const chartNavigationList = useMemo(() => {
@@ -1879,7 +2030,7 @@ export default function IBDRsRankingPage() {
   }, [chartNavOverride, selectedStock, filtered, globalSorted]);
 
   const pageCount = Math.ceil(filtered.length / PAGE_SIZE);
-  /** 篩選／搜尋後筆數變少時，page state 可能大於最後一頁 → 用 safePage 切 slice 與翻頁 */
+  /** 篩選後筆數變少時，page state 可能大於最後一頁 → 用 safePage 切 slice 與翻頁 */
   const safePage = pageCount > 0 ? Math.min(page, pageCount - 1) : 0;
   const visible = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
@@ -1895,6 +2046,15 @@ export default function IBDRsRankingPage() {
   const deltaLongDaysResolved = clampIbdDeltaDays(filters.deltaLongDays, 30);
   const deltaShortTitle = `今日 RS 減去 ${deltaShortDaysResolved} 個交易日前之 RS（ibdRsHistory 筆數；需足夠歷史）`;
   const deltaLongTitle = `今日 RS 減去 ${deltaLongDaysResolved} 個交易日前之 RS（ibdRsHistory 筆數；需足夠歷史）`;
+
+  const filterSummaryParts = useMemo(
+    () =>
+      hasActiveFilter
+        ? summarizeIbdRsFilters(filters, deltaShortDaysResolved, deltaLongDaysResolved)
+        : [],
+    [hasActiveFilter, filters, deltaShortDaysResolved, deltaLongDaysResolved]
+  );
+  const filterSummaryLine = filterSummaryParts.join(', ');
 
   /** 基準日已同步：單日 |ΔRS| &gt; 10 且 顯示 RS &gt; 60 */
   const majorMoveStocksToday = useMemo(() => {
@@ -2130,31 +2290,35 @@ export default function IBDRsRankingPage() {
     if (page !== sp) setPage(sp);
   }, [page, pageCount]);
 
+  const showStatsRow = mounted && stocks.length > 0;
+
   return (
     <Layout title="IBD RS Ranking">
       <main className="ibd-rs-ranking-main" style={{ padding: '8px 0 12px', minWidth: 0 }}>
         <div className="ibd-rs-ranking-page-inner" style={{ padding: '0 10px', minWidth: 0 }}>
-          {/* ── 頂欄：標題與「搜尋＋翻頁」同一列；統計在下一列 ─────────────── */}
+          {/* ── 頂欄：左＝標題列＋統計列；中／右跨兩列以便與左側整塊垂直對齊 ─────────────── */}
           <div style={{ marginBottom: 8 }}>
             <div
               className="ibd-rs-ranking-topbar-row"
               style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '8px 12px',
-                rowGap: 8,
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+                gridTemplateRows: showStatsRow ? 'auto auto' : 'auto',
+                alignItems: showStatsRow ? 'stretch' : 'center',
+                gap: showStatsRow ? '4px 12px' : '8px 12px',
+                width: '100%',
               }}
             >
               <div
                 style={{
+                  gridColumn: 1,
+                  gridRow: 1,
                   display: 'flex',
                   flexWrap: 'wrap',
                   alignItems: 'center',
                   gap: '8px 10px',
-                  flex: '0 1 auto',
                   minWidth: 0,
+                  justifySelf: 'start',
                 }}
               >
                 <h2 style={{ margin: 0, fontSize: '1.15rem', lineHeight: 1.2 }}>IBD RS Ranking</h2>
@@ -2179,146 +2343,216 @@ export default function IBDRsRankingPage() {
                 </button>
               </div>
               <div
+                className="ibd-rs-ranking-topbar-filter-summary"
+                style={{
+                  gridColumn: 2,
+                  gridRow: showStatsRow ? '1 / 3' : '1',
+                  justifySelf: 'center',
+                  alignSelf: 'stretch',
+                  minWidth: 0,
+                  maxWidth: 'min(52vw, 440px)',
+                  padding: '0 10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  textAlign: 'center',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {hasActiveFilter && (
+                  <>
+                    <div
+                      title={filterSummaryLine || '（篩選中）'}
+                      style={{
+                        fontSize: 11,
+                        color: '#444',
+                        lineHeight: 1.35,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        wordBreak: 'break-word',
+                        width: '100%',
+                      }}
+                    >
+                      {filterSummaryLine || '（篩選中）'}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#c0392b',
+                        marginTop: 2,
+                        whiteSpace: 'nowrap',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {filtered.length} 檔
+                    </div>
+                  </>
+                )}
+              </div>
+              <div
                 className="ibd-rs-ranking-topbar-actions"
                 style={{
-                  display: 'inline-flex',
+                  gridColumn: 3,
+                  gridRow: showStatsRow ? '1 / 3' : '1',
+                  display: 'flex',
                   flexDirection: 'row',
                   flexWrap: 'wrap',
                   alignItems: 'center',
                   alignContent: 'center',
                   gap: 10,
-                  flex: '1 1 auto',
                   justifyContent: 'flex-end',
                   minWidth: 0,
+                  justifySelf: 'end',
+                  alignSelf: 'stretch',
+                  height: '100%',
+                  boxSizing: 'border-box',
                 }}
               >
-                {pageCount > 1 && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      alignSelf: 'center',
-                      gap: 6,
-                      flexWrap: 'wrap',
-                      flexShrink: 0,
-                      minHeight: 28,
-                    }}
-                  >
-                    {[
-                      { label: '«', target: 0, disabled: safePage === 0 },
-                      { label: '‹', target: safePage - 1, disabled: safePage === 0 },
-                    ].map(({ label, target, disabled }) => (
-                      <button
-                        key={label}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => setPage(target)}
-                        style={{
-                          padding: '4px 10px',
-                          border: '1px solid #ddd',
-                          borderRadius: 4,
-                          background: '#fff',
-                          cursor: disabled ? 'default' : 'pointer',
-                          opacity: disabled ? 0.4 : 1,
-                          fontSize: 12,
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-
-                    <span style={{ fontSize: 12, color: '#666', margin: '0 4px' }}>
-                      第 <strong>{safePage + 1}</strong> / {pageCount}
-                    </span>
-
-                    {[
-                      { label: '›', target: safePage + 1, disabled: safePage >= pageCount - 1 },
-                      { label: '»', target: pageCount - 1, disabled: safePage >= pageCount - 1 },
-                    ].map(({ label, target, disabled }) => (
-                      <button
-                        key={label}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => setPage(target)}
-                        style={{
-                          padding: '4px 10px',
-                          border: '1px solid #ddd',
-                          borderRadius: 4,
-                          background: '#fff',
-                          cursor: disabled ? 'default' : 'pointer',
-                          opacity: disabled ? 0.4 : 1,
-                          fontSize: 12,
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <input
-                  {...FILTER_INPUT_MARK}
-                  className="ibd-rs-filter-input ibd-rs-topbar-search"
-                  type="search"
-                  value={filters.query}
-                  onChange={(e) => setFilter('query')(e.target.value)}
-                  placeholder="搜尋代號或名稱"
-                  aria-label="搜尋代號或名稱"
+                <div
                   style={{
-                    margin: 0,
-                    alignSelf: 'center',
-                    padding: '4px 8px',
-                    border: '1px solid #d0d0d0',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    lineHeight: 1.25,
-                    minWidth: 100,
-                    width: 'min(100%, 200px)',
-                    maxWidth: 220,
-                    minHeight: 28,
-                    boxSizing: 'border-box',
-                    background: 'var(--ifm-background-color, #fff)',
-                    color: 'var(--ifm-font-color-base)',
-                    verticalAlign: 'middle',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    flexWrap: 'nowrap',
+                    alignItems: 'center',
+                    gap: 10,
+                    minWidth: 0,
+                    flexShrink: 1,
                   }}
-                />
+                >
+                  {pageCount > 1 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        flexWrap: 'nowrap',
+                        flexShrink: 0,
+                        minHeight: 28,
+                      }}
+                    >
+                      {[
+                        { label: '«', target: 0, disabled: safePage === 0 },
+                        { label: '‹', target: safePage - 1, disabled: safePage === 0 },
+                      ].map(({ label, target, disabled }) => (
+                        <button
+                          key={label}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => setPage(target)}
+                          style={{
+                            padding: '4px 10px',
+                            border: '1px solid #ddd',
+                            borderRadius: 4,
+                            background: '#fff',
+                            cursor: disabled ? 'default' : 'pointer',
+                            opacity: disabled ? 0.4 : 1,
+                            fontSize: 12,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+
+                      <span style={{ fontSize: 12, color: '#666', margin: '0 4px', whiteSpace: 'nowrap' }}>
+                        第 <strong>{safePage + 1}</strong> / {pageCount}
+                      </span>
+
+                      {[
+                        { label: '›', target: safePage + 1, disabled: safePage >= pageCount - 1 },
+                        { label: '»', target: pageCount - 1, disabled: safePage >= pageCount - 1 },
+                      ].map(({ label, target, disabled }) => (
+                        <button
+                          key={label}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => setPage(target)}
+                          style={{
+                            padding: '4px 10px',
+                            border: '1px solid #ddd',
+                            borderRadius: 4,
+                            background: '#fff',
+                            cursor: disabled ? 'default' : 'pointer',
+                            opacity: disabled ? 0.4 : 1,
+                            fontSize: 12,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <input
+                    {...FILTER_INPUT_MARK}
+                    className="ibd-rs-filter-input ibd-rs-topbar-search"
+                    type="search"
+                    value={filters.query}
+                    onChange={(e) => setFilter('query')(e.target.value)}
+                    placeholder="搜尋代號或名稱"
+                    aria-label="搜尋代號或名稱"
+                    style={{
+                      margin: 0,
+                      flex: '0 1 auto',
+                      minWidth: 96,
+                      padding: '4px 8px',
+                      border: '1px solid #d0d0d0',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      lineHeight: 1.25,
+                      width: 200,
+                      maxWidth: 220,
+                      minHeight: 28,
+                      boxSizing: 'border-box',
+                      background: 'var(--ifm-background-color, #fff)',
+                      color: 'var(--ifm-font-color-base)',
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-            {mounted && stocks.length > 0 && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: '#555',
-                  lineHeight: 1.45,
-                  wordBreak: 'break-word',
-                  marginTop: 4,
-                }}
-              >
-                <span style={{ color: updatedTodayCount === stocks.length ? '#1e7e34' : '#666' }}>
-                  今日 <strong>{updatedTodayCount}</strong>/{stocks.length}
-                </span>
-                <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
-                <span>
-                  市<strong style={{ color: '#1565c0' }}>{marketStats.tw}</strong>
-                </span>
-                <span style={{ color: '#bbb', margin: '0 4px' }}>·</span>
-                <span>
-                  櫃<strong style={{ color: '#6a1b9a' }}>{marketStats.tp}</strong>
-                </span>
-                {marketStats.unknown > 0 && (
-                  <span style={{ color: '#999' }}>
-                    {' '}
-                    · 未標註 <strong>{marketStats.unknown}</strong>
+
+              {showStatsRow && (
+                <div
+                  style={{
+                    gridColumn: 1,
+                    gridRow: 2,
+                    fontSize: 11,
+                    color: '#555',
+                    lineHeight: 1.45,
+                    wordBreak: 'break-word',
+                    minWidth: 0,
+                  }}
+                >
+                  <span style={{ color: updatedTodayCount === stocks.length ? '#1e7e34' : '#666' }}>
+                    今日 <strong>{updatedTodayCount}</strong>/{stocks.length}
                   </span>
-                )}
-                {lastSyncDateLocal && (
-                  <>
-                    <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
-                    同步 {lastSyncDateLocal}
-                    {lastSyncAt && <span style={{ color: '#999' }}>（{formatRelativeTime(lastSyncAt)}）</span>}
-                  </>
-                )}
-              </div>
-            )}
+                  <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
+                  <span>
+                    市<strong style={{ color: '#1565c0' }}>{marketStats.tw}</strong>
+                  </span>
+                  <span style={{ color: '#bbb', margin: '0 4px' }}>·</span>
+                  <span>
+                    櫃<strong style={{ color: '#6a1b9a' }}>{marketStats.tp}</strong>
+                  </span>
+                  {marketStats.unknown > 0 && (
+                    <span style={{ color: '#999' }}>
+                      {' '}
+                      · 未標註 <strong>{marketStats.unknown}</strong>
+                    </span>
+                  )}
+                  {lastSyncDateLocal && (
+                    <>
+                      <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
+                      同步 {lastSyncDateLocal}
+                      {lastSyncAt && <span style={{ color: '#999' }}>（{formatRelativeTime(lastSyncAt)}）</span>}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <SyncProgressBar progress={syncProgress} />
@@ -2457,9 +2691,6 @@ export default function IBDRsRankingPage() {
                   />
 
                   <FilterSectionTitle>RS 變化（Δ）</FilterSectionTitle>
-                  <div style={{ gridColumn: '1 / -1', fontSize: 10, color: '#888', marginTop: -6, lineHeight: 1.35 }}>
-                    兩列中央可輸入回溯<strong>交易日</strong>數（1～365）；空白或無效時預設 7／30。表頭與數值會隨天數更新。
-                  </div>
                   <FilterSandwichBetween
                     centerAriaName={`RS變化·${deltaShortDaysResolved}日`}
                     centerSlot={
@@ -2606,17 +2837,16 @@ export default function IBDRsRankingPage() {
                     <span>週（5 交易日）內 RS 最高</span>
                   </div>
 
-                  <FilterSectionTitle>搜尋</FilterSectionTitle>
-                  <div style={{ gridColumn: '1 / -1', minWidth: 0, maxWidth: 440 }}>
-                    <FilterInput
-                      inline
-                      label="關鍵字"
-                      value={filters.query}
-                      onChange={setFilter('query')}
-                      placeholder="代號或名稱"
-                      type="text"
-                    />
-                  </div>
+                  <FilterSectionTitle>VCP（0～1）</FilterSectionTitle>
+                  <FilterSandwichBetween
+                    centerLabel="VCP"
+                    upperValue={filters.vcpMax}
+                    lowerValue={filters.vcpMin}
+                    onUpperChange={setFilter('vcpMax')}
+                    onLowerChange={setFilter('vcpMin')}
+                    upperPlaceholder="上限 例 0.85"
+                    lowerPlaceholder="下限 例 0.25"
+                  />
                 </div>
               </div>
             </div>
@@ -2624,6 +2854,23 @@ export default function IBDRsRankingPage() {
 
           {/* ── 表格：並排多組（橫向捲在 .ibd-rs-ranking-table-scroll） ── */}
           <div style={{ marginBottom: 8 }}>
+            {vcpFilterActive && vcpLoading && stocksNeedingVcpFetch.length > 0 && (
+              <div
+                style={{
+                  marginBottom: 8,
+                  padding: '8px 12px',
+                  background: '#fffbeb',
+                  border: '1px solid #fcd34d',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  color: '#92400e',
+                  lineHeight: 1.45,
+                }}
+              >
+                正載入 VCP（Yahoo）… <strong>{vcpById.size}</strong>／{stocksNeedingVcpFetch.length}
+                ；完成後才套用 VCP 上下限（載入中其餘條件仍有效）。
+              </div>
+            )}
             {loading && stocks.length === 0 ? (
               <div style={{ padding: 36, textAlign: 'center', color: '#888', fontSize: 13 }}>載入中...</div>
             ) : visible.length === 0 ? (
