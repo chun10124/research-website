@@ -38,6 +38,8 @@ export const RS_RATINGS_COLLECTION = collection(db, "ibdRsRatings");
 export const STOCK_LIST_DOC_REF = doc(db, "ibdRsMeta", "stockList");
 /** RS 排名「觀察列表」代碼陣列（與追蹤表 stockWatchlist 分開） */
 export const IBD_RS_WATCHLIST_DOC_REF = doc(db, "ibdRsMeta", "rsWatchlist");
+/** 全站同步狀態（跨裝置共用最後同步日期/時間） */
+export const SYNC_STATUS_DOC_REF = doc(db, "ibdRsMeta", "syncStatus");
 export const JOURNAL_DOC_REF = doc(db, "trade_journals", "my_only_log");
 export const WHITEBOARD_DOC_REF = doc(db, "whiteboard", "my_whiteboard");
 export const MINDMAP_DOC_REF = doc(db, "mindmaps", "mindmap_list");

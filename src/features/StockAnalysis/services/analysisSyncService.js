@@ -1,6 +1,8 @@
 /* 全域追蹤表同步單例：離開 AnalysisPage 仍持續同步 */
 
+import { setDoc } from 'firebase/firestore';
 import { syncStockSnapshots } from '../api/stockApi';
+import { SYNC_STATUS_DOC_REF } from '../../../utils/firebaseConfig';
 
 export const LAST_SYNC_ALL_KEY = 'research-website-lastSyncAllAt';
 
@@ -132,9 +134,22 @@ export function startAnalysisBackgroundSync({
       emit();
       onProgress?.(lastProgress);
 
+      const ts = Date.now();
       try {
-        localStorage.setItem(LAST_SYNC_ALL_KEY, String(Date.now()));
+        localStorage.setItem(LAST_SYNC_ALL_KEY, String(ts));
       } catch (_) {}
+      try {
+        await setDoc(
+          SYNC_STATUS_DOC_REF,
+          {
+            analysisLastSyncAt: ts,
+            updatedAt: ts,
+          },
+          { merge: true }
+        );
+      } catch (e) {
+        console.warn('[analysisSyncService] 寫入共享同步日期失敗:', e?.message || e);
+      }
       return lastProgress;
     } catch (e) {
       const cancelled = e?.message === '已取消';

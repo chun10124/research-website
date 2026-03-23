@@ -1,6 +1,7 @@
 /* src/pages/IBDRsRankingPage.jsx */
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { onSnapshot } from 'firebase/firestore';
 import Layout from '@theme/Layout';
 import {
   CartesianGrid,
@@ -42,6 +43,7 @@ import {
 import { clampIbdDeltaDays, enrichIbdRsRow } from '../features/StockAnalysis/utils/ibdRsRankingEnrich';
 import { RS_OPEN_STOCK_SESSION_KEY } from '../features/StockAnalysis/api/ibdRsWatchlistFirestore';
 import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
+import { SYNC_STATUS_DOC_REF } from '../utils/firebaseConfig';
 
 /** 篩選 input 用 data 屬性，placeholder 顏色用 CSS 選 `input[data-ibd-rs-filter]`（見 custom.css ＋掛載時注入 head） */
 const FILTER_INPUT_MARK = { 'data-ibd-rs-filter': '1' };
@@ -1189,6 +1191,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               lineHeight: 1,
               flexShrink: 0,
             }}
+            aria-label="關閉"
           >
             ✕
           </button>
@@ -1487,37 +1490,39 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           <span style={{ fontSize: 10, color: '#94a3b8', textAlign: 'left', flex: '1 1 auto', minWidth: 0 }}>
             RS 歷史隨每日 sync 累積；股價與 VCP 同源（Yahoo）
           </span>
-          <button
-            type="button"
-            onClick={async (e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              if (!stock || watchlistBusy || !onToggleWatchlist) return;
-              setWatchlistBusy(true);
-              try {
-                await onToggleWatchlist(stock);
-              } catch (err) {
-                console.error('[觀察列表]', err);
-              } finally {
-                setWatchlistBusy(false);
-              }
-            }}
-            disabled={watchlistBusy || !onToggleWatchlist}
-            aria-label={inWatchlist ? '自觀察列表移除' : '加入觀察列表'}
-            title={inWatchlist ? '自觀察列表移除' : '加入觀察列表'}
-            style={{
-              flex: '0 0 auto',
-              border: 'none',
-              background: 'transparent',
-              cursor: watchlistBusy ? 'wait' : 'pointer',
-              fontSize: 15,
-              lineHeight: 1,
-              padding: '2px 4px',
-              color: inWatchlist ? '#f59e0b' : '#cbd5e1',
-            }}
-          >
-            {inWatchlist ? '★' : '☆'}
-          </button>
+          {typeof onToggleWatchlist === 'function' && (
+            <button
+              type="button"
+              onClick={async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (!stock || watchlistBusy || typeof onToggleWatchlist !== 'function') return;
+                setWatchlistBusy(true);
+                try {
+                  await onToggleWatchlist(stock);
+                } catch (err) {
+                  console.error('[觀察列表]', err);
+                } finally {
+                  setWatchlistBusy(false);
+                }
+              }}
+              disabled={watchlistBusy}
+              aria-label={inWatchlist ? '自觀察列表移除' : '加入觀察列表'}
+              title={inWatchlist ? '自觀察列表移除' : '加入觀察列表'}
+              style={{
+                flex: '0 0 auto',
+                border: 'none',
+                background: 'transparent',
+                cursor: watchlistBusy ? 'wait' : 'pointer',
+                fontSize: 15,
+                lineHeight: 1,
+                padding: '2px 4px',
+                color: inWatchlist ? '#f59e0b' : '#cbd5e1',
+              }}
+            >
+              {inWatchlist ? '★' : '☆'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -2156,6 +2161,31 @@ export default function IBDRsRankingPage() {
       const v = localStorage.getItem(IBDRS_LAST_SYNC_DATE_KEY);
       if (v) setLastSyncDateLocal(v);
     } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      SYNC_STATUS_DOC_REF,
+      (snap) => {
+        const data = snap.data();
+        const sharedDate = typeof data?.rsLastSyncDate === 'string' ? data.rsLastSyncDate.trim() : '';
+        if (sharedDate) {
+          setLastSyncDateLocal(sharedDate.slice(0, 10));
+          return;
+        }
+        try {
+          const v = localStorage.getItem(IBDRS_LAST_SYNC_DATE_KEY);
+          if (v) setLastSyncDateLocal(v);
+        } catch (_) {}
+      },
+      () => {
+        try {
+          const v = localStorage.getItem(IBDRS_LAST_SYNC_DATE_KEY);
+          if (v) setLastSyncDateLocal(v);
+        } catch (_) {}
+      }
+    );
+    return () => unsub();
   }, []);
 
 

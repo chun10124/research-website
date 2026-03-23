@@ -5,6 +5,7 @@
  * 透過 subscribe 訂閱進度；全站 Root 可顯示浮動列。
  */
 
+import { setDoc } from 'firebase/firestore';
 import {
   syncAllRsRatings,
   DEFAULT_RS_CHUNK_SIZE,
@@ -19,6 +20,7 @@ import {
   IBDRS_BACKFILL_DEFAULT_DELAY_JITTER_MS,
   IBDRS_BACKFILL_YAHOO_BASE_DELAY_MS,
 } from '../api/rsApi';
+import { SYNC_STATUS_DOC_REF } from '../../../utils/firebaseConfig';
 
 /** 與 IBDRsRankingPage 共用，供完成後寫入／讀取 */
 export const IBDRS_LAST_SYNC_DATE_KEY = 'research-website-ibdRsLastSyncDate';
@@ -100,9 +102,24 @@ export function startIbdRsBackgroundSync(opts = {}) {
       });
       chunkContinues = result?.chunkContinues === true;
       if (!chunkContinues) {
+        const ymd = taipeiYmd();
+        const ts = Date.now();
         try {
-          localStorage.setItem(IBDRS_LAST_SYNC_DATE_KEY, taipeiYmd());
+          localStorage.setItem(IBDRS_LAST_SYNC_DATE_KEY, ymd);
         } catch (_) {}
+        try {
+          await setDoc(
+            SYNC_STATUS_DOC_REF,
+            {
+              rsLastSyncDate: ymd,
+              rsLastSyncAt: ts,
+              updatedAt: ts,
+            },
+            { merge: true }
+          );
+        } catch (e) {
+          console.warn('[ibdRsSyncService] 寫入共享同步日期失敗:', e?.message || e);
+        }
       }
     } catch (e) {
       const cancelled = e?.message === '已取消';

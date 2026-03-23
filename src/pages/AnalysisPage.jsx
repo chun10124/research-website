@@ -1,6 +1,6 @@
 /* src/pages/AnalysisPage.jsx */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { setDoc, onSnapshot } from 'firebase/firestore';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
@@ -8,7 +8,9 @@ import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
 import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable';
 import BigColumnDragBoard from '../features/StockAnalysis/components/BigColumnDragBoard';
 import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
-import { ANALYSIS_LAYOUT_DOC_REF } from '../utils/firebaseConfig';
+import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF } from '../utils/firebaseConfig';
+import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
+import { RsChartModal } from './IBDRsRankingPage';
 import {
     startAnalysisBackgroundSync,
     subscribeAnalysisSync,
@@ -42,6 +44,7 @@ const AnalysisPage = () => {
     const [mounted, setMounted] = useState(false);
     const [bigColumnConfig, setBigColumnConfig] = useState({});
     const [columnLabels, setColumnLabels] = useState(Array(NUM_BIG_COLUMNS).fill(''));
+    const [selectedRsId, setSelectedRsId] = useState(null);
 
     useEffect(() => {
         setMounted(true);
@@ -49,6 +52,33 @@ const AnalysisPage = () => {
             const v = typeof window !== 'undefined' && window.localStorage.getItem(LAST_SYNC_ALL_KEY);
             if (v) setLastSyncAllAt(Number(v));
         } catch (_) {}
+    }, []);
+
+    useEffect(() => {
+        const unsub = onSnapshot(
+            SYNC_STATUS_DOC_REF,
+            (snap) => {
+                const data = snap.data();
+                const sharedTs = Number(data?.analysisLastSyncAt);
+                if (Number.isFinite(sharedTs) && sharedTs > 0) {
+                    setLastSyncAllAt(sharedTs);
+                    return;
+                }
+                try {
+                    const v = typeof window !== 'undefined' && window.localStorage.getItem(LAST_SYNC_ALL_KEY);
+                    if (v) setLastSyncAllAt(Number(v));
+                } catch (_) {}
+            },
+            () => {
+                try {
+                    const v = typeof window !== 'undefined' && window.localStorage.getItem(LAST_SYNC_ALL_KEY);
+                    if (v) setLastSyncAllAt(Number(v));
+                } catch (_) {}
+            }
+        );
+        return () => {
+            unsub?.();
+        };
     }, []);
 
     useEffect(() => {
@@ -92,6 +122,31 @@ const AnalysisPage = () => {
     }, []);
 
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
+    const { stocks: rsRatings, loading: rsLoading } = useIbdRsData();
+
+    const rsById = useMemo(() => Object.fromEntries((rsRatings || []).map((s) => [s.id, s])), [rsRatings]);
+    const navigationList = useMemo(() => {
+        if (!Array.isArray(stocks) || stocks.length === 0) return [];
+        const out = [];
+        const seen = new Set();
+        for (const a of stocks) {
+            const key = a.code ?? a.id;
+            const rs = rsById[key];
+            if (rs && !seen.has(rs.id)) {
+                out.push(rs);
+                seen.add(rs.id);
+            }
+        }
+        return out;
+    }, [stocks, rsById]);
+
+    const selectedStock = selectedRsId ? rsById[selectedRsId] : null;
+
+    const openStockModal = (st) => {
+        const key = st?.code ?? st?.id;
+        if (!key) return;
+        setSelectedRsId(String(key));
+    };
 
     const categoriesFromStocks = [...new Set((stocks || []).map(s => s.category || '未分類'))].sort();
 
@@ -190,6 +245,7 @@ const AnalysisPage = () => {
                             bigColumnConfig={bigColumnConfig}
                             columnLabels={columnLabels}
                             onColumnLabelChange={saveColumnLabel}
+                            onStockNameClick={openStockModal}
                         />
                     </div>
 
@@ -432,6 +488,16 @@ const AnalysisPage = () => {
                     </div>
                 </div>
             </main>
+
+            {selectedStock && navigationList.length > 0 && (
+                <RsChartModal
+                    stock={selectedStock}
+                    navigationList={navigationList}
+                    onNavigate={(st) => setSelectedRsId(st?.id ?? null)}
+                    onClose={() => setSelectedRsId(null)}
+                    inWatchlist={false}
+                />
+            )}
         </Layout>
     );
 };
