@@ -22,7 +22,6 @@ import {
 } from '../features/StockAnalysis/services/ibdRsSyncService';
 import {
   calcCompositeVcp,
-  calcRsDelta,
   calcVcpPriceRatioFromHighLowMaps,
   calcVcpVolumeRatioFromVolumeMap,
   detectCrossUp,
@@ -31,6 +30,18 @@ import {
   VCP_WEIGHT_PRICE,
   VCP_WEIGHT_VOLUME,
 } from '../features/StockAnalysis/utils/rsCalculator';
+import Link from '@docusaurus/Link';
+import IbdRsQuadrantTable from '../features/StockAnalysis/components/IbdRsQuadrantTable';
+import {
+  splitIntoColumnChunks,
+  getDeltaColor,
+  fmtDelta,
+  getEffectiveDisplayRs,
+  IBDRS_QUADRANT_TABLE_WIDTH_PX,
+} from '../features/StockAnalysis/utils/ibdRsRankingTableUtils';
+import { clampIbdDeltaDays, enrichIbdRsRow } from '../features/StockAnalysis/utils/ibdRsRankingEnrich';
+import { RS_OPEN_STOCK_SESSION_KEY } from '../features/StockAnalysis/api/ibdRsWatchlistFirestore';
+import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
 
 /** 篩選 input 用 data 屬性，placeholder 顏色用 CSS 選 `input[data-ibd-rs-filter]`（見 custom.css ＋掛載時注入 head） */
 const FILTER_INPUT_MARK = { 'data-ibd-rs-filter': '1' };
@@ -61,35 +72,6 @@ html[data-theme='dark'] body input.ibd-rs-filter-input[data-ibd-rs-filter]::-web
 }
 `;
 
-/**
- * 並排小表：各欄絕對寬度（px）。只改數字即可；表總寬 = 下面加總。
- * 名稱儲存格至少多寬（px，約繁中三字）另見 IBDRS_NAME_COL_MIN_PX。
- */
-const IBDRS_QUADRANT_COL_PX = {
-  id: 30,
-  name: 65,
-  rs: 28,
-  delta7: 37,
-  delta30: 37,
-  pct5d: 37,
-  pct20d: 37,
-  /** 近六個月區間價位 0∼1 */
-  pos6m: 34,
-};
-
-const IBDRS_QUADRANT_TABLE_WIDTH_PX =
-  IBDRS_QUADRANT_COL_PX.id +
-  IBDRS_QUADRANT_COL_PX.name +
-  IBDRS_QUADRANT_COL_PX.rs +
-  IBDRS_QUADRANT_COL_PX.delta7 +
-  IBDRS_QUADRANT_COL_PX.delta30 +
-  IBDRS_QUADRANT_COL_PX.pct5d +
-  IBDRS_QUADRANT_COL_PX.pct20d +
-  IBDRS_QUADRANT_COL_PX.pos6m;
-
-/** 名稱欄內容區至少寬度（px）；勿大於 IBDRS_QUADRANT_COL_PX.name */
-const IBDRS_NAME_COL_MIN_PX = 34;
-
 /** 今日重點 modal：表格欄寬（px，與 colgroup 一致） */
 const MM_FOCUS_COL_PX = {
   id: 46,
@@ -98,6 +80,7 @@ const MM_FOCUS_COL_PX = {
   step: 44,
   dShort: 44,
   dLong: 44,
+  p1d: 40,
   p5: 42,
   p20: 42,
   hl: 44,
@@ -109,6 +92,7 @@ const MM_FOCUS_TABLE_MIN_PX =
   MM_FOCUS_COL_PX.step +
   MM_FOCUS_COL_PX.dShort +
   MM_FOCUS_COL_PX.dLong +
+  MM_FOCUS_COL_PX.p1d +
   MM_FOCUS_COL_PX.p5 +
   MM_FOCUS_COL_PX.p20 +
   MM_FOCUS_COL_PX.hl;
@@ -122,7 +106,7 @@ const MM_FOCUS_MODAL_CONTENT_PAD_X = 56;
 const MM_FOCUS_MODAL_WIDTH_PX = MM_FOCUS_TABLE_MIN_PX + 2 + MM_FOCUS_MODAL_CONTENT_PAD_X + 2;
 
 /** 大螢幕時視窗至少此寬（表格 colgroup 不變，多餘為右側留白；內容靠左） */
-const MM_FOCUS_MODAL_WIDTH_FLOOR_PX = 660;
+const MM_FOCUS_MODAL_WIDTH_FLOOR_PX = 700;
 
 /** 橫向並排幾組「完整欄位」（每組一張表） */
 const IBDRS_PARALLEL_GROUPS = 4;
@@ -131,6 +115,8 @@ const IBDRS_PARALLEL_GROUPS = 4;
 const IBDRS_MAJOR_MOVE_DELTA_GT = 5;
 /** 第一段「重大變動」：顯示用 RS 須嚴格大於此值 */
 const IBDRS_MAJOR_MOVE_RS_GT = 80;
+/** 「今日重點」：近 1 交易日股價漲跌幅絕對值 |%| 須嚴格大於此值（與 RS&gt;80 段並用） */
+const IBDRS_FOCUS_PRICE_PCT_ABS_GT = 9;
 
 /** 「突破」門檻：前一歷史點 < 門檻、最後一點 ≥ 門檻（由下向上穿越） */
 const IBDRS_RS_BREAK_LEVEL_80 = 80;
@@ -146,22 +132,6 @@ const IBDRS_ROWS_PER_QUADRANT = 100;
 
 /** 每頁總筆數（各大欄加總） */
 const PAGE_SIZE = IBDRS_ROWS_PER_QUADRANT * IBDRS_PARALLEL_GROUPS;
-
-/** 將本頁可見列切成 groupCount 段（由左而右，前幾段多 1 筆） */
-function splitIntoColumnChunks(list, groupCount) {
-  if (groupCount <= 1) return [list];
-  const n = list.length;
-  const base = Math.floor(n / groupCount);
-  const extra = n % groupCount;
-  const chunks = [];
-  let from = 0;
-  for (let c = 0; c < groupCount; c++) {
-    const len = base + (c < extra ? 1 : 0);
-    chunks.push(list.slice(from, from + len));
-    from += len;
-  }
-  return chunks;
-}
 
 // ─── 工具函式 ────────────────────────────────────────────────────────────────
 
@@ -211,94 +181,6 @@ function formatRelativeTime(ts) {
   return `${Math.floor(diff / day)} 天前`;
 }
 
-// ─── 顏色/樣式輔助 ───────────────────────────────────────────────────────────
-
-/** RS 數值 → 背景色 & 文字色（仿熱力圖） */
-function getRsStyle(rs) {
-  if (rs == null) return { color: '#999', backgroundColor: 'transparent', fontWeight: 400 };
-
-  // 不用透明度，避免「皮膚色/髒髒」的半透明混色感。
-  // 目標：
-  // - 90+：亮紅
-  // - 90~60：淡化到粉紅（更乾淨）
-  // - 60~50：粉紅 -> 淺藍（讓 50 以下接到藍系）
-  // - 50~0：淺藍 -> 深藍
-  const clamp01 = (n) => Math.max(0, Math.min(1, n));
-  const lerp = (a, b, t) => a + (b - a) * t;
-  const hexToRgb = (hex) => {
-    const s = String(hex).replace('#', '').trim();
-    const full = s.length === 3 ? s.split('').map((c) => c + c).join('') : s;
-    const num = parseInt(full, 16);
-    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
-  };
-  const rgbToCss = (r, g, b) => `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
-  const luminance = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-  const deepBlue = hexToRgb('#0b3d91');
-  const lightBlue = hexToRgb('#cfe8ff');
-  const pink = hexToRgb('#ffdde6'); // 乾淨的粉紅終點
-  const red = hexToRgb('#c0392b'); // 亮紅基準
-
-  const v = Number(rs);
-  const tFrom01 = (num, den) => clamp01(num / den);
-
-  let r, g, b;
-  if (v >= 90) {
-    // 亮紅固定（避免看起來跳）
-    ({ r, g, b } = red);
-  } else if (v >= 60) {
-    // 90 -> 60：red -> pink
-    const t = Math.pow(tFrom01(v - 60, 30), 1.0); // 60 -> 0, 90 -> 1
-    r = lerp(pink.r, red.r, t);
-    g = lerp(pink.g, red.g, t);
-    b = lerp(pink.b, red.b, t);
-  } else if (v >= 50) {
-    // 60 -> 50：pink -> lightBlue
-    const t = tFrom01(v - 50, 10); // 50 -> 0, 60 -> 1
-    r = lerp(lightBlue.r, pink.r, t);
-    g = lerp(lightBlue.g, pink.g, t);
-    b = lerp(lightBlue.b, pink.b, t);
-  } else {
-    // 0 -> 50：deepBlue -> lightBlue
-    const t = tFrom01(v, 50); // 0 -> 0, 50 -> 1
-    r = lerp(deepBlue.r, lightBlue.r, t);
-    g = lerp(deepBlue.g, lightBlue.g, t);
-    b = lerp(deepBlue.b, lightBlue.b, t);
-  }
-
-  const bg = rgbToCss(r, g, b);
-  const lum = luminance(r, g, b);
-  const fg = lum > 170 ? '#1b1b1b' : '#fff';
-
-  return { color: fg, backgroundColor: bg, fontWeight: 700 };
-}
-
-/** delta → 文字顏色（正紅負綠） */
-function getDeltaColor(delta) {
-  if (delta == null) return '#bbb';
-  if (delta > 0) return '#c0392b';
-  if (delta < 0) return '#27ae60';
-  return '#666';
-}
-
-function fmtDelta(val) {
-  if (val == null) return '—';
-  return `${val > 0 ? '+' : ''}${val}`;
-}
-
-/**
- * ibdRsHistory 依日期排序後最後一筆 r（與折線圖同源）。
- * 回填或舊文件可能只寫歷史、頂層 ibdRsRating 仍為空。
- */
-function getLatestHistoryRs(ibdRsHistory) {
-  if (!Array.isArray(ibdRsHistory) || ibdRsHistory.length === 0) return null;
-  const sorted = [...ibdRsHistory]
-    .filter((e) => e?.d && typeof e.r === 'number' && Number.isFinite(e.r))
-    .sort((a, b) => (a.d < b.d ? -1 : 1));
-  if (sorted.length === 0) return null;
-  return sorted[sorted.length - 1].r;
-}
-
 /**
  * 歷史排序後「最後一筆 − 前一筆」RS（圖上相鄰兩點，通常為交易日接力）。
  * 用於「今日重點」第一段單日變化。
@@ -328,24 +210,6 @@ function getRsHistoryLastTwoRatings(ibdRsHistory) {
 /** 由下方向上穿越門檻：前點 < level 且 最後一點 ≥ level */
 function didCrossRsLevelUpward(prevR, lastR, level) {
   return prevR < level && lastR >= level;
-}
-
-/** 表格／排序／篩選用：優先今日欄位，否則用歷史最後一筆（與圖表一致） */
-function getEffectiveDisplayRs(s) {
-  return s.ibdRsRating ?? getLatestHistoryRs(s.ibdRsHistory);
-}
-
-/** 篩選／表頭用：1～365，空或無效則 fallback */
-function clampIbdDeltaDays(raw, fallback) {
-  const x = parseInt(String(raw ?? '').trim(), 10);
-  if (!Number.isFinite(x) || x < 1) return fallback;
-  return Math.min(365, Math.max(1, x));
-}
-
-/** 依回溯「交易日」數算 RS 變化（見 calcRsDelta：ibdRsHistory 筆數） */
-function computeDeltaForLookback(s, days) {
-  const curRs = s.ibdRsRating ?? getLatestHistoryRs(s.ibdRsHistory);
-  return calcRsDelta(curRs, s.ibdRsHistory, days);
 }
 
 // ─── 子元件：篩選區塊標題 ────────────────────────────────────────────────────
@@ -572,11 +436,11 @@ function SyncProgressBar({ progress }) {
   );
 }
 
-/** 今日重點四段合併為 ←→ 導覽順序（先後：單日ΔRS／突破80／突破90／HL）；同檔多段只出現一次 */
-function mergeMajorMovesNavigationList(items, items80, items90, itemsHlHigh) {
+/** 今日重點各段合併為 ←→ 導覽順序；同檔多段只出現一次 */
+function mergeMajorMovesNavigationList(items, itemsPriceBig, items80, items90, itemsHlHigh) {
   const seen = new Set();
   const out = [];
-  for (const s of [...items, ...items80, ...items90, ...itemsHlHigh]) {
+  for (const s of [...items, ...itemsPriceBig, ...items80, ...items90, ...itemsHlHigh]) {
     if (!s?.id || seen.has(s.id)) continue;
     seen.add(s.id);
     out.push(s);
@@ -919,8 +783,9 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
   );
 }
 
-/** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal */
-function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
+/** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal（觀察列表頁亦共用） */
+export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist }) {
+  const [watchlistBusy, setWatchlistBusy] = useState(false);
   const [indexMap, setIndexMap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1609,26 +1474,61 @@ function RsChartModal({ stock, onClose, navigationList, onNavigate }) {
 
         <div
           style={{
-            textAlign: 'center',
-            fontSize: 10,
-            color: '#94a3b8',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
             marginTop: 6,
             lineHeight: 1.5,
             padding: '4px 8px 0',
             flexShrink: 0,
           }}
         >
-          RS 歷史隨每日 sync 累積；股價與 VCP 同源（Yahoo）
+          <span style={{ fontSize: 10, color: '#94a3b8', textAlign: 'left', flex: '1 1 auto', minWidth: 0 }}>
+            RS 歷史隨每日 sync 累積；股價與 VCP 同源（Yahoo）
+          </span>
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (!stock || watchlistBusy || !onToggleWatchlist) return;
+              setWatchlistBusy(true);
+              try {
+                await onToggleWatchlist(stock);
+              } catch (err) {
+                console.error('[觀察列表]', err);
+              } finally {
+                setWatchlistBusy(false);
+              }
+            }}
+            disabled={watchlistBusy || !onToggleWatchlist}
+            aria-label={inWatchlist ? '自觀察列表移除' : '加入觀察列表'}
+            title={inWatchlist ? '自觀察列表移除' : '加入觀察列表'}
+            style={{
+              flex: '0 0 auto',
+              border: 'none',
+              background: 'transparent',
+              cursor: watchlistBusy ? 'wait' : 'pointer',
+              fontSize: 15,
+              lineHeight: 1,
+              padding: '2px 4px',
+              color: inWatchlist ? '#f59e0b' : '#cbd5e1',
+            }}
+          >
+            {inWatchlist ? '★' : '☆'}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-/** 「今日重點」視窗：四段列表皆與主表同欄（RS、Δ、5D、20D、HL）；點列開啟 RS 折線圖 */
+/** 「今日重點」視窗：各段列表含 RS、Δ、1D／5D／20D 漲跌幅、HL；點列開啟 RS 折線圖 */
 function MajorMovesModal({
   onClose,
   items,
+  itemsPriceBig,
   items80,
   items90,
   itemsHlHigh,
@@ -1718,6 +1618,7 @@ function MajorMovesModal({
       <col style={{ width: MM_FOCUS_COL_PX.step }} />
       <col style={{ width: MM_FOCUS_COL_PX.dShort }} />
       <col style={{ width: MM_FOCUS_COL_PX.dLong }} />
+      <col style={{ width: MM_FOCUS_COL_PX.p1d }} />
       <col style={{ width: MM_FOCUS_COL_PX.p5 }} />
       <col style={{ width: MM_FOCUS_COL_PX.p20 }} />
       <col style={{ width: MM_FOCUS_COL_PX.hl }} />
@@ -1733,7 +1634,7 @@ function MajorMovesModal({
     lineHeight: 1.35,
   });
 
-  const majorFocusThead = (bg, fg) => (
+  const majorFocusThead = (bg, fg, stepHeader = '單日Δ', stepTitle = '歷史最後一點與前一點之差') => (
     <thead>
       <tr style={{ background: bg, color: fg }}>
         <th style={mm.th(fg, 'center')}>代號</th>
@@ -1741,14 +1642,17 @@ function MajorMovesModal({
         <th style={mm.th(fg, 'center')} title="與主表／折線圖同源">
           RS
         </th>
-        <th style={mm.th(fg, 'center')} title="歷史最後一點與前一點之差">
-          單日Δ
+        <th style={mm.th(fg, 'center')} title={stepTitle}>
+          {stepHeader}
         </th>
         <th style={mm.th(fg, 'center')} title={deltaShortTitle}>
           {deltaShortLabel}
         </th>
         <th style={mm.th(fg, 'center')} title={deltaLongTitle}>
           {deltaLongLabel}
+        </th>
+        <th style={mm.th(fg, 'center')} title="近 1 個交易日收盤漲跌幅（%）">
+          1D
         </th>
         <th style={mm.th(fg, 'center')} title="近 5 個交易日股價漲跌幅（%）">
           5D
@@ -1763,11 +1667,12 @@ function MajorMovesModal({
     </thead>
   );
 
-  const renderFullMetricRows = (list, sectionKey, rowHoverBg = '#f0fdf9') =>
+  const renderFullMetricRows = (list, sectionKey, rowHoverBg = '#f0fdf9', stepMode = 'rsStep') =>
     list.map((s) => {
       const badge = formatIbdMarketLabel(s.market);
       const rs = getEffectiveDisplayRs(s);
-      const step = stepDeltaForRow(s);
+      const stepIsPct1d = stepMode === 'pct1d';
+      const step = stepIsPct1d ? s.pricePct1d : stepDeltaForRow(s);
       return (
         <tr
           key={`${sectionKey}-${s.id}`}
@@ -1817,9 +1722,14 @@ function MajorMovesModal({
             </span>
           </td>
           <td style={{ ...mm.tdNum, fontWeight: 700, color: '#111827' }}>{rs ?? '—'}</td>
-          <td style={{ ...mm.tdNum, fontWeight: 700, color: getDeltaColor(step) }}>{fmtDelta(step)}</td>
-          <td style={{ ...mm.tdNum, fontWeight: 600, color: getDeltaColor(s.delta7d) }}>{fmtDelta(s.delta7d)}</td>
-          <td style={{ ...mm.tdNum, fontWeight: 600, color: getDeltaColor(s.delta30d) }}>{fmtDelta(s.delta30d)}</td>
+          <td style={{ ...mm.tdNum, fontWeight: 700, color: getDeltaColor(step) }}>
+            {stepIsPct1d ? fmtPctModal(step) : fmtDelta(step)}
+          </td>
+          <td style={{ ...mm.tdNum, fontWeight: 600, color: getDeltaColor(s.delta5d) }}>{fmtDelta(s.delta5d)}</td>
+          <td style={{ ...mm.tdNum, fontWeight: 600, color: getDeltaColor(s.delta20d) }}>{fmtDelta(s.delta20d)}</td>
+          <td style={{ ...mm.tdNum, fontWeight: 600, color: getDeltaColor(s.pricePct1d) }}>
+            {fmtPctModal(s.pricePct1d)}
+          </td>
           <td style={{ ...mm.tdNum, fontWeight: 600, color: getDeltaColor(s.pricePct5d) }}>
             {fmtPctModal(s.pricePct5d)}
           </td>
@@ -1940,6 +1850,27 @@ function MajorMovesModal({
             )}
           </div>
 
+          <div style={{ marginBottom: 20 }}>
+            <div style={mmSecTitle('#b91c1c')}>
+              當日股價漲跌幅 |%| &gt; {IBDRS_FOCUS_PRICE_PCT_ABS_GT}% 且 RS &gt; {IBDRS_MAJOR_MOVE_RS_GT}（
+              {itemsPriceBig.length}）
+            </div>
+            {itemsPriceBig.length === 0 ? (
+              <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                無（需基準日已同步且有 1 交易日漲跌幅資料，且 |漲跌幅| &gt; {IBDRS_FOCUS_PRICE_PCT_ABS_GT}% 與 RS &gt;{' '}
+                {IBDRS_MAJOR_MOVE_RS_GT}；尚未寫入 1 日漲跌幅者請執行「同步今日 RS」或 Shift 強制重抓）
+              </div>
+            ) : (
+              <div style={mm.scrollWrap}>
+                <table style={mm.table}>
+                  {majorFocusColgroup()}
+                  {majorFocusThead('#fef2f2', '#991b1b', '漲跌', '近 1 個交易日收盤漲跌幅（%）')}
+                  <tbody>{renderFullMetricRows(itemsPriceBig, 'pct', '#fff1f2', 'pct1d')}</tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           <div style={{ marginBottom: 18 }}>
             <div style={mmSecTitle('#c2410c')}>
               向上突破 {IBDRS_RS_BREAK_LEVEL_80}（{items80.length}）
@@ -1998,172 +1929,6 @@ function MajorMovesModal({
   );
 }
 
-/** 並排區塊：一張含完整欄位的小表 */
-function IbdRsQuadrantTable({
-  rows,
-  tdBase,
-  thBase,
-  onNameClick,
-  deltaShortLabel = 'Δ7',
-  deltaLongLabel = 'Δ30',
-  deltaShortTitle,
-  deltaLongTitle,
-}) {
-  const colSpan = 8;
-  return (
-    <div
-      style={{
-        boxSizing: 'border-box',
-        width: IBDRS_QUADRANT_TABLE_WIDTH_PX,
-        overflow: 'hidden',
-        borderRadius: 6,
-        boxShadow: '0 0 0 1px #e8e8e8',
-        background: '#fff',
-      }}
-    >
-      <table
-        style={{
-          width: IBDRS_QUADRANT_TABLE_WIDTH_PX,
-          minWidth: IBDRS_QUADRANT_TABLE_WIDTH_PX,
-          borderCollapse: 'collapse',
-          fontSize: 11,
-          tableLayout: 'fixed',
-          lineHeight: 1.25,
-          fontWeight: 600,
-        }}
-      >
-        <colgroup>
-          <col style={{ width: IBDRS_QUADRANT_COL_PX.id }} />
-          <col style={{ width: IBDRS_QUADRANT_COL_PX.name }} />
-          <col style={{ width: IBDRS_QUADRANT_COL_PX.rs }} />
-          <col style={{ width: IBDRS_QUADRANT_COL_PX.delta7 }} />
-          <col style={{ width: IBDRS_QUADRANT_COL_PX.delta30 }} />
-          <col style={{ width: IBDRS_QUADRANT_COL_PX.pct5d }} />
-          <col style={{ width: IBDRS_QUADRANT_COL_PX.pct20d }} />
-          <col style={{ width: IBDRS_QUADRANT_COL_PX.pos6m }} />
-        </colgroup>
-        <thead>
-          <tr>
-            <th style={{ ...thBase, fontSize: 11 }}>代號</th>
-            <th
-              style={{
-                ...thBase,
-                textAlign: 'left',
-                paddingLeft: 4,
-                maxWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              名稱
-            </th>
-            <th style={{ ...thBase }}>RS</th>
-            <th style={{ ...thBase }} title={deltaShortTitle}>
-              {deltaShortLabel}
-            </th>
-            <th style={{ ...thBase }} title={deltaLongTitle}>
-              {deltaLongLabel}
-            </th>
-            <th style={{ ...thBase, fontSize: 11 }}>5D</th>
-            <th style={{ ...thBase, fontSize: 11 }}>20D</th>
-            <th style={{ ...thBase, fontSize: 11 }} title="近六個月區間：最低=0、最高=1">
-              HL
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={colSpan} style={{ padding: 12, textAlign: 'center', color: '#ccc', fontSize: 10 }}>
-                —
-              </td>
-            </tr>
-          ) : (
-            rows.map((s) => {
-              const displayRs = getEffectiveDisplayRs(s);
-              const rsStyle = getRsStyle(displayRs);
-              const rsTitle =
-                s.ibdRsRating == null && displayRs != null
-                  ? 'ibdRsRating 未寫入；顯示為 ibdRsHistory 最後一筆（與下方折線圖同源）'
-                  : undefined;
-              return (
-                <tr key={s.id} style={{ borderBottom: '1px solid #f4f4f4' }}>
-                  <td style={{ ...tdBase, textAlign: 'center', fontWeight: 700, fontSize: 9 }}>{s.id}</td>
-                  <td
-                    title={s.name || undefined}
-                    onClick={() => onNameClick && onNameClick(s)}
-                    style={{
-                      ...tdBase,
-                      paddingLeft: 4,
-                      fontWeight: 400,
-                      maxWidth: 0,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      cursor: onNameClick ? 'pointer' : undefined,
-                      textDecoration: onNameClick ? 'underline dotted #bbb' : undefined,
-                    }}
-                  >
-                    {s.name}
-                  </td>
-                  <td style={{ ...tdBase, textAlign: 'center', ...rsStyle }} title={rsTitle}>
-                    {displayRs ?? '—'}
-                  </td>
-                  <td style={{ ...tdBase, textAlign: 'center', color: getDeltaColor(s.delta7d) }}>
-                    {fmtDelta(s.delta7d)}
-                  </td>
-                  <td style={{ ...tdBase, textAlign: 'center', color: getDeltaColor(s.delta30d) }}>
-                    {fmtDelta(s.delta30d)}
-                  </td>
-                  <td
-                    style={{
-                      ...tdBase,
-                      textAlign: 'center',
-                      fontSize: 11,
-                      color: getDeltaColor(s.pricePct5d),
-                    }}
-                  >
-                    {s.pricePct5d != null ? `${s.pricePct5d > 0 ? '+' : ''}${Math.round(s.pricePct5d)}` : '—'}
-                  </td>
-                  <td
-                    style={{
-                      ...tdBase,
-                      textAlign: 'center',
-                      fontSize: 11,
-                      color: getDeltaColor(s.pricePct20d),
-                    }}
-                  >
-                    {s.pricePct20d != null ? `${s.pricePct20d > 0 ? '+' : ''}${Math.round(s.pricePct20d)}` : '—'}
-                  </td>
-                  <td
-                    style={{
-                      ...tdBase,
-                      textAlign: 'center',
-                      fontSize: 11,
-                      color: '#555',
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                    title={
-                      s.pricePos6m != null && Number.isFinite(s.pricePos6m)
-                        ? `近六個月區間內價位：0=區間最低、1=區間最高`
-                        : undefined
-                    }
-                  >
-                    {s.pricePos6m != null && Number.isFinite(s.pricePos6m)
-                      ? s.pricePos6m.toFixed(2)
-                      : '—'}
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 // ─── 主頁面 ──────────────────────────────────────────────────────────────────
 
 /**
@@ -2178,10 +1943,10 @@ function stockPassesNonVcpFilters(s, filters) {
   };
   const rsMin = n(filters.rsMin);
   const rsMax = n(filters.rsMax);
-  const d7min = n(filters.delta7dMin);
-  const d7max = n(filters.delta7dMax);
-  const d30min = n(filters.delta30dMin);
-  const d30max = n(filters.delta30dMax);
+  const d5min = n(filters.delta5dMin);
+  const d5max = n(filters.delta5dMax);
+  const d20min = n(filters.delta20dMin);
+  const d20max = n(filters.delta20dMax);
   const pct5dMin = n(filters.pct5dMin);
   const pct5dMax = n(filters.pct5dMax);
   const pct20dMin = n(filters.pct20dMin);
@@ -2205,10 +1970,10 @@ function stockPassesNonVcpFilters(s, filters) {
   const effRs = getEffectiveDisplayRs(s);
   if (rsMin != null && (effRs == null || effRs < rsMin)) return false;
   if (rsMax != null && (effRs == null || effRs > rsMax)) return false;
-  if (d7min != null && (s.delta7d == null || s.delta7d < d7min)) return false;
-  if (d7max != null && (s.delta7d == null || s.delta7d > d7max)) return false;
-  if (d30min != null && (s.delta30d == null || s.delta30d < d30min)) return false;
-  if (d30max != null && (s.delta30d == null || s.delta30d > d30max)) return false;
+  if (d5min != null && (s.delta5d == null || s.delta5d < d5min)) return false;
+  if (d5max != null && (s.delta5d == null || s.delta5d > d5max)) return false;
+  if (d20min != null && (s.delta20d == null || s.delta20d < d20min)) return false;
+  if (d20max != null && (s.delta20d == null || s.delta20d > d20max)) return false;
   if (pct5dMin != null && (s.pricePct5d == null || s.pricePct5d < pct5dMin)) return false;
   if (pct5dMax != null && (s.pricePct5d == null || s.pricePct5d > pct5dMax)) return false;
   if (pct20dMin != null && (s.pricePct20d == null || s.pricePct20d < pct20dMin)) return false;
@@ -2235,12 +2000,12 @@ const DEFAULT_FILTERS = {
   rsMin: '',
   rsMax: '',
   /** RS 變化：短／長回溯「交易日」數（ibdRsHistory 筆數；顯示與計算用） */
-  deltaShortDays: '7',
-  deltaLongDays: '30',
-  delta7dMin: '',
-  delta7dMax: '',
-  delta30dMin: '',
-  delta30dMax: '',
+  deltaShortDays: '5',
+  deltaLongDays: '20',
+  delta5dMin: '',
+  delta5dMax: '',
+  delta20dMin: '',
+  delta20dMax: '',
   pct5dMin: '',
   pct5dMax: '',
   pct20dMin: '',
@@ -2286,9 +2051,9 @@ function summarizeIbdRsFilters(filters, deltaShortResolved, deltaLongResolved) {
   if (f.deltaLongDays !== DEFAULT_FILTERS.deltaLongDays) {
     parts.push(`長區間 ${f.deltaLongDays} 交易日`);
   }
-  const dShortLine = summarizeMinMaxLine(`Δ${deltaShortResolved}`, f.delta7dMin, f.delta7dMax);
+  const dShortLine = summarizeMinMaxLine(`Δ${deltaShortResolved}`, f.delta5dMin, f.delta5dMax);
   if (dShortLine) parts.push(dShortLine);
-  const dLongLine = summarizeMinMaxLine(`Δ${deltaLongResolved}`, f.delta30dMin, f.delta30dMax);
+  const dLongLine = summarizeMinMaxLine(`Δ${deltaLongResolved}`, f.delta20dMin, f.delta20dMax);
   if (dLongLine) parts.push(dLongLine);
   const pct5Line = summarizeMinMaxLine('5D', f.pct5dMin, f.pct5dMax);
   if (pct5Line) parts.push(pct5Line);
@@ -2321,6 +2086,7 @@ function summarizeIbdRsFilters(filters, deltaShortResolved, deltaLongResolved) {
 
 export default function IBDRsRankingPage() {
   const { stocks, loading, syncing, syncProgress, syncRs, lastSyncAt, refresh } = useIbdRsData();
+  const { idSet: rsWatchlistIdSet, toggle: toggleRsWatchlist } = useIbdRsWatchlist();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [page, setPage] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -2353,6 +2119,22 @@ export default function IBDRsRankingPage() {
     html.classList.add('ibd-rs-page');
     return () => html.classList.remove('ibd-rs-page');
   }, []);
+
+  /** 自觀察列表頁「開啟圖表」導向時，載入 stocks 後自動開啟該檔 modal */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!Array.isArray(stocks) || stocks.length === 0) return;
+    try {
+      const id = window.sessionStorage.getItem(RS_OPEN_STOCK_SESSION_KEY);
+      if (!id) return;
+      window.sessionStorage.removeItem(RS_OPEN_STOCK_SESSION_KEY);
+      const found = stocks.find((s) => s.id === id);
+      if (found) {
+        setChartNavOverride(null);
+        setSelectedStock(found);
+      }
+    } catch (_) {}
+  }, [stocks]);
 
   useEffect(() => {
     let el = document.getElementById(IBD_RS_PLACEHOLDER_STYLE_ID);
@@ -2448,16 +2230,11 @@ export default function IBDRsRankingPage() {
     return { tw, tp, unknown };
   }, [stocks]);
 
-  // ── Step 1：預先計算每檔兩欄「RS 變化」（回溯**交易日**數由篩選器自訂；預設 7／30）
-  const enriched = useMemo(() => {
-    const dShort = clampIbdDeltaDays(filters.deltaShortDays, 7);
-    const dLong = clampIbdDeltaDays(filters.deltaLongDays, 30);
-    return stocks.map((s) => {
-      const d7 = computeDeltaForLookback(s, dShort);
-      const d30 = computeDeltaForLookback(s, dLong);
-      return { ...s, delta7d: d7, delta30d: d30 };
-    });
-  }, [stocks, filters.deltaShortDays, filters.deltaLongDays]);
+  // ── Step 1：預先計算每檔兩欄「RS 變化」（回溯**交易日**數由篩選器自訂；預設 5／20）
+  const enriched = useMemo(
+    () => stocks.map((s) => enrichIbdRsRow(s, filters)),
+    [stocks, filters]
+  );
 
   // ── Step 2：依全體 RS 排序（有「顯示用 RS」的在前；含僅歷史有值者）
   const globalSorted = useMemo(() => {
@@ -2482,10 +2259,10 @@ export default function IBDRsRankingPage() {
     filters.rsMax,
     filters.deltaShortDays,
     filters.deltaLongDays,
-    filters.delta7dMin,
-    filters.delta7dMax,
-    filters.delta30dMin,
-    filters.delta30dMax,
+    filters.delta5dMin,
+    filters.delta5dMax,
+    filters.delta20dMin,
+    filters.delta20dMax,
     filters.pct5dMin,
     filters.pct5dMax,
     filters.pct20dMin,
@@ -2621,8 +2398,8 @@ export default function IBDRsRankingPage() {
 
   const hasActiveFilter = Object.entries(filters).some(([k, v]) => v !== '' && v !== DEFAULT_FILTERS[k]);
 
-  const deltaShortDaysResolved = clampIbdDeltaDays(filters.deltaShortDays, 7);
-  const deltaLongDaysResolved = clampIbdDeltaDays(filters.deltaLongDays, 30);
+  const deltaShortDaysResolved = clampIbdDeltaDays(filters.deltaShortDays, 5);
+  const deltaLongDaysResolved = clampIbdDeltaDays(filters.deltaLongDays, 20);
   const deltaShortTitle = `今日 RS 減去 ${deltaShortDaysResolved} 個交易日前之 RS（ibdRsHistory 筆數；需足夠歷史）`;
   const deltaLongTitle = `今日 RS 減去 ${deltaLongDaysResolved} 個交易日前之 RS（ibdRsHistory 筆數；需足夠歷史）`;
 
@@ -2650,6 +2427,32 @@ export default function IBDRsRankingPage() {
     }
     list.sort((a, b) => Math.abs(b.majorRsStepDelta) - Math.abs(a.majorRsStepDelta));
     return list;
+  }, [enriched, focusPanelRefYmd]);
+
+  /** 基準日已同步：近 1 交易日股價漲跌幅絕對值 &gt; 門檻 且 RS &gt; 80（與 Firestore pricePct1d 同源） */
+  const priceBigMoveHighRsToday = useMemo(() => {
+    if (!focusPanelRefYmd) return [];
+    const out = [];
+    const th = IBDRS_FOCUS_PRICE_PCT_ABS_GT;
+    for (const s of enriched) {
+      const sRef = normalizeYmdToTaiwanTradingDay(String(s.ibdRsUpdatedDate || '').trim().slice(0, 10));
+      if (sRef !== focusPanelRefYmd) continue;
+      const pct = s.pricePct1d;
+      if (pct == null || !Number.isFinite(pct)) continue;
+      if (Math.abs(pct) <= th) continue;
+      const effRs = getEffectiveDisplayRs(s);
+      if (effRs == null || effRs <= IBDRS_MAJOR_MOVE_RS_GT) continue;
+      out.push(s);
+    }
+    out.sort((a, b) => {
+      const pa = a.pricePct1d ?? 0;
+      const pb = b.pricePct1d ?? 0;
+      const aPos = pa >= 0;
+      const bPos = pb >= 0;
+      if (aPos !== bPos) return aPos ? -1 : 1; // 正的（漲）排上面
+      return Math.abs(pb) - Math.abs(pa); // 同號：按 |%| 大小
+    });
+    return out;
   }, [enriched, focusPanelRefYmd]);
 
   /** 基準日由下向上突破 RS 80／90（歷史：前點 &lt; 門檻、本點 ≥ 門檻） */
@@ -2728,7 +2531,13 @@ export default function IBDRsRankingPage() {
       );
       if (!ok) return;
     }
-    void syncRs({ forceRefresh });
+    void syncRs({
+      forceRefresh,
+      concurrency: 4,
+      delayMs: 800,
+      superBatchSize: 300,
+      interBatchRestMs: 45_000,
+    });
   };
 
   // ── reset
@@ -2905,7 +2714,7 @@ export default function IBDRsRankingPage() {
                   type="button"
                   onClick={() => setMajorMovesOpen(true)}
                   disabled={loading}
-                  title={`今日重點：|ΔRS|／突破 80·90／HL(6M)>${IBDRS_MODAL_HL_GT} 且 RS>${IBDRS_MODAL_HL_RS_GT}；點列開折線圖`}
+                  title={`今日重點：|ΔRS|／|1D%|>${IBDRS_FOCUS_PRICE_PCT_ABS_GT}且RS>80／突破80·90／HL(6M)>${IBDRS_MODAL_HL_GT}且RS>${IBDRS_MODAL_HL_RS_GT}；點列開折線圖`}
                   style={{
                     fontSize: 12,
                     fontWeight: 700,
@@ -2920,6 +2729,24 @@ export default function IBDRsRankingPage() {
                 >
                   今日重點
                 </button>
+                <Link
+                  to="/RSWatchlistPage"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: '5px 10px',
+                    borderRadius: 8,
+                    border: '1px solid #d97706',
+                    background: '#fffbeb',
+                    color: '#b45309',
+                    whiteSpace: 'nowrap',
+                    textDecoration: 'none',
+                    display: 'inline-block',
+                    lineHeight: 1.25,
+                  }}
+                >
+                  觀察列表
+                </Link>
               </div>
               <div
                 className="ibd-rs-ranking-topbar-filter-summary"
@@ -3290,10 +3117,10 @@ export default function IBDRsRankingPage() {
                         <span style={FILTER_DELTA_MID_TEXT_STYLE}>日</span>
                       </>
                     }
-                    upperValue={filters.delta7dMax}
-                    lowerValue={filters.delta7dMin}
-                    onUpperChange={setFilter('delta7dMax')}
-                    onLowerChange={setFilter('delta7dMin')}
+                    upperValue={filters.delta5dMax}
+                    lowerValue={filters.delta5dMin}
+                    onUpperChange={setFilter('delta5dMax')}
+                    onLowerChange={setFilter('delta5dMin')}
                   />
                   <FilterSandwichBetween
                     centerAriaName={`RS變化·${deltaLongDaysResolved}日`}
@@ -3315,10 +3142,10 @@ export default function IBDRsRankingPage() {
                         <span style={FILTER_DELTA_MID_TEXT_STYLE}>日</span>
                       </>
                     }
-                    upperValue={filters.delta30dMax}
-                    lowerValue={filters.delta30dMin}
-                    onUpperChange={setFilter('delta30dMax')}
-                    onLowerChange={setFilter('delta30dMin')}
+                    upperValue={filters.delta20dMax}
+                    lowerValue={filters.delta20dMin}
+                    onUpperChange={setFilter('delta20dMax')}
+                    onLowerChange={setFilter('delta20dMin')}
                   />
 
                   <FilterSectionTitle>5D / 20D 漲跌幅（%）</FilterSectionTitle>
@@ -3520,7 +3347,7 @@ export default function IBDRsRankingPage() {
                 P0=今日、P3=3個月前、…P12=12個月前（最近交易日收盤插值）。最近一季權重加倍，再對全體百分位排名 → 1∼99。
               </p>
               <p style={{ margin: '4px 0' }}>
-                <strong>ΔN（兩欄）</strong>：今日 RS 減去 N 個<strong>交易日</strong>前之 RS（以 <code>ibdRsHistory</code> 筆數計，需足夠歷史）。篩選器可自訂兩欄 N（預設 7／30）。
+                <strong>ΔN（兩欄）</strong>：今日 RS 減去 N 個<strong>交易日</strong>前之 RS（以 <code>ibdRsHistory</code> 筆數計，需足夠歷史）。篩選器可自訂兩欄 N（預設 5／20）。
               </p>
               <p style={{ margin: '4px 0' }}>
                 <strong>RS 欄「—」但圖表有線</strong>：若 Firestore 頂層 <code>ibdRsRating</code> 未寫入、但{' '}
@@ -3677,6 +3504,7 @@ export default function IBDRsRankingPage() {
         <MajorMovesModal
           onClose={() => setMajorMovesOpen(false)}
           items={majorMoveStocksToday}
+          itemsPriceBig={priceBigMoveHighRsToday}
           items80={rsBreakthrough80Today}
           items90={rsBreakthrough90Today}
           itemsHlHigh={hlHighList}
@@ -3692,6 +3520,7 @@ export default function IBDRsRankingPage() {
             setChartNavOverride({
               list: mergeMajorMovesNavigationList(
                 majorMoveStocksToday,
+                priceBigMoveHighRsToday,
                 rsBreakthrough80Today,
                 rsBreakthrough90Today,
                 hlHighList
@@ -3707,6 +3536,10 @@ export default function IBDRsRankingPage() {
           stock={selectedStock}
           navigationList={chartNavigationList}
           onNavigate={setSelectedStock}
+          inWatchlist={selectedStock ? rsWatchlistIdSet.has(selectedStock.id) : false}
+          onToggleWatchlist={async (st) => {
+            await toggleRsWatchlist(st.id);
+          }}
           onClose={() => {
             setSelectedStock(null);
             setChartNavOverride(null);

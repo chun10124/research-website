@@ -43,9 +43,9 @@ export default function IbdRsGlobalSyncBar() {
       aria-live="polite"
       style={{
         position: 'fixed',
-        right: 12,
+        left: 12,
         bottom: 12,
-        zIndex: 9999,
+        zIndex: 13050,
         maxWidth: 'min(360px, calc(100vw - 20px))',
         padding: '8px 11px',
         borderRadius: 8,

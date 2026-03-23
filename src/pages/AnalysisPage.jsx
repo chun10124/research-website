@@ -9,8 +9,12 @@ import IndustryAnalysisTable from '../features/StockAnalysis/components/Industry
 import BigColumnDragBoard from '../features/StockAnalysis/components/BigColumnDragBoard';
 import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
 import { ANALYSIS_LAYOUT_DOC_REF } from '../utils/firebaseConfig';
+import {
+    startAnalysisBackgroundSync,
+    subscribeAnalysisSync,
+    LAST_SYNC_ALL_KEY,
+} from '../features/StockAnalysis/services/analysisSyncService';
 
-const LAST_SYNC_ALL_KEY = 'research-website-lastSyncAllAt';
 const NUM_BIG_COLUMNS = 8;
 
 const formatLastSync = (ts) => {
@@ -48,6 +52,32 @@ const AnalysisPage = () => {
     }, []);
 
     useEffect(() => {
+        const unsub = subscribeAnalysisSync((s) => {
+            setSyncingAll(Boolean(s.running));
+            const p = s.progress;
+            if (p?.phase === 'done') {
+                setLastSyncAllAt(Date.now());
+            }
+            if (p?.done != null && p?.total != null) {
+                setSyncAllProgress({ current: p.done, total: p.total });
+            }
+            const processed = Number(p?.processed);
+            if (
+                p?.phase === 'fetch' &&
+                Number.isFinite(processed) &&
+                processed > 0 &&
+                processed % 30 === 0
+            ) {
+                // 追蹤表非即時監聽：同步過程中定期刷新 UI，避免使用者誤以為卡住
+                void refreshData().catch(() => {});
+            }
+        });
+        return () => {
+            unsub?.();
+        };
+    }, []);
+
+    useEffect(() => {
         const unsub = onSnapshot(ANALYSIS_LAYOUT_DOC_REF, (snap) => {
             if (!snap.exists()) return;
             const d = snap.data();
@@ -77,43 +107,24 @@ const AnalysisPage = () => {
     };
     const needReload = lastSyncAllAt != null && lastFetchedAt != null && lastSyncAllAt > lastFetchedAt;
 
-    // 每檔會打 5 次 API（股價/持股/營收/資訊/本益比），並行 2 檔 = 10 次/批。延遲 2s = 與原本「1 檔 + 2s」同請求率，較不易 429
-    const SYNC_DELAY_MS = 2000;
-    const SYNC_REFRESH_EVERY = 5;
-    const SYNC_CONCURRENCY = 2;
+    // 依 startAnalysisBackgroundSync 內的預設並發／延遲估算時間（粗略）
+    const SYNC_CONCURRENCY = 3;
 
     const handleSyncAll = async () => {
         if (syncingAll || stocks.length === 0) return;
-        setSyncingAll(true);
+        // 追蹤表同步目標：確保切頁仍在背景跑；並在可接受限流風險下提升速度
+        // 來源：fetchCompleteStockData 本身會做退避重試；外層只做節奏控流與並行度調整。
         const list = [...stocks];
-        const total = list.length;
-        let done = 0;
-        for (let i = 0; i < total; i += SYNC_CONCURRENCY) {
-            const batch = list.slice(i, i + SYNC_CONCURRENCY);
-            await Promise.all(
-                batch.map(async (stock) => {
-                    try {
-                        await syncStockSnapshots(stock);
-                    } catch (e) {
-                        console.error(`[${stock.code}] 同步失敗:`, e);
-                    }
-                    done += 1;
-                    setSyncAllProgress({ current: done, total });
-                })
-            );
-            if (done % SYNC_REFRESH_EVERY === 0 || done === total) {
-                await refreshData();
-            }
-            if (i + SYNC_CONCURRENCY < total) {
-                await new Promise((r) => setTimeout(r, SYNC_DELAY_MS));
-            }
+        try {
+            await startAnalysisBackgroundSync({
+                stocks: list,
+                concurrency: 3,
+                delayMs: 1200,
+                delayJitterMs: 500,
+            });
+        } catch (e) {
+            console.error('[追蹤表同步] 啟動失敗:', e);
         }
-        setSyncAllProgress({ current: 0, total: 0 });
-        await refreshData();
-        const ts = Date.now();
-        setLastSyncAllAt(ts);
-        try { localStorage.setItem(LAST_SYNC_ALL_KEY, String(ts)); } catch (_) {}
-        setSyncingAll(false);
     };
 
     const handleAddStock = async () => {
@@ -332,7 +343,7 @@ const AnalysisPage = () => {
                                     fontWeight: 'bold',
                                 }}
                             >
-                                {syncingAll ? `同步全部中 (${syncAllProgress.current}/${syncAllProgress.total})…` : '同步全部'}
+                                {syncingAll ? `同步全部中（更新 ${syncAllProgress.current}/${syncAllProgress.total}）…` : '同步全部'}
                             </button>
                             {stocks.length > 0 && !syncingAll && (
                                 <span style={{ fontSize: '0.9em', color: '#666' }}>

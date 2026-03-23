@@ -5,7 +5,11 @@ import {
   Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts';
 import { JOURNAL_DOC_REF, STOCK_WATCHLIST_COLLECTION } from '../utils/firebaseConfig';
-import { fetchYahooPrice, fetchYahooHistoricalPriceMap } from '../features/StockAnalysis/api/stockApi';
+import {
+  fetchCurrentPrice,
+  fetchYahooPrice,
+  fetchYahooHistoricalPriceMap,
+} from '../features/StockAnalysis/api/stockApi';
 import { calculatePnlSummary } from '../utils/pnlCalculator';
 import { formatPnl } from '../utils/formatting';
 import {
@@ -80,37 +84,47 @@ function PerformancePage() {
 
   const holdingCodes = useMemo(() => holdings.map((s) => s.code), [holdings]);
 
-  // ── 從 Firestore stockWatchlist 取市價 ────────────────────
-  // 嘗試多種代碼格式：原始 / 去除 .TW / 加 .TW / 去除 .TWO / 加 .TWO
+  // ── 持股市價：每次進入頁面／持倉變動皆先打 API 取最新收盤，Firestore 僅備援 ──
   useEffect(() => {
     if (holdingCodes.length === 0) {
       setPrices({});
       return;
     }
     setPricesLoading(true);
+    let cancelled = false;
     const load = async () => {
       const results = await Promise.all(
         holdingCodes.map(async (code) => {
-          const bare = code.replace(/\.(TW|tw|TWO|two)$/i, '');
-          const candidates = [...new Set([code, bare, `${bare}.TW`, `${bare}.TWO`])];
           let price = null;
-          for (const id of candidates) {
-            const snap = await getDoc(doc(STOCK_WATCHLIST_COLLECTION, id));
-            if (snap.exists()) {
-              const p = Number(snap.data().currentPrice);
-              if (p > 0) { price = p; break; }
+          const fin = await fetchCurrentPrice(code);
+          const finClose = fin?.currentPrice != null ? Number(fin.currentPrice) : NaN;
+          if (Number.isFinite(finClose) && finClose > 0) price = finClose;
+          if (price == null) {
+            const y = await fetchYahooPrice(code);
+            if (y != null && y > 0) price = y;
+          }
+          if (price == null) {
+            const bare = code.replace(/\.(TW|tw|TWO|two)$/i, '');
+            const candidates = [...new Set([code, bare, `${bare}.TW`, `${bare}.TWO`])];
+            for (const id of candidates) {
+              const snap = await getDoc(doc(STOCK_WATCHLIST_COLLECTION, id));
+              if (snap.exists()) {
+                const p = Number(snap.data().currentPrice);
+                if (p > 0) { price = p; break; }
+              }
             }
           }
-          if (price == null) price = await fetchYahooPrice(code);
           return [code, price];
         })
       );
+      if (cancelled) return;
       const next = {};
-      results.forEach(([code, price]) => { if (price != null) next[code] = price; });
+      results.forEach(([code, p]) => { if (p != null) next[code] = p; });
       setPrices(next);
       setPricesLoading(false);
     };
     load();
+    return () => { cancelled = true; };
   }, [holdingCodes.join(',')]);
 
   // ── 損益 ──────────────────────────────────────────────────

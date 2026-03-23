@@ -653,7 +653,7 @@ export const syncStockSnapshots = async (stock) => {
       opts.existingInfo = { name: stock.name };
     }
     const latestData = await fetchCompleteStockData(stock.code, () => {}, opts);
-    if (!latestData) return;
+    if (!latestData) return { updated: false, skipped: true, failed: false };
     await updateAnalysisField(stock.id, {
       ...latestData,
       id: stock.id,
@@ -664,7 +664,9 @@ export const syncStockSnapshots = async (stock) => {
       lastUpdate: Date.now()
     });
     console.log(`✅ [${stock.code}] 數據同步成功。`);
+    return { updated: true, skipped: false, failed: false };
   } catch (error) {
     console.error(`❌ [${stock.code}] 失敗:`, error.message);
+    return { updated: false, skipped: false, failed: true };
   }
 };

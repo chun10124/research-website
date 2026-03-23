@@ -36,6 +36,8 @@ export const STOCK_WATCHLIST_COLLECTION = collection(db, "stockWatchlist");
 export const RS_RATINGS_COLLECTION = collection(db, "ibdRsRatings");
 // 台股清單快取（單一文件，避免每次打 TWSE/TPEX OpenAPI）
 export const STOCK_LIST_DOC_REF = doc(db, "ibdRsMeta", "stockList");
+/** RS 排名「觀察列表」代碼陣列（與追蹤表 stockWatchlist 分開） */
+export const IBD_RS_WATCHLIST_DOC_REF = doc(db, "ibdRsMeta", "rsWatchlist");
 export const JOURNAL_DOC_REF = doc(db, "trade_journals", "my_only_log");
 export const WHITEBOARD_DOC_REF = doc(db, "whiteboard", "my_whiteboard");
 export const MINDMAP_DOC_REF = doc(db, "mindmaps", "mindmap_list");

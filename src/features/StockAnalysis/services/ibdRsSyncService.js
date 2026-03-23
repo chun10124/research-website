@@ -8,6 +8,10 @@
 import {
   syncAllRsRatings,
   DEFAULT_RS_CHUNK_SIZE,
+  RS_SYNC_DEFAULT_CONCURRENCY,
+  RS_SYNC_INTRA_DELAY_MS,
+  RS_SYNC_SUPER_BATCH_SIZE,
+  RS_SYNC_INTER_BATCH_REST_MS,
   runIbdRsHistoryBackfill,
   patchIbdrsRatingFromHistory,
   IBDRS_BACKFILL_DEFAULT_CONCURRENCY,
@@ -82,8 +86,10 @@ export function startIbdRsBackgroundSync(opts = {}) {
           lastProgress = { ...state };
           emit();
         },
-        concurrency: 1,
-        delayMs: 2200,
+        concurrency: opts.concurrency ?? RS_SYNC_DEFAULT_CONCURRENCY,
+        delayMs: opts.delayMs ?? RS_SYNC_INTRA_DELAY_MS,
+        superBatchSize: opts.superBatchSize ?? RS_SYNC_SUPER_BATCH_SIZE,
+        interBatchRestMs: opts.interBatchRestMs ?? RS_SYNC_INTER_BATCH_REST_MS,
         forceRefresh: opts.forceRefresh === true,
         chunkMode: opts.chunkMode === true,
         chunkSize: opts.chunkSize ?? DEFAULT_RS_CHUNK_SIZE,

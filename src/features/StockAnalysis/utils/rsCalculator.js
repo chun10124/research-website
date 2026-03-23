@@ -26,6 +26,22 @@ export function findClosestPriceBefore(priceMap, targetDateStr) {
 }
 
 /**
+ * anchorDateStr（含）之前最近一筆收盤價與其日期（與 findClosestPriceBefore 同源，另回傳日期）
+ */
+export function getLatestCloseInPriceMap(priceMap, anchorDateStr) {
+  if (!priceMap || typeof priceMap !== 'object') return { price: null, dateStr: null };
+  const cap = String(anchorDateStr || '').slice(0, 10);
+  const dates = Object.keys(priceMap)
+    .filter((d) => d <= cap)
+    .sort();
+  if (dates.length === 0) return { price: null, dateStr: null };
+  const d = dates[dates.length - 1];
+  const p = Number(priceMap[d]);
+  const price = p > 0 && Number.isFinite(p) ? p : null;
+  return { price, dateStr: d };
+}
+
+/**
  * 計算單一股票的 RS_raw
  * priceMap: { 'YYYY-MM-DD': number }（來自 fetchYahooHistoricalPriceMap）
  * anchorDateStr: YYYY-MM-DD，通常為今天台北時間

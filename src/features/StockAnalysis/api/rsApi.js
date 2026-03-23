@@ -13,7 +13,9 @@
  *
  * 資料儲存：ibdRsRatings/{stockCode}
  *   - ibdRsPriceFetchedDate: 當日已抓完股價（分批用；finalize 前不代表已更新 RS）
+ *   - pricePct1d: 近 1 個交易日收盤漲跌幅（%），與 pricePct5d／20d 同源
  *   - pricePos6m: 近六個月區間內當前價位置 0∼1（低=0、高=1）
+ *   - ibdRsLastClose / ibdRsLastCloseDate: 錨定日前最近一筆收盤價與該交易日（Yahoo 歷史價同源）
  *   - 其餘欄位見下方註解
  */
 
@@ -28,6 +30,7 @@ import {
   calcPriceChangePct,
   calcPricePosition6m,
   normalizeYmdToTaiwanTradingDay,
+  getLatestCloseInPriceMap,
 } from '../utils/rsCalculator';
 
 /**
@@ -60,6 +63,21 @@ const LS_CHUNK_KEY = 'research-website-ibdRsChunkV1';
 
 /** 預設每批檔數（可依 API 限流調整） */
 export const DEFAULT_RS_CHUNK_SIZE = 350;
+
+/**
+ * 同步內部：每 N 檔為一「超級批次」；超過此門檻後觸發較長的組間休息。
+ * 設 0 可停用超級批次休息邏輯。
+ */
+export const RS_SYNC_SUPER_BATCH_SIZE = 300;
+/**
+ * 超級批次完成後的休息毫秒數（避免長時間大量請求觸發 Yahoo 限流）。
+ * 預設 35s；每批後再加最多 5s jitter。
+ */
+export const RS_SYNC_INTER_BATCH_REST_MS = 35_000;
+/** 超級批次內：每 concurrency 組之間的基礎延遲（ms）；低於全局 delayMs 以加快組內進度 */
+export const RS_SYNC_INTRA_DELAY_MS = 400;
+/** 超級批次內：預設並發數（同時發出 N 個 Yahoo 請求） */
+export const RS_SYNC_DEFAULT_CONCURRENCY = 5;
 
 function getTaiwanYmd() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
@@ -236,9 +254,12 @@ async function runFinalizePhases(stockList, stockListTotal, todayStr, existingMa
       return {
         id: s.id, name: s.name, market: s.market,
         rsRaw: null, rsRaw7: null, rsRaw30: null,
+        pricePct1d: ex?.pricePct1d ?? null,
         pricePct5d: ex?.pricePct5d ?? null,
         pricePct20d: ex?.pricePct20d ?? null,
         pricePos6m: ex?.pricePos6m ?? null,
+        ibdRsLastClose: ex?.ibdRsLastClose ?? null,
+        ibdRsLastCloseDate: ex?.ibdRsLastCloseDate ?? null,
       };
     }
     return {
@@ -248,9 +269,12 @@ async function runFinalizePhases(stockList, stockListTotal, todayStr, existingMa
       rsRaw: ex.ibdRsRaw ?? null,
       rsRaw7: ex.ibdRsRaw7 ?? null,
       rsRaw30: ex.ibdRsRaw30 ?? null,
+      pricePct1d: ex.pricePct1d ?? null,
       pricePct5d: ex.pricePct5d ?? null,
       pricePct20d: ex.pricePct20d ?? null,
       pricePos6m: ex.pricePos6m ?? null,
+      ibdRsLastClose: ex.ibdRsLastClose ?? null,
+      ibdRsLastCloseDate: ex.ibdRsLastCloseDate ?? null,
     };
   });
 
@@ -314,9 +338,12 @@ async function runFinalizePhases(stockList, stockListTotal, todayStr, existingMa
         const ibdRsRaw = snap ? snap.rsRaw : null;
         const ibdRsRaw7 = snap ? snap.rsRaw7 : null;
         const ibdRsRaw30 = snap ? snap.rsRaw30 : null;
+        const pricePct1d = snap?.pricePct1d ?? null;
         const pricePct5d = snap?.pricePct5d ?? null;
         const pricePct20d = snap?.pricePct20d ?? null;
         const pricePos6m = snap?.pricePos6m ?? null;
+        const ibdRsLastClose = snap?.ibdRsLastClose ?? null;
+        const ibdRsLastCloseDate = snap?.ibdRsLastCloseDate ?? null;
 
         await setDoc(
           doc(RS_RATINGS_COLLECTION, item.id),
@@ -335,9 +362,12 @@ async function runFinalizePhases(stockList, stockListTotal, todayStr, existingMa
             ibdRsDelta7d,
             ibdRsDelta30d,
             ibdRsPrevRating: prevRating,
+            pricePct1d,
             pricePct5d,
             pricePct20d,
             pricePos6m,
+            ibdRsLastClose,
+            ibdRsLastCloseDate,
             updatedAt: Date.now(),
           },
           { merge: true }
@@ -379,7 +409,17 @@ async function runFinalizePhases(stockList, stockListTotal, todayStr, existingMa
   return { ranked, chunkContinues: false, missingPriceFetch: missingPrice };
 }
 
-/** 單次模式：舊版一次跑完 Phase1–3 */
+/**
+ * 判斷「處理到第 endIdx 檔」時是否跨越了超級批次邊界（endIdx 為 1-based 結束位置）。
+ * 若跨越，呼叫端應在繼續前插入較長的組間休息。
+ */
+function crossesSuperBatch(endIdx, size) {
+  if (!size || size <= 0) return false;
+  // Math.floor((endIdx-1)/size) !== Math.floor(endIdx/size) 等同 endIdx % size === 0
+  return endIdx % size === 0;
+}
+
+/** 單次模式：一次跑完 Phase1–3，以超級批次策略控制限流 */
 async function runMonolithicSync(
   stockList,
   stockListTotal,
@@ -389,7 +429,14 @@ async function runMonolithicSync(
   anchor30Str,
   onProgress,
   listMeta,
-  { concurrency, delayMs, forceRefresh, signal }
+  {
+    concurrency,
+    delayMs,
+    forceRefresh,
+    signal,
+    superBatchSize = RS_SYNC_SUPER_BATCH_SIZE,
+    interBatchRestMs = RS_SYNC_INTER_BATCH_REST_MS,
+  }
 ) {
   const rawResults = [];
   let fetchDone = 0;
@@ -419,9 +466,12 @@ async function runMonolithicSync(
       let rsRaw = null;
       let rsRaw7 = null;
       let rsRaw30 = null;
+      let pricePct1d = null;
       let pricePct5d = null;
       let pricePct20d = null;
       let pricePos6m = null;
+      let ibdRsLastClose = null;
+      let ibdRsLastCloseDate = null;
       const ex = existingMap[stock.id];
       const hasAllFields = hasAllFetchedPriceFields(ex);
       const canReuseSnapshot =
@@ -433,17 +483,23 @@ async function runMonolithicSync(
         rsRaw = ex.ibdRsRaw ?? null;
         rsRaw7 = ex.ibdRsRaw7 ?? null;
         rsRaw30 = ex.ibdRsRaw30 ?? null;
+        pricePct1d = ex.pricePct1d ?? null;
         pricePct5d = ex.pricePct5d ?? null;
         pricePct20d = ex.pricePct20d ?? null;
         pricePos6m = ex.pricePos6m ?? null;
+        ibdRsLastClose = ex.ibdRsLastClose ?? null;
+        ibdRsLastCloseDate = ex.ibdRsLastCloseDate ?? null;
         skippedYahooCount++;
       } else if (canReusePriceOnly) {
         rsRaw = ex.ibdRsRaw ?? null;
         rsRaw7 = ex.ibdRsRaw7 ?? null;
         rsRaw30 = ex.ibdRsRaw30 ?? null;
+        pricePct1d = ex.pricePct1d ?? null;
         pricePct5d = ex.pricePct5d ?? null;
         pricePct20d = ex.pricePct20d ?? null;
         pricePos6m = ex.pricePos6m ?? null;
+        ibdRsLastClose = ex.ibdRsLastClose ?? null;
+        ibdRsLastCloseDate = ex.ibdRsLastCloseDate ?? null;
         skippedYahooCount++;
       } else {
         anyNetworkFetch = true;
@@ -452,9 +508,13 @@ async function runMonolithicSync(
           rsRaw = calculateRsRaw(priceMap, todayStr);
           if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
           if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
+          pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
           pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
           pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
           pricePos6m = calcPricePosition6m(priceMap, todayStr);
+          const lc = getLatestCloseInPriceMap(priceMap, todayStr);
+          ibdRsLastClose = lc.price;
+          ibdRsLastCloseDate = lc.dateStr;
         } catch (e) {
           console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
         }
@@ -466,9 +526,12 @@ async function runMonolithicSync(
         rsRaw,
         rsRaw7,
         rsRaw30,
+        pricePct1d,
         pricePct5d,
         pricePct20d,
         pricePos6m,
+        ibdRsLastClose,
+        ibdRsLastCloseDate,
       });
       fetchDone++;
       const msgHint = canReuseSnapshot
@@ -486,9 +549,24 @@ async function runMonolithicSync(
     }
 
     if (i + concurrency < stockListTotal) {
-      const wait = anyNetworkFetch
-        ? delayMs + Math.floor(Math.random() * 600)
-        : 50 + Math.floor(Math.random() * 40);
+      const batchEnd = i + batch.length;
+      const isRestPoint = anyNetworkFetch && crossesSuperBatch(batchEnd, superBatchSize);
+      if (isRestPoint) {
+        const batchNo = Math.ceil(batchEnd / superBatchSize);
+        const batchTotal = Math.ceil(stockListTotal / superBatchSize);
+        onProgress({
+          phase: 'fetch',
+          done: fetchDone,
+          total: stockListTotal,
+          msg: `第 ${batchNo}/${batchTotal} 批完成（${batchEnd} 檔），休息 ${Math.round(interBatchRestMs / 1000)}s…`,
+          ...listMeta,
+        });
+      }
+      const wait = isRestPoint
+        ? interBatchRestMs + Math.floor(Math.random() * 5000)
+        : anyNetworkFetch
+          ? delayMs + Math.floor(Math.random() * 300)
+          : 30 + Math.floor(Math.random() * 30);
       await new Promise((r) => setTimeout(r, wait));
     }
   }
@@ -513,7 +591,14 @@ async function runPriceFetchSlice(
   anchor30Str,
   onProgress,
   listMeta,
-  { concurrency, delayMs, forceRefresh, signal },
+  {
+    concurrency,
+    delayMs,
+    forceRefresh,
+    signal,
+    superBatchSize = RS_SYNC_SUPER_BATCH_SIZE,
+    interBatchRestMs = RS_SYNC_INTER_BATCH_REST_MS,
+  },
   sliceLabel
 ) {
   const slice = stockList.slice(offset, end);
@@ -537,17 +622,23 @@ async function runPriceFetchSlice(
       const canReusePriceOnly =
         !forceRefresh && !canReuseSnapshot && hasAllFields && ex?.ibdRsPriceFetchedDate === todayStr;
 
+      let pricePct1d = null;
       let pricePct5d = null;
       let pricePct20d = null;
       let pricePos6m = null;
+      let ibdRsLastClose = null;
+      let ibdRsLastCloseDate = null;
 
       if (canReuseSnapshot || canReusePriceOnly) {
         rsRaw = ex.ibdRsRaw ?? null;
         rsRaw7 = ex.ibdRsRaw7 ?? null;
         rsRaw30 = ex.ibdRsRaw30 ?? null;
+        pricePct1d = ex?.pricePct1d ?? null;
         pricePct5d = ex?.pricePct5d ?? null;
         pricePct20d = ex?.pricePct20d ?? null;
         pricePos6m = ex?.pricePos6m ?? null;
+        ibdRsLastClose = ex?.ibdRsLastClose ?? null;
+        ibdRsLastCloseDate = ex?.ibdRsLastCloseDate ?? null;
         skippedYahooCount++;
       } else {
         anyNetworkFetch = true;
@@ -556,9 +647,13 @@ async function runPriceFetchSlice(
           rsRaw = calculateRsRaw(priceMap, todayStr);
           if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
           if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
+          pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
           pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
           pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
           pricePos6m = calcPricePosition6m(priceMap, todayStr);
+          const lc = getLatestCloseInPriceMap(priceMap, todayStr);
+          ibdRsLastClose = lc.price;
+          ibdRsLastCloseDate = lc.dateStr;
         } catch (e) {
           console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
         }
@@ -573,9 +668,12 @@ async function runPriceFetchSlice(
           ibdRsRaw: rsRaw,
           ibdRsRaw7: rsRaw7,
           ibdRsRaw30: rsRaw30,
+          pricePct1d,
           pricePct5d,
           pricePct20d,
           pricePos6m,
+          ibdRsLastClose,
+          ibdRsLastCloseDate,
           ibdRsPriceFetchedDate: todayStr,
           updatedAt: Date.now(),
         },
@@ -599,9 +697,24 @@ async function runPriceFetchSlice(
     }
 
     if (i + concurrency < sliceLen) {
-      const wait = anyNetworkFetch
-        ? delayMs + Math.floor(Math.random() * 600)
-        : 50 + Math.floor(Math.random() * 40);
+      const absEnd = offset + localDone;
+      const isRestPoint = anyNetworkFetch && crossesSuperBatch(absEnd, superBatchSize);
+      if (isRestPoint) {
+        onProgress({
+          phase: 'fetch',
+          done: absEnd,
+          total: listMeta.listTotal,
+          msg: `${sliceLabel} 第 ${Math.ceil(absEnd / superBatchSize)} 批完成，休息 ${Math.round(interBatchRestMs / 1000)}s…`,
+          fetchSliceDone: localDone,
+          fetchSliceTotal: sliceLen,
+          ...listMeta,
+        });
+      }
+      const wait = isRestPoint
+        ? interBatchRestMs + Math.floor(Math.random() * 5000)
+        : anyNetworkFetch
+          ? delayMs + Math.floor(Math.random() * 300)
+          : 30 + Math.floor(Math.random() * 30);
       await new Promise((r) => setTimeout(r, wait));
     }
   }
@@ -612,16 +725,18 @@ async function runPriceFetchSlice(
 /**
  * 完整 RS 同步
  *
- * @param {boolean} [options.chunkMode=false] true＝分批（需按多次或 runAllChunks）
- * @param {number}  [options.chunkSize=350]   每批檔數
- * @param {boolean} [options.runAllChunks]    true＝同一輪連續跑完所有批再 finalize
- * @param {boolean} [options.resetChunk]      true＝忽略進度從頭分批
- * @param {boolean} [options.finalizeOnly]    只執行排名寫入（需今日已抓價）
+ * @param {boolean} [options.chunkMode=false]        true＝分批（需按多次或 runAllChunks）
+ * @param {number}  [options.chunkSize=350]          每批檔數（chunkMode 用）
+ * @param {boolean} [options.runAllChunks]           true＝同一輪連續跑完所有批再 finalize
+ * @param {boolean} [options.resetChunk]             true＝忽略進度從頭分批
+ * @param {boolean} [options.finalizeOnly]           只執行排名寫入（需今日已抓價）
+ * @param {number}  [options.superBatchSize=300]     每「超級批次」股票數；達此門檻後休息 interBatchRestMs
+ * @param {number}  [options.interBatchRestMs=35000] 超級批次間休息毫秒數
  */
 export async function syncAllRsRatings({
   onProgress = () => {},
-  concurrency = 1,
-  delayMs = 2200,
+  concurrency = RS_SYNC_DEFAULT_CONCURRENCY,
+  delayMs = RS_SYNC_INTRA_DELAY_MS,
   forceRefresh = false,
   chunkMode = false,
   chunkSize = DEFAULT_RS_CHUNK_SIZE,
@@ -629,6 +744,8 @@ export async function syncAllRsRatings({
   resetChunk = false,
   finalizeOnly = false,
   signal = null,
+  superBatchSize = RS_SYNC_SUPER_BATCH_SIZE,
+  interBatchRestMs = RS_SYNC_INTER_BATCH_REST_MS,
 } = {}) {
   const todayStr = getTaiwanYmd();
 
@@ -672,7 +789,7 @@ export async function syncAllRsRatings({
       anchor30Str,
       onProgress,
       listMeta,
-      { concurrency, delayMs, forceRefresh, signal }
+      { concurrency, delayMs, forceRefresh, signal, superBatchSize, interBatchRestMs }
     ).then((res) => ({ ...res, chunkContinues: false }));
   }
 
@@ -696,7 +813,7 @@ export async function syncAllRsRatings({
       anchor30Str,
       onProgress,
       listMeta,
-      { concurrency, delayMs, forceRefresh, signal },
+      { concurrency, delayMs, forceRefresh, signal, superBatchSize, interBatchRestMs },
       label
     );
     return { end, skipped, batchIndex, batchTotal };
@@ -1006,9 +1123,11 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
   const anchor30Str = taipeiYmdAddDays(todayStr, -30);
   const rsRaw7 = anchor7Str ? calculateRsRaw(priceMap, anchor7Str) : null;
   const rsRaw30 = anchor30Str ? calculateRsRaw(priceMap, anchor30Str) : null;
+  const pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
   const pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
   const pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
   const pricePos6m = calcPricePosition6m(priceMap, todayStr);
+  const { price: ibdRsLastClose, dateStr: ibdRsLastCloseDate } = getLatestCloseInPriceMap(priceMap, todayStr);
 
   let rating = null;
   const priceDays = Object.keys(priceMap).length;
@@ -1053,9 +1172,12 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
       ibdRsDelta7d: null,
       ibdRsDelta30d: null,
       ibdRsPriceFetchedDate: todayStr,
+      pricePct1d,
       pricePct5d,
       pricePct20d,
       pricePos6m,
+      ibdRsLastClose,
+      ibdRsLastCloseDate,
       updatedAt: Date.now(),
     },
     { merge: true }
@@ -1110,9 +1232,11 @@ export async function syncTestBatch({ count = 10, onProgress = () => {}, signal 
       const rsRaw = calculateRsRaw(priceMap, todayStr);
       const rsRaw7 = anchor7Str ? calculateRsRaw(priceMap, anchor7Str) : null;
       const rsRaw30 = anchor30Str ? calculateRsRaw(priceMap, anchor30Str) : null;
+      const pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
       const pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
       const pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
       const pricePos6m = calcPricePosition6m(priceMap, todayStr);
+      const { price: ibdRsLastClose, dateStr: ibdRsLastCloseDate } = getLatestCloseInPriceMap(priceMap, todayStr);
 
       const existingDoc = existingMap[stock.id] ?? {};
       const prevHistory = Array.isArray(existingDoc.ibdRsHistory) ? existingDoc.ibdRsHistory : [];
@@ -1122,8 +1246,10 @@ export async function syncTestBatch({ count = 10, onProgress = () => {}, signal 
         ibdRsRating: existingDoc.ibdRsRating ?? null,
         ibdRsRaw: rsRaw, ibdRsRaw7: rsRaw7, ibdRsRaw30: rsRaw30,
         ibdRsHistory: prevHistory,
-        pricePct5d, pricePct20d,
+        pricePct1d, pricePct5d, pricePct20d,
         pricePos6m,
+        ibdRsLastClose,
+        ibdRsLastCloseDate,
         ibdRsPriceFetchedDate: todayStr,
         ibdRsUpdatedDate: todayStr,
         ibdRsSnapshotDate: todayStr,
