@@ -2263,11 +2263,23 @@ export default function IBDRsRankingPage() {
   /** 底部狀態列同步日期：優先共用/本機同步紀錄，否則回退到資料最新交易日 */
   const displaySyncDate = lastSyncDateLocal || latestIbdRsDataYmd || null;
 
-  // ── Step 1：預先計算每檔兩欄「RS 變化」（回溯**交易日**數由篩選器自訂；預設 5／20）
-  const enriched = useMemo(
-    () => stocks.map((s) => enrichIbdRsRow(s, filters)),
-    [stocks, filters]
+  const deltaShortDaysResolved = useMemo(
+    () => clampIbdDeltaDays(filters.deltaShortDays, 5),
+    [filters.deltaShortDays]
   );
+  const deltaLongDaysResolved = useMemo(
+    () => clampIbdDeltaDays(filters.deltaLongDays, 20),
+    [filters.deltaLongDays]
+  );
+
+  // ── Step 1：預先計算每檔兩欄「RS 變化」（回溯**交易日**數由篩選器自訂；預設 5／20）
+  const enriched = useMemo(() => {
+    const deltaFilters = {
+      deltaShortDays: deltaShortDaysResolved,
+      deltaLongDays: deltaLongDaysResolved,
+    };
+    return stocks.map((s) => enrichIbdRsRow(s, deltaFilters));
+  }, [stocks, deltaShortDaysResolved, deltaLongDaysResolved]);
 
   // ── Step 2：依全體 RS 排序（有「顯示用 RS」的在前；含僅歷史有值者）
   const globalSorted = useMemo(() => {
@@ -2431,8 +2443,6 @@ export default function IBDRsRankingPage() {
 
   const hasActiveFilter = Object.entries(filters).some(([k, v]) => v !== '' && v !== DEFAULT_FILTERS[k]);
 
-  const deltaShortDaysResolved = clampIbdDeltaDays(filters.deltaShortDays, 5);
-  const deltaLongDaysResolved = clampIbdDeltaDays(filters.deltaLongDays, 20);
   const deltaShortTitle = `今日 RS 減去 ${deltaShortDaysResolved} 個交易日前之 RS（ibdRsHistory 筆數；需足夠歷史）`;
   const deltaLongTitle = `今日 RS 減去 ${deltaLongDaysResolved} 個交易日前之 RS（ibdRsHistory 筆數；需足夠歷史）`;
 
