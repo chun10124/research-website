@@ -2260,6 +2260,9 @@ export default function IBDRsRankingPage() {
     return { tw, tp, unknown };
   }, [stocks]);
 
+  /** 底部狀態列同步日期：優先共用/本機同步紀錄，否則回退到資料最新交易日 */
+  const displaySyncDate = lastSyncDateLocal || latestIbdRsDataYmd || null;
+
   // ── Step 1：預先計算每檔兩欄「RS 變化」（回溯**交易日**數由篩選器自訂；預設 5／20）
   const enriched = useMemo(
     () => stocks.map((s) => enrichIbdRsRow(s, filters)),
@@ -2979,10 +2982,10 @@ export default function IBDRsRankingPage() {
                       · 未標註 <strong>{marketStats.unknown}</strong>
                     </span>
                   )}
-                  {lastSyncDateLocal && (
+                  {displaySyncDate && (
                     <>
                       <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
-                      同步 {lastSyncDateLocal}
+                      同步 {displaySyncDate}
                       {lastSyncAt && <span style={{ color: '#999' }}>（{formatRelativeTime(lastSyncAt)}）</span>}
                     </>
                   )}
