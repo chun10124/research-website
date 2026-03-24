@@ -83,6 +83,49 @@ function getTaiwanYmd() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
 
+/**
+ * 將 Firestore／前端混合格式（字串、Timestamp、Date、毫秒數、{seconds}）統一成台北曆 YYYY-MM-DD。
+ * 與 getTaiwanYmd() 比對時須用此函式，否則 Timestamp 與字串 === 永遠 false，略過邏輯會失效。
+ */
+function fieldToTaiwanYmd(value) {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    const s = String(value).trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+  }
+  if (typeof value === 'object' && typeof value.toDate === 'function') {
+    try {
+      const d = value.toDate();
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    } catch {
+      return null;
+    }
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  }
+  if (typeof value === 'object' && typeof value.seconds === 'number') {
+    const d = new Date(value.seconds * 1000);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  }
+  return null;
+}
+
+/** 該檔是否已有今日同步標記（RS 已寫入日 或 價格已抓日 任一為今日即可略過 Yahoo） */
+function hasTodayRsSyncMarker(ex, todayStr, forceRefresh) {
+  if (forceRefresh || !ex || typeof ex !== 'object') return false;
+  const u = fieldToTaiwanYmd(ex.ibdRsUpdatedDate);
+  const p = fieldToTaiwanYmd(ex.ibdRsPriceFetchedDate);
+  return u === todayStr || p === todayStr;
+}
+
 function readChunkProgress(todayStr, listTotal) {
   if (typeof localStorage === 'undefined') return 0;
   try {
@@ -249,7 +292,7 @@ export async function finalizeIbdrsRankingFromFirestore({
 async function runFinalizePhases(stockList, stockListTotal, todayStr, existingMap, onProgress, listMeta, extraDone = {}) {
   const rawResults = extraDone.rawResultsOverride || stockList.map((s) => {
     const ex = existingMap[s.id];
-    const ok = ex?.ibdRsPriceFetchedDate === todayStr;
+    const ok = fieldToTaiwanYmd(ex?.ibdRsPriceFetchedDate) === todayStr;
     if (!ok) {
       return {
         id: s.id, name: s.name, market: s.market,
@@ -445,7 +488,7 @@ async function runMonolithicSync(
   const todoList = [];
   for (const stock of stockList) {
     const ex = existingMap[stock.id];
-    const done = !forceRefresh && (ex?.ibdRsUpdatedDate === todayStr || ex?.ibdRsPriceFetchedDate === todayStr);
+    const done = hasTodayRsSyncMarker(ex, todayStr, forceRefresh);
     if (done) {
       rawResults.push({
         id: stock.id, name: stock.name, market: stock.market,
@@ -462,8 +505,14 @@ async function runMonolithicSync(
 
   const todoTotal = todoList.length;
   onProgress({
-    phase: 'fetch', done: skippedYahooCount, total: stockListTotal,
-    msg: `已略過 ${skippedYahooCount} 檔（今日已完成），剩餘 ${todoTotal} 檔需從 Yahoo 抓取`,
+    phase: 'fetch',
+    done: skippedYahooCount,
+    total: stockListTotal,
+    alreadySyncedCount: skippedYahooCount,
+    msg:
+      skippedYahooCount > 0
+        ? `已有今日資料 ${skippedYahooCount} 檔，略過 Yahoo；剩餘 ${todoTotal} 檔待抓`
+        : `尚無今日快取，${todoTotal} 檔將從 Yahoo 抓取`,
     ...listMeta,
   });
 
@@ -471,6 +520,7 @@ async function runMonolithicSync(
   for (let i = 0; i < todoTotal; i += concurrency) {
     if (signal?.aborted) throw new Error('已取消');
     const batch = todoList.slice(i, i + concurrency);
+    const batchSnapshots = [];
 
     for (const stock of batch) {
       let rsRaw = null;
@@ -482,6 +532,7 @@ async function runMonolithicSync(
       let pricePos6m = null;
       let ibdRsLastClose = null;
       let ibdRsLastCloseDate = null;
+      let fetchOk = false;
       try {
         const priceMap = await fetchRsPriceData(stock.id, stock.market);
         rsRaw = calculateRsRaw(priceMap, todayStr);
@@ -494,22 +545,63 @@ async function runMonolithicSync(
         const lc = getLatestCloseInPriceMap(priceMap, todayStr);
         ibdRsLastClose = lc.price;
         ibdRsLastCloseDate = lc.dateStr;
+        fetchOk = true;
       } catch (e) {
         console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
       }
-      rawResults.push({
-        id: stock.id, name: stock.name, market: stock.market,
-        rsRaw, rsRaw7, rsRaw30, pricePct1d, pricePct5d,
-        pricePct20d, pricePos6m, ibdRsLastClose, ibdRsLastCloseDate,
-      });
+      const snap = {
+        id: stock.id,
+        name: stock.name,
+        market: stock.market,
+        rsRaw,
+        rsRaw7,
+        rsRaw30,
+        pricePct1d,
+        pricePct5d,
+        pricePct20d,
+        pricePos6m,
+        ibdRsLastClose,
+        ibdRsLastCloseDate,
+      };
+      rawResults.push(snap);
+      batchSnapshots.push({ ...snap, fetchOk });
       fetchDone++;
       onProgress({
         phase: 'fetch',
         done: skippedYahooCount + fetchDone,
         total: stockListTotal,
-        msg: `${stock.id}（${fetchDone}/${todoTotal}）`,
+        msg: fetchOk ? `${stock.id}（${fetchDone}/${todoTotal}）` : `${stock.id} 失敗（${fetchDone}/${todoTotal}）`,
         ...listMeta,
       });
+    }
+
+    // 僅成功檔寫入並標 ibdRsPriceFetchedDate；失敗不寫，下次同步會重抓
+    const okSnaps = batchSnapshots.filter((s) => s.fetchOk);
+    if (okSnaps.length > 0) {
+      await Promise.all(
+        okSnaps.map((s) =>
+          setDoc(
+            doc(RS_RATINGS_COLLECTION, s.id),
+            {
+              id: s.id,
+              name: s.name,
+              market: s.market,
+              ibdRsRaw: s.rsRaw,
+              ibdRsRaw7: s.rsRaw7,
+              ibdRsRaw30: s.rsRaw30,
+              pricePct1d: s.pricePct1d,
+              pricePct5d: s.pricePct5d,
+              pricePct20d: s.pricePct20d,
+              pricePos6m: s.pricePos6m,
+              ibdRsLastClose: s.ibdRsLastClose,
+              ibdRsLastCloseDate: s.ibdRsLastCloseDate,
+              ibdRsPriceFetchedDate: todayStr,
+              updatedAt: Date.now(),
+            },
+            { merge: true },
+          ),
+        ),
+      );
     }
 
     if (i + concurrency < todoTotal) {
@@ -569,7 +661,7 @@ async function runPriceFetchSlice(
   let skippedYahooCount = 0;
   for (const stock of slice) {
     const ex = existingMap[stock.id];
-    const done = !forceRefresh && (ex?.ibdRsUpdatedDate === todayStr || ex?.ibdRsPriceFetchedDate === todayStr);
+    const done = hasTodayRsSyncMarker(ex, todayStr, forceRefresh);
     if (done) {
       skippedYahooCount++;
     } else {
@@ -577,15 +669,17 @@ async function runPriceFetchSlice(
     }
   }
 
-  if (skippedYahooCount > 0) {
-    onProgress({
-      phase: 'fetch',
-      done: offset + skippedYahooCount,
-      total: listMeta.listTotal,
-      msg: `${sliceLabel} 已略過 ${skippedYahooCount} 檔（今日已完成），剩餘 ${todoSlice.length} 檔`,
-      ...listMeta,
-    });
-  }
+  onProgress({
+    phase: 'fetch',
+    done: offset + skippedYahooCount,
+    total: listMeta.listTotal,
+    alreadySyncedCount: skippedYahooCount,
+    msg:
+      skippedYahooCount > 0
+        ? `${sliceLabel} 本段已有今日資料 ${skippedYahooCount} 檔略過；剩餘 ${todoSlice.length} 檔`
+        : `${sliceLabel} 本段 ${todoSlice.length} 檔待抓`,
+    ...listMeta,
+  });
 
   let localDone = 0;
   for (let i = 0; i < todoSlice.length; i += concurrency) {
@@ -602,6 +696,7 @@ async function runPriceFetchSlice(
       let pricePos6m = null;
       let ibdRsLastClose = null;
       let ibdRsLastCloseDate = null;
+      let fetchOk = false;
 
       try {
         const priceMap = await fetchRsPriceData(stock.id, stock.market);
@@ -615,22 +710,25 @@ async function runPriceFetchSlice(
         const lc = getLatestCloseInPriceMap(priceMap, todayStr);
         ibdRsLastClose = lc.price;
         ibdRsLastCloseDate = lc.dateStr;
+        fetchOk = true;
       } catch (e) {
         console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
       }
 
-      await setDoc(
-        doc(RS_RATINGS_COLLECTION, stock.id),
-        {
-          id: stock.id, name: stock.name, market: stock.market,
-          ibdRsRaw: rsRaw, ibdRsRaw7: rsRaw7, ibdRsRaw30: rsRaw30,
-          pricePct1d, pricePct5d, pricePct20d, pricePos6m,
-          ibdRsLastClose, ibdRsLastCloseDate,
-          ibdRsPriceFetchedDate: todayStr,
-          updatedAt: Date.now(),
-        },
-        { merge: true }
-      );
+      if (fetchOk) {
+        await setDoc(
+          doc(RS_RATINGS_COLLECTION, stock.id),
+          {
+            id: stock.id, name: stock.name, market: stock.market,
+            ibdRsRaw: rsRaw, ibdRsRaw7: rsRaw7, ibdRsRaw30: rsRaw30,
+            pricePct1d, pricePct5d, pricePct20d, pricePos6m,
+            ibdRsLastClose, ibdRsLastCloseDate,
+            ibdRsPriceFetchedDate: todayStr,
+            updatedAt: Date.now(),
+          },
+          { merge: true }
+        );
+      }
 
       localDone++;
       const absProgress = offset + skippedYahooCount + localDone;
@@ -638,7 +736,9 @@ async function runPriceFetchSlice(
         phase: 'fetch',
         done: absProgress,
         total: listMeta.listTotal,
-        msg: `${sliceLabel} ${stock.id}（${localDone}/${todoSlice.length}）`,
+        msg: fetchOk
+          ? `${sliceLabel} ${stock.id}（${localDone}/${todoSlice.length}）`
+          : `${sliceLabel} ${stock.id} 失敗（${localDone}/${todoSlice.length}）`,
         fetchSliceDone: skippedYahooCount + localDone,
         fetchSliceTotal: slice.length,
         ...listMeta,
@@ -711,9 +811,10 @@ export async function syncAllRsRatings({
   const tpexCount = stockList.filter((s) => s.market === 'TPEX').length;
   const listMeta = { twseCount, tpexCount, listTotal: stockListTotal };
 
+  // done 勿設滿，否則按鈕會短暫顯示 1951/1951；實際進度從 fetch 階段（含今日已快取檔數）起算
   onProgress({
     phase: 'list',
-    done: stockListTotal,
+    done: 0,
     total: stockListTotal,
     msg: `市 ${twseCount}、櫃 ${tpexCount}，合計 ${stockListTotal} 檔`,
     ...listMeta,
