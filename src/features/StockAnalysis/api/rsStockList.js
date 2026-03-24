@@ -18,21 +18,22 @@ const TWSE_LIST_URL = 'https://openapi.twse.com.tw/v1/opendata/t187ap03_L';
 const TPEX_LIST_URL = 'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O';
 
 const LS_STOCK_LIST_KEY = 'research-website-stockList';
+const FETCH_TIMEOUT_MS = 15000;
 
 function getTaiwanYmd() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
 
-/** 讀 localStorage 當日快取；回傳 null 代表無快取或已過期 */
-function readLsCache() {
+/** 讀 localStorage 快取；可選擇是否只接受當日 */
+function readLsCache({ allowStale = false } = {}) {
   if (typeof localStorage === 'undefined') return null;
   try {
     const raw = localStorage.getItem(LS_STOCK_LIST_KEY);
     if (!raw) return null;
     const { date, list } = JSON.parse(raw);
-    if (date !== getTaiwanYmd()) return null;
     if (!Array.isArray(list) || list.length < 100) return null;
-    return list;
+    if (!allowStale && date !== getTaiwanYmd()) return null;
+    return { date, list };
   } catch {
     return null;
   }
@@ -47,14 +48,14 @@ function writeLsCache(list) {
 }
 
 /** 讀 Firestore 當日快取；失敗或過期回傳 null */
-async function readFirestoreCache() {
+async function readFirestoreCache({ allowStale = false } = {}) {
   try {
     const snap = await getDoc(STOCK_LIST_DOC_REF);
     if (!snap.exists()) return null;
     const { date, list } = snap.data();
-    if (date !== getTaiwanYmd()) return null;
     if (!Array.isArray(list) || list.length < 100) return null;
-    return list;
+    if (!allowStale && date !== getTaiwanYmd()) return null;
+    return { date, list };
   } catch (e) {
     console.warn('[RS StockList] Firestore 快取讀取失敗:', e.message);
     return null;
@@ -85,6 +86,17 @@ async function withRetry(fn, { maxRetries = 5, baseDelayMs = 1000 } = {}) {
     }
   }
   throw lastErr;
+}
+
+async function fetchTextWithTimeout(url, timeoutMs = FETCH_TIMEOUT_MS) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctl.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -124,7 +136,7 @@ function unwrapJsonArray(parsed) {
  */
 async function proxyFetchArray(targetUrl) {
   const full = `${PROXY_BASE}${encodeURIComponent(targetUrl)}`;
-  const res = await fetch(full);
+  const res = await fetchTextWithTimeout(full);
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${targetUrl}`);
   const text = (await res.text()).replace(/^\uFEFF/, '');
   let parsed;
@@ -141,6 +153,31 @@ async function proxyFetchArray(targetUrl) {
     return [];
   }
   return rows;
+}
+
+async function directFetchArray(targetUrl) {
+  const res = await fetchTextWithTimeout(targetUrl);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${targetUrl}`);
+  const text = (await res.text()).replace(/^\uFEFF/, '');
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    console.warn(`[RS StockList] 直連 JSON 解析失敗: ${targetUrl.slice(-48)}`, e?.message);
+    return [];
+  }
+  const rows = unwrapJsonArray(parsed);
+  if (rows == null) return [];
+  return rows;
+}
+
+async function fetchArrayWithFallback(targetUrl) {
+  try {
+    return await withRetry(() => proxyFetchArray(targetUrl), { maxRetries: 3, baseDelayMs: 900 });
+  } catch (proxyErr) {
+    console.warn('[RS StockList] Proxy 失敗，改走直連：', proxyErr.message);
+    return withRetry(() => directFetchArray(targetUrl), { maxRetries: 2, baseDelayMs: 700 });
+  }
 }
 
 /**
@@ -184,16 +221,16 @@ export async function fetchTaiwanStockList() {
   // ── 1. localStorage 快取（最快）──────────────────────────────────────
   const lsCached = readLsCache();
   if (lsCached) {
-    console.log(`[RS StockList] localStorage 快取：${lsCached.length} 檔`);
-    return lsCached;
+    console.log(`[RS StockList] localStorage 快取：${lsCached.list.length} 檔`);
+    return lsCached.list;
   }
 
   // ── 2. Firestore 快取（跨裝置）───────────────────────────────────────
   const fsCached = await readFirestoreCache();
   if (fsCached) {
-    console.log(`[RS StockList] Firestore 快取：${fsCached.length} 檔`);
-    writeLsCache(fsCached); // 順便存進 localStorage 加速下次
-    return fsCached;
+    console.log(`[RS StockList] Firestore 快取：${fsCached.list.length} 檔`);
+    writeLsCache(fsCached.list); // 順便存進 localStorage 加速下次
+    return fsCached.list;
   }
 
   const all = [];
@@ -206,37 +243,51 @@ export async function fetchTaiwanStockList() {
     all.push({ id: code, name: name || code, market });
   };
 
-  // ── 2. TWSE 上市（retry + fail-fast）────────────────────────────────
-  const twseData = await withRetry(() => proxyFetchArray(TWSE_LIST_URL), {
-    maxRetries: 5,
-    baseDelayMs: 1000,
-  });
-  if (!twseData || twseData.length < 100) {
-    throw new Error(`[RS StockList] TWSE 清單不完整（${twseData?.length ?? 0} 筆），中止`);
-  }
-  for (const item of twseData) {
-    const { code, name } = extractFields(item);
-    addStock(code, name, 'TWSE');
-  }
-  console.log(`[RS StockList] TWSE 上市：${all.length} 檔`);
+  try {
+    // ── 3. 線上抓取（先 proxy，失敗自動改直連）────────────────────────────
+    const [twseData, tpexData] = await Promise.all([
+      fetchArrayWithFallback(TWSE_LIST_URL),
+      fetchArrayWithFallback(TPEX_LIST_URL),
+    ]);
 
-  // ── 3. TPEX 上櫃（retry + fail-fast）───────────────────────────────
-  const tpexData = await withRetry(() => proxyFetchArray(TPEX_LIST_URL), {
-    maxRetries: 5,
-    baseDelayMs: 1000,
-  });
-  if (!tpexData || tpexData.length < 100) {
-    throw new Error(`[RS StockList] TPEX 清單不完整（${tpexData?.length ?? 0} 筆），中止`);
+    if (!twseData || twseData.length < 100) {
+      throw new Error(`[RS StockList] TWSE 清單不完整（${twseData?.length ?? 0} 筆）`);
+    }
+    if (!tpexData || tpexData.length < 100) {
+      throw new Error(`[RS StockList] TPEX 清單不完整（${tpexData?.length ?? 0} 筆）`);
+    }
+
+    for (const item of twseData) {
+      const { code, name } = extractFields(item);
+      addStock(code, name, 'TWSE');
+    }
+    console.log(`[RS StockList] TWSE 上市：${all.length} 檔`);
+
+    let added = 0;
+    for (const item of tpexData) {
+      const { code, name } = extractFields(item);
+      if (!isRegularCode(code) || seen.has(code)) continue;
+      seen.add(code);
+      all.push({ id: code, name: name || code, market: 'TPEX' });
+      added++;
+    }
+    console.log(`[RS StockList] TPEX 上櫃：+${added} 檔，合計 ${all.length} 檔`);
+  } catch (networkErr) {
+    // 最後保底：使用「非當日」舊快取，至少讓流程可繼續，不因外部 API 一時故障而中斷
+    console.warn('[RS StockList] 線上抓取失敗，嘗試使用舊快取：', networkErr.message);
+    const staleLs = readLsCache({ allowStale: true });
+    if (staleLs) {
+      console.warn(`[RS StockList] 使用 localStorage 舊快取（${staleLs.date}，${staleLs.list.length} 檔）`);
+      return staleLs.list;
+    }
+    const staleFs = await readFirestoreCache({ allowStale: true });
+    if (staleFs) {
+      console.warn(`[RS StockList] 使用 Firestore 舊快取（${staleFs.date}，${staleFs.list.length} 檔）`);
+      writeLsCache(staleFs.list);
+      return staleFs.list;
+    }
+    throw networkErr;
   }
-  let added = 0;
-  for (const item of tpexData) {
-    const { code, name } = extractFields(item);
-    if (!isRegularCode(code) || seen.has(code)) continue;
-    seen.add(code);
-    all.push({ id: code, name: name || code, market: 'TPEX' });
-    added++;
-  }
-  console.log(`[RS StockList] TPEX 上櫃：+${added} 檔，合計 ${all.length} 檔`);
 
   // ── 4. 寫快取（localStorage 同步 + Firestore 非同步）────────────────
   writeLsCache(all);

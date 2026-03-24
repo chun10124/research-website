@@ -227,8 +227,8 @@ export function getDefaultPeriods() {
   return [
     { key: 'thisMonth', label: '本月至今',   startStr: monthStart,                           endStr: today },
     { key: 'prevMonth', label: '前一月',     startStr: prevMonthStart,                      endStr: prevMonthEnd },
-    { key: 'past3m',   label: '前三個月',   startStr: threeMoAgo.toISOString().slice(0, 10), endStr: today },
-    { key: 'past6m',   label: '前半年',     startStr: sixMoAgo.toISOString().slice(0, 10), endStr: today },
+    { key: 'past3m',   label: '近三個月',   startStr: threeMoAgo.toISOString().slice(0, 10), endStr: today },
+    { key: 'past6m',   label: '近半年',     startStr: sixMoAgo.toISOString().slice(0, 10), endStr: today },
     { key: 'ytd',      label: '今年至今',   startStr: `${y}-01-01`,                         endStr: today },
     { key: 'lastYear', label: '去年',       startStr: `${y - 1}-01-01`,                    endStr: `${y - 1}-12-31` },
   ];

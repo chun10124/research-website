@@ -3,15 +3,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { onSnapshot } from 'firebase/firestore';
 import Layout from '@theme/Layout';
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps } from '../features/StockAnalysis/api/stockApi';
 import { syncSingleStock, syncTestBatch } from '../features/StockAnalysis/api/rsApi';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
@@ -117,8 +108,10 @@ const IBDRS_PARALLEL_GROUPS = 4;
 const IBDRS_MAJOR_MOVE_DELTA_GT = 5;
 /** 第一段「重大變動」：顯示用 RS 須嚴格大於此值 */
 const IBDRS_MAJOR_MOVE_RS_GT = 80;
-/** 「今日重點」：近 1 交易日股價漲跌幅絕對值 |%| 須嚴格大於此值（與 RS&gt;80 段並用） */
+/** 「今日重點」：近 1 交易日股價漲跌幅絕對值 |%| 須嚴格大於此值（與 IBDRS_FOCUS_PRICE_RS_GT 並用） */
 const IBDRS_FOCUS_PRICE_PCT_ABS_GT = 9;
+/** 「今日重點」：漲跌幅段 RS 門檻 */
+const IBDRS_FOCUS_PRICE_RS_GT = 85;
 
 /** 「突破」門檻：前一歷史點 < 門檻、最後一點 ≥ 門檻（由下向上穿越） */
 const IBDRS_RS_BREAK_LEVEL_80 = 80;
@@ -127,7 +120,7 @@ const IBDRS_RS_BREAK_LEVEL_90 = 90;
 /** 觀察窗第三段：HL（6M 區間價位 0～1）須嚴格大於此值 */
 const IBDRS_MODAL_HL_GT = 0.98;
 /** 觀察窗第三段：與 HL 條件並用，RS 須嚴格大於此值 */
-const IBDRS_MODAL_HL_RS_GT = 80;
+const IBDRS_MODAL_HL_RS_GT = 85;
 
 /** 每個大欄（一張小表）一頁幾筆；總筆數 = 此值 × 大欄數 */
 const IBDRS_ROWS_PER_QUADRANT = 100;
@@ -543,6 +536,220 @@ function thinSwingIndicesEvenly(indices, maxKeep) {
   return [...new Set(out)].sort((a, b) => a - b);
 }
 
+/**
+ * 單一 SVG 把 K 棒、RS 線、大盤線畫在同一套座標系，徹底消除 overlay 對位誤差。
+ * - X 軸：每筆資料等寬 slot，K 棒中心 = RS/大盤折線點位，完全一致
+ * - Y 軸左：RS 固定 1-99；Y 軸右：大盤指數 auto；K 棒獨立 Y（不影響其他 Y 軸）
+ */
+function IbdRsComboChart({ data }) {
+  const wrapRef = useRef(null);
+  const [size, setSize] = useState({ w: 640, h: 320 });
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = Math.max(200, el.clientWidth || 200);
+      const h = Math.max(160, el.clientHeight || 320);
+      setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(el);
+    return () => { if (ro) ro.disconnect(); };
+  }, []);
+
+  const PAD_L = 46;
+  const PAD_R = 56;
+  const PAD_T = 10;
+  const PAD_B = 26;
+
+  const { w, h } = size;
+  const innerW = Math.max(1, w - PAD_L - PAD_R);
+  const innerH = Math.max(1, h - PAD_T - PAD_B);
+  const n = data.length;
+  const slot = n > 0 ? innerW / n : innerW;
+  const xAt = (i) => PAD_L + (i + 0.5) * slot;
+  const barW = Math.min(10, Math.max(1.5, slot * 0.62));
+
+  /* RS Y: 固定 1-99 */
+  const yRs = (v) => PAD_T + innerH - ((v - 1) / 98) * innerH;
+
+  /* Price Y: 從 OHLC 資料 auto */
+  let pMin = Infinity; let pMax = -Infinity;
+  for (const d of data) {
+    if (Number.isFinite(d.low))  pMin = Math.min(pMin, d.low);
+    if (Number.isFinite(d.high)) pMax = Math.max(pMax, d.high);
+  }
+  const hasOhlc = Number.isFinite(pMin);
+  if (hasOhlc) { const pp = (pMax - pMin || pMax * 0.01 || 1) * 0.05; pMin -= pp; pMax += pp; }
+  const yPrice = hasOhlc ? (v) => PAD_T + innerH - ((v - pMin) / (pMax - pMin)) * innerH : () => PAD_T;
+
+  /* Index Y: auto */
+  let iMin = Infinity; let iMax = -Infinity;
+  for (const d of data) {
+    if (Number.isFinite(d.idx)) { iMin = Math.min(iMin, d.idx); iMax = Math.max(iMax, d.idx); }
+  }
+  const hasIdx = Number.isFinite(iMin);
+  if (hasIdx) { const ip = (iMax - iMin || iMax * 0.01 || 1) * 0.06; iMin -= ip; iMax += ip; }
+  const yIdx = hasIdx ? (v) => PAD_T + innerH - ((v - iMin) / (iMax - iMin)) * innerH : () => PAD_T;
+
+  /* Polyline segments（處理 null 斷點） */
+  const buildSegs = (fn) => {
+    const segs = []; let seg = [];
+    data.forEach((d, i) => {
+      const v = fn(d);
+      if (Number.isFinite(v)) { seg.push(`${xAt(i).toFixed(2)},${v.toFixed(2)}`); }
+      else if (seg.length) { segs.push(seg.join(' ')); seg = []; }
+    });
+    if (seg.length) segs.push(seg.join(' '));
+    return segs;
+  };
+  const rsSegs  = buildSegs((d) => (Number.isFinite(d.rs)  ? yRs(d.rs)   : null));
+  const idxSegs = buildSegs((d) => (Number.isFinite(d.idx) ? yIdx(d.idx) : null));
+
+  /* X ticks：最多 7 筆 */
+  const MAX_X_TICKS = 7;
+  const xTickIdxs = n <= MAX_X_TICKS
+    ? data.map((_, i) => i)
+    : Array.from({ length: MAX_X_TICKS }, (_, k) => Math.round((k * (n - 1)) / (MAX_X_TICKS - 1)));
+
+  /* RS Y ticks */
+  const rsTicks = [1, 25, 50, 75, 99];
+  /* Index Y ticks */
+  const idxTicks = hasIdx
+    ? [0, 1, 2, 3].map((t) => iMin + ((iMax - iMin) * t) / 3)
+    : [];
+
+  /* Hover */
+  const handleMouseMove = (e) => {
+    if (n === 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const i = Math.round((mx - PAD_L) / slot - 0.5);
+    setHoverIdx(Math.max(0, Math.min(n - 1, i)));
+    setMousePos({ x: mx, y: my });
+  };
+
+  const hd = hoverIdx != null ? data[hoverIdx] : null;
+
+  return (
+    <div ref={wrapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <svg
+        width={w}
+        height={h}
+        style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair' }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        {/* 繪圖區底色 */}
+        <rect x={PAD_L} y={PAD_T} width={innerW} height={innerH} fill="#ffffff" />
+
+        {/* 水平 grid */}
+        {rsTicks.map((v) => {
+          const y = yRs(v);
+          return <line key={`g-${v}`} x1={PAD_L} y1={y} x2={PAD_L + innerW} y2={y} stroke="#eceff1" strokeWidth={1} strokeDasharray="3 3" />;
+        })}
+
+        {/* K 棒（opacity 疊加在折線之下） */}
+        {hasOhlc && data.map((d, i) => {
+          if (!Number.isFinite(d.open) || !Number.isFinite(d.high) || !Number.isFinite(d.low) || !Number.isFinite(d.close)) return null;
+          const xc = xAt(i);
+          const up = d.close >= d.open;
+          const fill   = up ? '#e53935' : '#2e7d32';
+          const stroke = up ? '#c62828' : '#1b5e20';
+          const yH = yPrice(d.high); const yL = yPrice(d.low);
+          const yO = yPrice(d.open); const yC = yPrice(d.close);
+          const bodyTop = Math.min(yO, yC);
+          const bodyH   = Math.max(Math.abs(yC - yO), 1);
+          return (
+            <g key={`k-${d.dateKey}`} opacity={0.4}>
+              <line x1={xc} y1={yH} x2={xc} y2={yL} stroke={stroke} strokeWidth={0.9} />
+              <rect x={xc - barW / 2} y={bodyTop} width={barW} height={bodyH} fill={fill} stroke={stroke} strokeWidth={0.8} />
+            </g>
+          );
+        })}
+
+        {/* 大盤折線 */}
+        {idxSegs.map((pts, i) => (
+          <polyline key={`idx-${i}`} points={pts} fill="none" stroke="#1565c0" strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+
+        {/* RS 折線 */}
+        {rsSegs.map((pts, i) => (
+          <polyline key={`rs-${i}`} points={pts} fill="none" stroke="#c0392b" strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+
+        {/* Hover 十字線 */}
+        {hoverIdx != null && (
+          <line x1={xAt(hoverIdx)} y1={PAD_T} x2={xAt(hoverIdx)} y2={PAD_T + innerH} stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 3" />
+        )}
+
+        {/* 左軸 RS */}
+        {rsTicks.map((v) => (
+          <text key={`rl-${v}`} x={PAD_L - 5} y={yRs(v) + 4} textAnchor="end" fontSize={10} fill="#c0392b" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</text>
+        ))}
+        <text x={12} y={PAD_T + innerH / 2} textAnchor="middle" fontSize={10} fill="#c0392b" transform={`rotate(-90,12,${PAD_T + innerH / 2})`}>RS</text>
+
+        {/* 右軸 大盤 */}
+        {idxTicks.map((v, i) => (
+          <text key={`il-${i}`} x={PAD_L + innerW + 5} y={yIdx(v) + 4} textAnchor="start" fontSize={10} fill="#1565c0" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {v >= 1000 ? `${(v / 1000).toFixed(0)}k` : Math.round(v)}
+          </text>
+        ))}
+        <text x={w - 10} y={PAD_T + innerH / 2} textAnchor="middle" fontSize={10} fill="#1565c0" transform={`rotate(90,${w - 10},${PAD_T + innerH / 2})`}>加權</text>
+
+        {/* X 軸日期 */}
+        {xTickIdxs.map((i) => (
+          <text key={`xl-${i}`} x={xAt(i)} y={PAD_T + innerH + 16} textAnchor="middle" fontSize={10} fill="#64748b">
+            {String(data[i]?.dateKey || '').slice(5)}
+          </text>
+        ))}
+
+        {/* X 軸底線 */}
+        <line x1={PAD_L} y1={PAD_T + innerH} x2={PAD_L + innerW} y2={PAD_T + innerH} stroke="#e2e8f0" strokeWidth={1} />
+      </svg>
+
+      {/* Tooltip */}
+      {hd && (
+        <div
+          style={{
+            position: 'absolute',
+            top: Math.max(4, mousePos.y - 10),
+            left: mousePos.x > w / 2 ? Math.max(4, mousePos.x - 175) : mousePos.x + 14,
+            pointerEvents: 'none',
+            zIndex: 20,
+            fontSize: 12,
+            lineHeight: 1.5,
+            borderRadius: 8,
+            border: '1px solid #cbd5e1',
+            backgroundColor: '#fff',
+            boxShadow: '0 8px 24px rgba(15,23,42,0.18)',
+            padding: '10px 12px',
+            minWidth: 148,
+          }}
+        >
+          <div style={{ color: '#64748b', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid #e2e8f0', paddingBottom: 6 }}>
+            {hd.dateKey}
+          </div>
+          {hd.rs != null && (
+            <div style={{ color: '#c0392b', fontWeight: 600, paddingBottom: 2 }}>RS：{hd.rs}</div>
+          )}
+          {hd.idx != null && (
+            <div style={{ color: '#1565c0', fontWeight: 600, paddingBottom: 2 }}>加權：{Number(hd.idx).toLocaleString()}</div>
+          )}
+          {Number.isFinite(hd.close) && (
+            <div style={{ color: '#374151', fontWeight: 700, paddingBottom: 2 }}>收：{Math.round(hd.close)}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Yahoo 日 K：SVG 蠟燭（台股 紅漲／綠跌）
  * @param {'default'|'overlay'} [variant] overlay＝無座標、寬度撐滿容器，供疊在折線圖上半透明參考
  */
@@ -593,11 +800,12 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
     const svgWidth = padL + innerW + padR;
     const innerH = Math.max(60, plotH - padT - padB);
     const slot = innerW / n;
-    const barW = Math.min(11, Math.max(1.5, slot * 0.55));
+    const xAt = (i) => padL + (i + 0.5) * slot;
+    const barW = Math.min(11, Math.max(1.5, slot * (isOverlay ? 0.52 : 0.55)));
     const yAt = (p) => padT + innerH - ((p - yMin) / (yMax - yMin)) * innerH;
 
     const candles = series.map((o, i) => {
-      const xc = padL + (i + 0.5) * slot;
+      const xc = xAt(i);
       const yH = yAt(o.high);
       const yL = yAt(o.low);
       const yO = yAt(o.open);
@@ -647,7 +855,7 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
     const swingLabels = (
       <g style={{ pointerEvents: 'none' }}>
         {swingHighIdx.map((i) => {
-          const xc = padL + (i + 0.5) * slot;
+          const xc = xAt(i);
           const yH = yAt(series[i].high);
           const txt = String(Math.round(series[i].high));
           const placeBelow = yH - 26 < padT + 1;
@@ -671,7 +879,7 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
           );
         })}
         {swingLowIdx.map((i) => {
-          const xc = padL + (i + 0.5) * slot;
+          const xc = xAt(i);
           const yL = yAt(series[i].low);
           const txt = String(Math.round(series[i].low));
           const placeAbove = yL + 24 > plotH - 3;
@@ -714,7 +922,7 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
 
     const xLabel = series.map((o, i) => {
       if (n <= 8 || i === 0 || i === n - 1 || i === Math.floor(n / 2)) {
-        const xc = padL + (i + 0.5) * slot;
+        const xc = xAt(i);
         const short = o.dateStr.slice(5);
         return (
           <text key={`xl-${i}`} x={xc} y={plotH - 6} textAnchor="middle" fontSize={10} fill="#64748b">
@@ -784,6 +992,7 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
     </div>
   );
 }
+
 
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal（觀察列表頁亦共用） */
 export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist }) {
@@ -899,6 +1108,10 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           date: ymd.slice(5),
           rs: r != null && Number.isFinite(r) ? r : null,
           idx: closestIdx != null && Number.isFinite(closestIdx) ? Math.round(closestIdx) : null,
+          open: Number.isFinite(o.open) ? o.open : null,
+          high: Number.isFinite(o.high) ? o.high : null,
+          low: Number.isFinite(o.low) ? o.low : null,
+          close: Number.isFinite(o.close) ? o.close : null,
         };
       });
     }
@@ -924,8 +1137,6 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const isEmpty = !loading && !error && chartData.length === 0;
   const marketBadge = formatIbdMarketLabel(stock?.market);
   const tradingViewUrl = stock ? getTradingViewChartUrl(stock) : null;
-  /** 與下方 LineChart margin、雙 Y 軸寬度大致對齊，讓 K 線疊加與折線繪圖區同寬、時間軸對齊 */
-  const lineChartPlotInset = { top: 10, right: 58, bottom: 28, left: 50 };
 
   const swipeTouchRef = useRef({ x0: null, y0: null, id: null, t0: null });
 
@@ -1338,138 +1549,9 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                   width: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  position: 'relative',
                 }}
               >
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData} margin={{ top: 10, right: 6, left: 0, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#eceff1" vertical={false} />
-                    <XAxis
-                      dataKey="dateKey"
-                      tick={{ fontSize: 11, fill: '#64748b', dy: 2 }}
-                      tickFormatter={(v) => (typeof v === 'string' && v.length >= 10 ? v.slice(5) : String(v))}
-                      interval="preserveStartEnd"
-                      tickLine={false}
-                      axisLine={{ stroke: '#e2e8f0' }}
-                    />
-                    <YAxis
-                      yAxisId="rs"
-                      orientation="left"
-                      domain={[1, 99]}
-                      ticks={[1, 25, 50, 75, 99]}
-                      tick={{ fontSize: 11, fill: '#c0392b' }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={42}
-                      tickFormatter={(v) => v}
-                      label={{ value: 'RS', angle: -90, position: 'insideLeft', fill: '#c0392b', fontSize: 11, offset: 4 }}
-                    />
-                    <YAxis
-                      yAxisId="idx"
-                      orientation="right"
-                      domain={['auto', 'auto']}
-                      tick={{ fontSize: 11, fill: '#1565c0' }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={52}
-                      tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v)}
-                      label={{ value: '加權', angle: 90, position: 'insideRight', fill: '#1565c0', fontSize: 11, offset: 6 }}
-                    />
-                    <Tooltip
-                      /** 疊在 K 線 overlay（z-index:2）之上，否則字會被半透明層蓋住、難辨識 */
-                      wrapperStyle={{ zIndex: 12, outline: 'none' }}
-                      content={({ active, payload, label }) => {
-                        if (!active || !payload?.length) return null;
-                        const rsStroke = '#c0392b';
-                        const idxStroke = '#1565c0';
-                        return (
-                          <div
-                            style={{
-                              fontSize: 12,
-                              lineHeight: 1.45,
-                              borderRadius: 8,
-                              border: '1px solid #cbd5e1',
-                              backgroundColor: '#ffffff',
-                              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.18)',
-                              padding: '10px 12px',
-                            }}
-                          >
-                            <div
-                              style={{
-                                color: '#64748b',
-                                fontWeight: 700,
-                                marginBottom: 6,
-                                borderBottom: '1px solid #e2e8f0',
-                                paddingBottom: 6,
-                              }}
-                            >
-                              {typeof label === 'string' ? label : ''}
-                            </div>
-                            {payload.map((p, i) => {
-                              const isRs = p.dataKey === 'rs' || p.name === 'RS Rating';
-                              const lineColor = p.color || (isRs ? rsStroke : idxStroke);
-                              const v = p.value;
-                              const valueText = isRs
-                                ? `${v ?? '—'}`
-                                : v != null && Number.isFinite(Number(v))
-                                  ? Number(v).toLocaleString()
-                                  : '—';
-                              const titleText = isRs ? 'RS (1–99)' : '加權指數';
-                              return (
-                                <div
-                                  key={i}
-                                  style={{
-                                    color: lineColor,
-                                    paddingTop: 2,
-                                    paddingBottom: 2,
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {titleText}：{valueText}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      }}
-                    />
-                    <Line
-                      yAxisId="rs"
-                      dataKey="rs"
-                      name="RS Rating"
-                      stroke="#c0392b"
-                      strokeWidth={2.25}
-                      dot={false}
-                      connectNulls
-                    />
-                    <Line
-                      yAxisId="idx"
-                      dataKey="idx"
-                      name="加權指數"
-                      stroke="#1565c0"
-                      strokeWidth={1.75}
-                      dot={false}
-                      connectNulls
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-                {ohlcSeries.length > 0 && chartData.length === ohlcSeries.length && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: lineChartPlotInset.top,
-                      left: lineChartPlotInset.left,
-                      right: lineChartPlotInset.right,
-                      bottom: lineChartPlotInset.bottom,
-                      zIndex: 2,
-                      pointerEvents: 'none',
-                      opacity: 0.38,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <IbdRsOhlcChart series={ohlcSeries} fillHeight variant="overlay" />
-                  </div>
-                )}
+                <IbdRsComboChart data={chartData} />
               </div>
             </section>
           </div>
@@ -1837,19 +1919,19 @@ function MajorMovesModal({
 
         <div style={{ padding: '14px 28px 16px', overflow: 'auto', flex: '1 1 auto', WebkitOverflowScrolling: 'touch' }}>
           <div style={{ marginBottom: 20 }}>
-            <div style={mmSecTitle('#0f766e')}>
-              單日 |ΔRS| &gt; {majorDeltaGt} 且 RS &gt; {majorRsGt}（{items.length}）
+            <div style={mmSecTitle('#6d28d9')}>
+              HL（6M）&gt; {IBDRS_MODAL_HL_GT} 且 RS &gt; {IBDRS_MODAL_HL_RS_GT}（{itemsHlHigh.length}）
             </div>
-            {items.length === 0 ? (
+            {itemsHlHigh.length === 0 ? (
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                無（需至少 2 筆歷史，且 |ΔRS| &gt; {majorDeltaGt}、RS &gt; {majorRsGt}）
+                無（需基準日已同步且 pricePos6m 有值，HL &gt; {IBDRS_MODAL_HL_GT} 且 RS &gt; {IBDRS_MODAL_HL_RS_GT}）
               </div>
             ) : (
               <div style={mm.scrollWrap}>
                 <table style={mm.table}>
                   {majorFocusColgroup()}
-                  {majorFocusThead('#ecfdf5', '#134e4a')}
-                  <tbody>{renderFullMetricRows(items, 'maj')}</tbody>
+                  {majorFocusThead('#f5f3ff', '#5b21b6')}
+                  <tbody>{renderFullMetricRows(itemsHlHigh, 'hl', '#faf5ff')}</tbody>
                 </table>
               </div>
             )}
@@ -1857,13 +1939,13 @@ function MajorMovesModal({
 
           <div style={{ marginBottom: 20 }}>
             <div style={mmSecTitle('#b91c1c')}>
-              當日股價漲跌幅 |%| &gt; {IBDRS_FOCUS_PRICE_PCT_ABS_GT}% 且 RS &gt; {IBDRS_MAJOR_MOVE_RS_GT}（
+              當日股價漲跌幅 |%| &gt; {IBDRS_FOCUS_PRICE_PCT_ABS_GT}% 且 RS &gt; {IBDRS_FOCUS_PRICE_RS_GT}（
               {itemsPriceBig.length}）
             </div>
             {itemsPriceBig.length === 0 ? (
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
                 無（需基準日已同步且有 1 交易日漲跌幅資料，且 |漲跌幅| &gt; {IBDRS_FOCUS_PRICE_PCT_ABS_GT}% 與 RS &gt;{' '}
-                {IBDRS_MAJOR_MOVE_RS_GT}；尚未寫入 1 日漲跌幅者請執行「同步今日 RS」或 Shift 強制重抓）
+                {IBDRS_FOCUS_PRICE_RS_GT}；尚未寫入 1 日漲跌幅者請執行「同步今日 RS」或 Shift 強制重抓）
               </div>
             ) : (
               <div style={mm.scrollWrap}>
@@ -1911,19 +1993,19 @@ function MajorMovesModal({
           </div>
 
           <div>
-            <div style={mmSecTitle('#6d28d9')}>
-              HL（6M）&gt; {IBDRS_MODAL_HL_GT} 且 RS &gt; {IBDRS_MODAL_HL_RS_GT}（{itemsHlHigh.length}）
+            <div style={mmSecTitle('#0f766e')}>
+              單日 |ΔRS| &gt; {majorDeltaGt} 且 RS &gt; {majorRsGt}（{items.length}）
             </div>
-            {itemsHlHigh.length === 0 ? (
+            {items.length === 0 ? (
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                無（需基準日已同步且 pricePos6m 有值，HL &gt; {IBDRS_MODAL_HL_GT} 且 RS &gt; {IBDRS_MODAL_HL_RS_GT}）
+                無（需至少 2 筆歷史，且 |ΔRS| &gt; {majorDeltaGt}、RS &gt; {majorRsGt}）
               </div>
             ) : (
               <div style={mm.scrollWrap}>
                 <table style={mm.table}>
                   {majorFocusColgroup()}
-                  {majorFocusThead('#f5f3ff', '#5b21b6')}
-                  <tbody>{renderFullMetricRows(itemsHlHigh, 'hl', '#faf5ff')}</tbody>
+                  {majorFocusThead('#ecfdf5', '#134e4a')}
+                  <tbody>{renderFullMetricRows(items, 'maj')}</tbody>
                 </table>
               </div>
             )}
@@ -2472,7 +2554,7 @@ export default function IBDRsRankingPage() {
     return list;
   }, [enriched, focusPanelRefYmd]);
 
-  /** 基準日已同步：近 1 交易日股價漲跌幅絕對值 &gt; 門檻 且 RS &gt; 80（與 Firestore pricePct1d 同源） */
+  /** 基準日已同步：近 1 交易日股價漲跌幅絕對值 &gt; 門檻 且 RS &gt; IBDRS_FOCUS_PRICE_RS_GT（與 Firestore pricePct1d 同源） */
   const priceBigMoveHighRsToday = useMemo(() => {
     if (!focusPanelRefYmd) return [];
     const out = [];
@@ -2484,7 +2566,7 @@ export default function IBDRsRankingPage() {
       if (pct == null || !Number.isFinite(pct)) continue;
       if (Math.abs(pct) <= th) continue;
       const effRs = getEffectiveDisplayRs(s);
-      if (effRs == null || effRs <= IBDRS_MAJOR_MOVE_RS_GT) continue;
+      if (effRs == null || effRs <= IBDRS_FOCUS_PRICE_RS_GT) continue;
       out.push(s);
     }
     out.sort((a, b) => {
@@ -2757,7 +2839,7 @@ export default function IBDRsRankingPage() {
                   type="button"
                   onClick={() => setMajorMovesOpen(true)}
                   disabled={loading}
-                  title={`今日重點：|ΔRS|／|1D%|>${IBDRS_FOCUS_PRICE_PCT_ABS_GT}且RS>80／突破80·90／HL(6M)>${IBDRS_MODAL_HL_GT}且RS>${IBDRS_MODAL_HL_RS_GT}；點列開折線圖`}
+                  title={`今日重點：|ΔRS|>${IBDRS_MAJOR_MOVE_DELTA_GT}且RS>${IBDRS_MAJOR_MOVE_RS_GT}／|1D%|>${IBDRS_FOCUS_PRICE_PCT_ABS_GT}且RS>${IBDRS_FOCUS_PRICE_RS_GT}／突破80·90／HL(6M)>${IBDRS_MODAL_HL_GT}且RS>${IBDRS_MODAL_HL_RS_GT}；點列開折線圖`}
                   style={{
                     fontSize: 12,
                     fontWeight: 700,
