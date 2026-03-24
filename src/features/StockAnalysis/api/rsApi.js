@@ -439,27 +439,38 @@ async function runMonolithicSync(
   }
 ) {
   const rawResults = [];
-  let fetchDone = 0;
   let skippedYahooCount = 0;
 
-  // 預掃：報告需重抓數量（只要 ibdRsUpdatedDate 或 ibdRsPriceFetchedDate = 今日即可略過 Yahoo）
-  let needRefetchCount = 0;
+  // ── 分流：已完成的直接收進 rawResults，只留真正要跑 Yahoo 的進 todoList ──
+  const todoList = [];
   for (const stock of stockList) {
     const ex = existingMap[stock.id];
-    const snap  = !forceRefresh && ex?.ibdRsUpdatedDate === todayStr;
-    const price = !forceRefresh && !snap && ex?.ibdRsPriceFetchedDate === todayStr;
-    if (!snap && !price) needRefetchCount++;
+    const done = !forceRefresh && (ex?.ibdRsUpdatedDate === todayStr || ex?.ibdRsPriceFetchedDate === todayStr);
+    if (done) {
+      rawResults.push({
+        id: stock.id, name: stock.name, market: stock.market,
+        rsRaw: ex.ibdRsRaw ?? null, rsRaw7: ex.ibdRsRaw7 ?? null, rsRaw30: ex.ibdRsRaw30 ?? null,
+        pricePct1d: ex.pricePct1d ?? null, pricePct5d: ex.pricePct5d ?? null,
+        pricePct20d: ex.pricePct20d ?? null, pricePos6m: ex.pricePos6m ?? null,
+        ibdRsLastClose: ex.ibdRsLastClose ?? null, ibdRsLastCloseDate: ex.ibdRsLastCloseDate ?? null,
+      });
+      skippedYahooCount++;
+    } else {
+      todoList.push(stock);
+    }
   }
+
+  const todoTotal = todoList.length;
   onProgress({
-    phase: 'fetch', done: 0, total: stockListTotal,
-    msg: `需從 Yahoo 重抓 ${needRefetchCount} 檔，可略過 ${stockListTotal - needRefetchCount} 檔`,
+    phase: 'fetch', done: skippedYahooCount, total: stockListTotal,
+    msg: `已略過 ${skippedYahooCount} 檔（今日已完成），剩餘 ${todoTotal} 檔需從 Yahoo 抓取`,
     ...listMeta,
   });
 
-  for (let i = 0; i < stockListTotal; i += concurrency) {
+  let fetchDone = 0;
+  for (let i = 0; i < todoTotal; i += concurrency) {
     if (signal?.aborted) throw new Error('已取消');
-    const batch = stockList.slice(i, i + concurrency);
-    let anyNetworkFetch = false;
+    const batch = todoList.slice(i, i + concurrency);
 
     for (const stock of batch) {
       let rsRaw = null;
@@ -471,90 +482,53 @@ async function runMonolithicSync(
       let pricePos6m = null;
       let ibdRsLastClose = null;
       let ibdRsLastCloseDate = null;
-      const ex = existingMap[stock.id];
-      // ibdRsUpdatedDate = 今日 → RS 已排名完畢，完全略過 Yahoo
-      // ibdRsPriceFetchedDate = 今日 → 股價已抓，只需參與 finalize 排名
-      const canReuseSnapshot = !forceRefresh && ex?.ibdRsUpdatedDate === todayStr;
-      const canReusePriceOnly = !forceRefresh && !canReuseSnapshot && ex?.ibdRsPriceFetchedDate === todayStr;
-
-      if (canReuseSnapshot || canReusePriceOnly) {
-        rsRaw = ex.ibdRsRaw ?? null;
-        rsRaw7 = ex.ibdRsRaw7 ?? null;
-        rsRaw30 = ex.ibdRsRaw30 ?? null;
-        pricePct1d = ex.pricePct1d ?? null;
-        pricePct5d = ex.pricePct5d ?? null;
-        pricePct20d = ex.pricePct20d ?? null;
-        pricePos6m = ex.pricePos6m ?? null;
-        ibdRsLastClose = ex.ibdRsLastClose ?? null;
-        ibdRsLastCloseDate = ex.ibdRsLastCloseDate ?? null;
-        skippedYahooCount++;
-      } else {
-        anyNetworkFetch = true;
-        try {
-          const priceMap = await fetchRsPriceData(stock.id, stock.market);
-          rsRaw = calculateRsRaw(priceMap, todayStr);
-          if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
-          if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
-          pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
-          pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
-          pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
-          pricePos6m = calcPricePosition6m(priceMap, todayStr);
-          const lc = getLatestCloseInPriceMap(priceMap, todayStr);
-          ibdRsLastClose = lc.price;
-          ibdRsLastCloseDate = lc.dateStr;
-        } catch (e) {
-          console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
-        }
+      try {
+        const priceMap = await fetchRsPriceData(stock.id, stock.market);
+        rsRaw = calculateRsRaw(priceMap, todayStr);
+        if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
+        if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
+        pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
+        pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
+        pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
+        pricePos6m = calcPricePosition6m(priceMap, todayStr);
+        const lc = getLatestCloseInPriceMap(priceMap, todayStr);
+        ibdRsLastClose = lc.price;
+        ibdRsLastCloseDate = lc.dateStr;
+      } catch (e) {
+        console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
       }
       rawResults.push({
-        id: stock.id,
-        name: stock.name,
-        market: stock.market,
-        rsRaw,
-        rsRaw7,
-        rsRaw30,
-        pricePct1d,
-        pricePct5d,
-        pricePct20d,
-        pricePos6m,
-        ibdRsLastClose,
-        ibdRsLastCloseDate,
+        id: stock.id, name: stock.name, market: stock.market,
+        rsRaw, rsRaw7, rsRaw30, pricePct1d, pricePct5d,
+        pricePct20d, pricePos6m, ibdRsLastClose, ibdRsLastCloseDate,
       });
       fetchDone++;
-      const msgHint = canReuseSnapshot
-        ? `${stock.id} ·略過(今日已排名)`
-        : canReusePriceOnly
-          ? `${stock.id} ·略過(今日已抓價)`
-          : stock.id;
       onProgress({
         phase: 'fetch',
-        done: fetchDone,
+        done: skippedYahooCount + fetchDone,
         total: stockListTotal,
-        msg: msgHint,
+        msg: `${stock.id}（${fetchDone}/${todoTotal}）`,
         ...listMeta,
       });
     }
 
-    if (i + concurrency < stockListTotal) {
-      const batchEnd = i + batch.length;
-      const isRestPoint = anyNetworkFetch && crossesSuperBatch(batchEnd, superBatchSize);
+    if (i + concurrency < todoTotal) {
+      const absEnd = skippedYahooCount + fetchDone;
+      const isRestPoint = crossesSuperBatch(absEnd, superBatchSize);
       if (isRestPoint) {
-        const batchNo = Math.ceil(batchEnd / superBatchSize);
+        const batchNo = Math.ceil(absEnd / superBatchSize);
         const batchTotal = Math.ceil(stockListTotal / superBatchSize);
         onProgress({
           phase: 'fetch',
-          done: fetchDone,
+          done: absEnd,
           total: stockListTotal,
-          msg: `第 ${batchNo}/${batchTotal} 批完成（${batchEnd} 檔），休息 ${Math.round(interBatchRestMs / 1000)}s…`,
+          msg: `第 ${batchNo}/${batchTotal} 批完成（${absEnd} 檔），休息 ${Math.round(interBatchRestMs / 1000)}s…`,
           ...listMeta,
         });
+        await new Promise((r) => setTimeout(r, interBatchRestMs + Math.floor(Math.random() * 5000)));
+      } else {
+        await new Promise((r) => setTimeout(r, delayMs + Math.floor(Math.random() * 300)));
       }
-      const wait = isRestPoint
-        ? interBatchRestMs + Math.floor(Math.random() * 5000)
-        : anyNetworkFetch
-          ? delayMs + Math.floor(Math.random() * 300)
-          : 30 + Math.floor(Math.random() * 30);
-      await new Promise((r) => setTimeout(r, wait));
     }
   }
 
@@ -589,25 +563,39 @@ async function runPriceFetchSlice(
   sliceLabel
 ) {
   const slice = stockList.slice(offset, end);
-  const sliceLen = slice.length;
-  let localDone = 0;
-  let skippedYahooCount = 0;
 
-  for (let i = 0; i < sliceLen; i += concurrency) {
+  // 先分流：已完成的直接跳過，只留真正要跑的
+  const todoSlice = [];
+  let skippedYahooCount = 0;
+  for (const stock of slice) {
+    const ex = existingMap[stock.id];
+    const done = !forceRefresh && (ex?.ibdRsUpdatedDate === todayStr || ex?.ibdRsPriceFetchedDate === todayStr);
+    if (done) {
+      skippedYahooCount++;
+    } else {
+      todoSlice.push(stock);
+    }
+  }
+
+  if (skippedYahooCount > 0) {
+    onProgress({
+      phase: 'fetch',
+      done: offset + skippedYahooCount,
+      total: listMeta.listTotal,
+      msg: `${sliceLabel} 已略過 ${skippedYahooCount} 檔（今日已完成），剩餘 ${todoSlice.length} 檔`,
+      ...listMeta,
+    });
+  }
+
+  let localDone = 0;
+  for (let i = 0; i < todoSlice.length; i += concurrency) {
     if (signal?.aborted) throw new Error('已取消');
-    const batch = slice.slice(i, i + concurrency);
-    let anyNetworkFetch = false;
+    const batch = todoSlice.slice(i, i + concurrency);
 
     for (const stock of batch) {
       let rsRaw = null;
       let rsRaw7 = null;
       let rsRaw30 = null;
-      const ex = existingMap[stock.id];
-      // ibdRsUpdatedDate = 今日 → RS 已排名完畢，Yahoo + Firestore 全略過
-      // ibdRsPriceFetchedDate = 今日 → 股價已抓，跳過 Yahoo 但仍記錄供 finalize
-      const canReuseSnapshot = !forceRefresh && ex?.ibdRsUpdatedDate === todayStr;
-      const canReusePriceOnly = !forceRefresh && !canReuseSnapshot && ex?.ibdRsPriceFetchedDate === todayStr;
-
       let pricePct1d = null;
       let pricePct5d = null;
       let pricePct20d = null;
@@ -615,96 +603,63 @@ async function runPriceFetchSlice(
       let ibdRsLastClose = null;
       let ibdRsLastCloseDate = null;
 
-      if (canReuseSnapshot || canReusePriceOnly) {
-        rsRaw = ex.ibdRsRaw ?? null;
-        rsRaw7 = ex.ibdRsRaw7 ?? null;
-        rsRaw30 = ex.ibdRsRaw30 ?? null;
-        pricePct1d = ex?.pricePct1d ?? null;
-        pricePct5d = ex?.pricePct5d ?? null;
-        pricePct20d = ex?.pricePct20d ?? null;
-        pricePos6m = ex?.pricePos6m ?? null;
-        ibdRsLastClose = ex?.ibdRsLastClose ?? null;
-        ibdRsLastCloseDate = ex?.ibdRsLastCloseDate ?? null;
-        skippedYahooCount++;
-      } else {
-        anyNetworkFetch = true;
-        try {
-          const priceMap = await fetchRsPriceData(stock.id, stock.market);
-          rsRaw = calculateRsRaw(priceMap, todayStr);
-          if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
-          if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
-          pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
-          pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
-          pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
-          pricePos6m = calcPricePosition6m(priceMap, todayStr);
-          const lc = getLatestCloseInPriceMap(priceMap, todayStr);
-          ibdRsLastClose = lc.price;
-          ibdRsLastCloseDate = lc.dateStr;
-        } catch (e) {
-          console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
-        }
+      try {
+        const priceMap = await fetchRsPriceData(stock.id, stock.market);
+        rsRaw = calculateRsRaw(priceMap, todayStr);
+        if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
+        if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
+        pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
+        pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
+        pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
+        pricePos6m = calcPricePosition6m(priceMap, todayStr);
+        const lc = getLatestCloseInPriceMap(priceMap, todayStr);
+        ibdRsLastClose = lc.price;
+        ibdRsLastCloseDate = lc.dateStr;
+      } catch (e) {
+        console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
       }
 
-      // RS 今日已完整排名 → 不需要重寫 Firestore（canReusePriceOnly 仍需寫入以供後續 finalize）
-      if (!canReuseSnapshot) {
-        await setDoc(
-          doc(RS_RATINGS_COLLECTION, stock.id),
-          {
-            id: stock.id,
-            name: stock.name,
-            market: stock.market,
-            ibdRsRaw: rsRaw,
-            ibdRsRaw7: rsRaw7,
-            ibdRsRaw30: rsRaw30,
-            pricePct1d,
-            pricePct5d,
-            pricePct20d,
-            pricePos6m,
-            ibdRsLastClose,
-            ibdRsLastCloseDate,
-            ibdRsPriceFetchedDate: todayStr,
-            updatedAt: Date.now(),
-          },
-          { merge: true }
-        );
-      }
+      await setDoc(
+        doc(RS_RATINGS_COLLECTION, stock.id),
+        {
+          id: stock.id, name: stock.name, market: stock.market,
+          ibdRsRaw: rsRaw, ibdRsRaw7: rsRaw7, ibdRsRaw30: rsRaw30,
+          pricePct1d, pricePct5d, pricePct20d, pricePos6m,
+          ibdRsLastClose, ibdRsLastCloseDate,
+          ibdRsPriceFetchedDate: todayStr,
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
 
       localDone++;
-      const msgHint =
-        canReuseSnapshot || canReusePriceOnly
-          ? `${sliceLabel} ${stock.id} ·略過`
-          : `${sliceLabel} ${stock.id}`;
+      const absProgress = offset + skippedYahooCount + localDone;
       onProgress({
         phase: 'fetch',
-        done: offset + localDone,
+        done: absProgress,
         total: listMeta.listTotal,
-        msg: msgHint,
-        fetchSliceDone: localDone,
-        fetchSliceTotal: sliceLen,
+        msg: `${sliceLabel} ${stock.id}（${localDone}/${todoSlice.length}）`,
+        fetchSliceDone: skippedYahooCount + localDone,
+        fetchSliceTotal: slice.length,
         ...listMeta,
       });
     }
 
-    if (i + concurrency < sliceLen) {
-      const absEnd = offset + localDone;
-      const isRestPoint = anyNetworkFetch && crossesSuperBatch(absEnd, superBatchSize);
+    if (i + concurrency < todoSlice.length) {
+      const absEnd = offset + skippedYahooCount + localDone;
+      const isRestPoint = crossesSuperBatch(absEnd, superBatchSize);
       if (isRestPoint) {
         onProgress({
           phase: 'fetch',
           done: absEnd,
           total: listMeta.listTotal,
           msg: `${sliceLabel} 第 ${Math.ceil(absEnd / superBatchSize)} 批完成，休息 ${Math.round(interBatchRestMs / 1000)}s…`,
-          fetchSliceDone: localDone,
-          fetchSliceTotal: sliceLen,
           ...listMeta,
         });
+        await new Promise((r) => setTimeout(r, interBatchRestMs + Math.floor(Math.random() * 5000)));
+      } else {
+        await new Promise((r) => setTimeout(r, delayMs + Math.floor(Math.random() * 300)));
       }
-      const wait = isRestPoint
-        ? interBatchRestMs + Math.floor(Math.random() * 5000)
-        : anyNetworkFetch
-          ? delayMs + Math.floor(Math.random() * 300)
-          : 30 + Math.floor(Math.random() * 30);
-      await new Promise((r) => setTimeout(r, wait));
     }
   }
 
