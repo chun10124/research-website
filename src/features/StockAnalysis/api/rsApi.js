@@ -442,13 +442,12 @@ async function runMonolithicSync(
   let fetchDone = 0;
   let skippedYahooCount = 0;
 
-  // 預掃：報告需重抓數量
+  // 預掃：報告需重抓數量（只要 ibdRsUpdatedDate 或 ibdRsPriceFetchedDate = 今日即可略過 Yahoo）
   let needRefetchCount = 0;
   for (const stock of stockList) {
     const ex = existingMap[stock.id];
-    const hasAll = hasAllFetchedPriceFields(ex);
-    const snap = !forceRefresh && hasAll && ex?.ibdRsSnapshotDate === todayStr && ex?.ibdRsUpdatedDate === todayStr;
-    const price = !forceRefresh && !snap && hasAll && ex?.ibdRsPriceFetchedDate === todayStr;
+    const snap  = !forceRefresh && ex?.ibdRsUpdatedDate === todayStr;
+    const price = !forceRefresh && !snap && ex?.ibdRsPriceFetchedDate === todayStr;
     if (!snap && !price) needRefetchCount++;
   }
   onProgress({
@@ -473,24 +472,12 @@ async function runMonolithicSync(
       let ibdRsLastClose = null;
       let ibdRsLastCloseDate = null;
       const ex = existingMap[stock.id];
-      const hasAllFields = hasAllFetchedPriceFields(ex);
-      const canReuseSnapshot =
-        !forceRefresh && hasAllFields && ex?.ibdRsSnapshotDate === todayStr && ex?.ibdRsUpdatedDate === todayStr;
-      const canReusePriceOnly =
-        !forceRefresh && !canReuseSnapshot && hasAllFields && ex?.ibdRsPriceFetchedDate === todayStr;
+      // ibdRsUpdatedDate = 今日 → RS 已排名完畢，完全略過 Yahoo
+      // ibdRsPriceFetchedDate = 今日 → 股價已抓，只需參與 finalize 排名
+      const canReuseSnapshot = !forceRefresh && ex?.ibdRsUpdatedDate === todayStr;
+      const canReusePriceOnly = !forceRefresh && !canReuseSnapshot && ex?.ibdRsPriceFetchedDate === todayStr;
 
-      if (canReuseSnapshot) {
-        rsRaw = ex.ibdRsRaw ?? null;
-        rsRaw7 = ex.ibdRsRaw7 ?? null;
-        rsRaw30 = ex.ibdRsRaw30 ?? null;
-        pricePct1d = ex.pricePct1d ?? null;
-        pricePct5d = ex.pricePct5d ?? null;
-        pricePct20d = ex.pricePct20d ?? null;
-        pricePos6m = ex.pricePos6m ?? null;
-        ibdRsLastClose = ex.ibdRsLastClose ?? null;
-        ibdRsLastCloseDate = ex.ibdRsLastCloseDate ?? null;
-        skippedYahooCount++;
-      } else if (canReusePriceOnly) {
+      if (canReuseSnapshot || canReusePriceOnly) {
         rsRaw = ex.ibdRsRaw ?? null;
         rsRaw7 = ex.ibdRsRaw7 ?? null;
         rsRaw30 = ex.ibdRsRaw30 ?? null;
@@ -616,11 +603,10 @@ async function runPriceFetchSlice(
       let rsRaw7 = null;
       let rsRaw30 = null;
       const ex = existingMap[stock.id];
-      const hasAllFields = hasAllFetchedPriceFields(ex);
-      const canReuseSnapshot =
-        !forceRefresh && hasAllFields && ex?.ibdRsSnapshotDate === todayStr && ex?.ibdRsUpdatedDate === todayStr;
-      const canReusePriceOnly =
-        !forceRefresh && !canReuseSnapshot && hasAllFields && ex?.ibdRsPriceFetchedDate === todayStr;
+      // ibdRsUpdatedDate = 今日 → RS 已排名完畢，Yahoo + Firestore 全略過
+      // ibdRsPriceFetchedDate = 今日 → 股價已抓，跳過 Yahoo 但仍記錄供 finalize
+      const canReuseSnapshot = !forceRefresh && ex?.ibdRsUpdatedDate === todayStr;
+      const canReusePriceOnly = !forceRefresh && !canReuseSnapshot && ex?.ibdRsPriceFetchedDate === todayStr;
 
       let pricePct1d = null;
       let pricePct5d = null;
@@ -659,26 +645,29 @@ async function runPriceFetchSlice(
         }
       }
 
-      await setDoc(
-        doc(RS_RATINGS_COLLECTION, stock.id),
-        {
-          id: stock.id,
-          name: stock.name,
-          market: stock.market,
-          ibdRsRaw: rsRaw,
-          ibdRsRaw7: rsRaw7,
-          ibdRsRaw30: rsRaw30,
-          pricePct1d,
-          pricePct5d,
-          pricePct20d,
-          pricePos6m,
-          ibdRsLastClose,
-          ibdRsLastCloseDate,
-          ibdRsPriceFetchedDate: todayStr,
-          updatedAt: Date.now(),
-        },
-        { merge: true }
-      );
+      // RS 今日已完整排名 → 不需要重寫 Firestore（canReusePriceOnly 仍需寫入以供後續 finalize）
+      if (!canReuseSnapshot) {
+        await setDoc(
+          doc(RS_RATINGS_COLLECTION, stock.id),
+          {
+            id: stock.id,
+            name: stock.name,
+            market: stock.market,
+            ibdRsRaw: rsRaw,
+            ibdRsRaw7: rsRaw7,
+            ibdRsRaw30: rsRaw30,
+            pricePct1d,
+            pricePct5d,
+            pricePct20d,
+            pricePos6m,
+            ibdRsLastClose,
+            ibdRsLastCloseDate,
+            ibdRsPriceFetchedDate: todayStr,
+            updatedAt: Date.now(),
+          },
+          { merge: true }
+        );
+      }
 
       localDone++;
       const msgHint =
