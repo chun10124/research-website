@@ -40,16 +40,29 @@ export const IBDRS_QUADRANT_TABLE_WIDTH_WITH_LAST_CLOSE_AND_DAY_CHANGE_PX =
 /** 名稱欄內容區至少寬度（px） */
 export const IBDRS_NAME_COL_MIN_PX = 34;
 
-export function splitIntoColumnChunks(list, groupCount) {
+/**
+ * 將列表切成並排欄位資料。
+ * - vertical（預設）：每欄為連續區段（1..25 | 26..50 ...）
+ * - horizontal：橫向填滿後換列（第 1 列為 1,2,3,4；各欄資料為 1,5,9... / 2,6,10...）
+ */
+export function splitIntoColumnChunks(list, groupCount, fillOrder = 'vertical') {
   if (groupCount <= 1) return [list];
   const n = list.length;
+  const chunks = Array.from({ length: groupCount }, () => []);
+
+  if (fillOrder === 'horizontal') {
+    for (let i = 0; i < n; i++) {
+      chunks[i % groupCount].push(list[i]);
+    }
+    return chunks;
+  }
+
   const base = Math.floor(n / groupCount);
   const extra = n % groupCount;
-  const chunks = [];
   let from = 0;
   for (let c = 0; c < groupCount; c++) {
     const len = base + (c < extra ? 1 : 0);
-    chunks.push(list.slice(from, from + len));
+    chunks[c] = list.slice(from, from + len);
     from += len;
   }
   return chunks;

@@ -56,7 +56,10 @@ function hasAllFetchedPriceFields(ex) {
   );
 }
 
-/** Yahoo 價格回溯月數：需涵蓋「今日−30 日」錨點的 P12（約 12m+30d），僅 13m 會讓 rsRaw30／Δ30 大量為 null */
+/**
+ * Yahoo 價格回溯月數：需涵蓋「今日−30 日」錨點的 P12（約 12m+30d），僅 13m 會讓 rsRaw30／Δ30 大量為 null。
+ * 追蹤表 Yahoo 價量（stockApi YAHOO_TRACKING_LOOKBACK_MONTHS）請同步此數值。
+ */
 const RS_PRICE_LOOKBACK_MONTHS = 15;
 
 const LS_CHUNK_KEY = 'research-website-ibdRsChunkV1';

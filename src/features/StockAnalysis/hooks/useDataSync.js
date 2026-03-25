@@ -54,7 +54,7 @@ export const useDataSync = (stocks) => {
           const latestData = await fetchCompleteStockData(stock.code, (msg) => {
             // 可選：將進度印在控制台方便除錯
             console.log(`   > ${msg}`);
-          });
+          }, { market: stock.market });
 
           if (latestData) {
             // 🔴 這裡一定要確保存入的是最新計算出的策略欄位

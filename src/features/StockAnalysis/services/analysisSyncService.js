@@ -2,6 +2,12 @@
 
 import { setDoc } from 'firebase/firestore';
 import { syncStockSnapshots } from '../api/stockApi';
+import {
+  RS_SYNC_DEFAULT_CONCURRENCY,
+  RS_SYNC_INTRA_DELAY_MS,
+  RS_SYNC_INTER_BATCH_REST_MS,
+  RS_SYNC_SUPER_BATCH_SIZE,
+} from '../api/rsApi';
 import { SYNC_STATUS_DOC_REF } from '../../../utils/firebaseConfig';
 
 export const LAST_SYNC_ALL_KEY = 'research-website-lastSyncAllAt';
@@ -42,11 +48,20 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** 與 RS 全市場同步相同：每處理 N 檔後較長休息，降低 Yahoo／proxy 限流 */
+function crossesAnalysisSuperBatch(processedCount, size) {
+  if (!size || size <= 0) return false;
+  return processedCount % size === 0;
+}
+
 export function startAnalysisBackgroundSync({
   stocks,
-  concurrency = 3,
-  delayMs = 1000,
-  delayJitterMs = 400,
+  concurrency = RS_SYNC_DEFAULT_CONCURRENCY,
+  delayMs = RS_SYNC_INTRA_DELAY_MS,
+  /** 額外 0～此值（ms）加在 delayMs 上；RS 同步使用 300 */
+  delayJitterMs = 300,
+  superBatchSize = RS_SYNC_SUPER_BATCH_SIZE,
+  interBatchRestMs = RS_SYNC_INTER_BATCH_REST_MS,
   signal = null,
   onProgress = null,
 } = {}) {
@@ -71,7 +86,7 @@ export function startAnalysisBackgroundSync({
     try {
       const total = safeStocks.length;
       const batchSize = Math.max(1, Math.floor(Number(concurrency) || 1));
-      const jitter = () => Math.floor(Math.random() * Math.max(0, Number(delayJitterMs) || 0));
+      const jitterCap = Math.max(0, Number(delayJitterMs) || 0);
 
       let processed = 0;
       let updated = 0;
@@ -117,7 +132,22 @@ export function startAnalysisBackgroundSync({
         onProgress?.(lastProgress);
 
         if (processed < total) {
-          await sleep((delayMs ?? 0) + jitter());
+          const superHit =
+            superBatchSize > 0 &&
+            crossesAnalysisSuperBatch(processed, superBatchSize);
+          if (superHit) {
+            const batchNo = Math.floor(processed / superBatchSize);
+            const batchTotal = Math.ceil(total / superBatchSize);
+            lastProgress = {
+              ...lastProgress,
+              msg: `第 ${batchNo}/${batchTotal} 超級批次完成（${processed}/${total}），休息約 ${Math.round(interBatchRestMs / 1000)}s…`,
+            };
+            emit();
+            onProgress?.(lastProgress);
+            await sleep(interBatchRestMs + Math.floor(Math.random() * 5000));
+          } else {
+            await sleep((delayMs ?? 0) + Math.floor(Math.random() * jitterCap));
+          }
         }
       }
 

@@ -103,6 +103,8 @@ const MM_FOCUS_MODAL_WIDTH_FLOOR_PX = 700;
 
 /** 橫向並排幾組「完整欄位」（每組一張表） */
 const IBDRS_PARALLEL_GROUPS = 4;
+/** 與 custom.css 行為一致：<=768 視為手機版版面 */
+const IBDRS_DESKTOP_MIN_WIDTH_PX = 769;
 
 /** 第一段「重大變動」：單日 |ΔRS| 須嚴格大於此值 */
 const IBDRS_MAJOR_MOVE_DELTA_GT = 5;
@@ -623,15 +625,36 @@ function IbdRsComboChart({ data }) {
     ? [0, 1, 2, 3].map((t) => iMin + ((iMax - iMin) * t) / 3)
     : [];
 
-  /* Hover */
-  const handleMouseMove = (e) => {
+  /* Hover（滑鼠 + 觸控；觸控 stopPropagation 避免與個股 modal 快滑換股搶同一條 touch 鏈） */
+  const applyHoverClient = (svgEl, clientX, clientY) => {
     if (n === 0) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const rect = svgEl.getBoundingClientRect();
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
     const i = Math.round((mx - PAD_L) / slot - 0.5);
     setHoverIdx(Math.max(0, Math.min(n - 1, i)));
     setMousePos({ x: mx, y: my });
+  };
+
+  const handleMouseMove = (e) => {
+    applyHoverClient(e.currentTarget, e.clientX, e.clientY);
+  };
+
+  const handleChartTouchStart = (e) => {
+    e.stopPropagation();
+    const t = e.touches[0];
+    if (t) applyHoverClient(e.currentTarget, t.clientX, t.clientY);
+  };
+
+  const handleChartTouchMove = (e) => {
+    e.stopPropagation();
+    const t = e.touches[0];
+    if (t) applyHoverClient(e.currentTarget, t.clientX, t.clientY);
+  };
+
+  const handleChartTouchEnd = (e) => {
+    e.stopPropagation();
+    setHoverIdx(null);
   };
 
   const hd = hoverIdx != null ? data[hoverIdx] : null;
@@ -641,9 +664,19 @@ function IbdRsComboChart({ data }) {
       <svg
         width={w}
         height={h}
-        style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair' }}
+        style={{
+          display: 'block',
+          width: '100%',
+          height: '100%',
+          cursor: 'crosshair',
+          touchAction: 'none',
+        }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverIdx(null)}
+        onTouchStart={handleChartTouchStart}
+        onTouchMove={handleChartTouchMove}
+        onTouchEnd={handleChartTouchEnd}
+        onTouchCancel={handleChartTouchEnd}
       >
         {/* 繪圖區底色 */}
         <rect x={PAD_L} y={PAD_T} width={innerW} height={innerH} fill="#ffffff" />
@@ -1219,6 +1252,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
 
   return (
     <div
+      className="ibd-rs-chart-modal-backdrop"
       onMouseDown={onClose}
       style={{
         position: 'fixed',
@@ -1233,6 +1267,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       }}
     >
       <div
+        className="ibd-rs-chart-modal-panel"
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={handleSwipeTouchStart}
         onTouchEnd={handleSwipeTouchEnd}
@@ -1846,6 +1881,7 @@ function MajorMovesModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="ibd-rs-today-focus-title"
+      className="ibd-rs-major-moves-backdrop"
       onMouseDown={onClose}
       style={{
         position: 'fixed',
@@ -1859,6 +1895,7 @@ function MajorMovesModal({
       }}
     >
       <div
+        className="ibd-rs-major-moves-panel"
         onMouseDown={(e) => e.stopPropagation()}
         style={{
           boxSizing: 'border-box',
@@ -1874,6 +1911,7 @@ function MajorMovesModal({
         }}
       >
         <div
+          className="ibd-rs-major-moves-header"
           style={{
             display: 'flex',
             alignItems: 'flex-start',
@@ -1917,7 +1955,10 @@ function MajorMovesModal({
           </button>
         </div>
 
-        <div style={{ padding: '14px 28px 16px', overflow: 'auto', flex: '1 1 auto', WebkitOverflowScrolling: 'touch' }}>
+        <div
+          className="ibd-rs-major-moves-body"
+          style={{ padding: '14px 28px 16px', overflow: 'auto', flex: '1 1 auto', WebkitOverflowScrolling: 'touch' }}
+        >
           <div style={{ marginBottom: 20 }}>
             <div style={mmSecTitle('#6d28d9')}>
               HL（6M）&gt; {IBDRS_MODAL_HL_GT} 且 RS &gt; {IBDRS_MODAL_HL_RS_GT}（{itemsHlHigh.length}）
@@ -2185,6 +2226,10 @@ export default function IBDRsRankingPage() {
   const [majorMovesOpen, setMajorMovesOpen] = useState(false);
   const [testMsg, setTestMsg] = useState(null);
   const [batchRunning, setBatchRunning] = useState(false);
+  const [isDesktopRsGrid, setIsDesktopRsGrid] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia(`(min-width: ${IBDRS_DESKTOP_MIN_WIDTH_PX}px)`).matches;
+  });
   const batchAbortRef = useRef(null);
 
   /** VCP 篩選：id → 加權合成值；僅在設了 vcp 上下限時向 Yahoo 批次抓取 */
@@ -2235,6 +2280,19 @@ export default function IBDRsRankingPage() {
       const x = document.getElementById(IBD_RS_PLACEHOLDER_STYLE_ID);
       if (x) x.remove();
     };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mql = window.matchMedia(`(min-width: ${IBDRS_DESKTOP_MIN_WIDTH_PX}px)`);
+    const update = () => setIsDesktopRsGrid(mql.matches);
+    update();
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', update);
+      return () => mql.removeEventListener('change', update);
+    }
+    mql.addListener(update);
+    return () => mql.removeListener(update);
   }, []);
 
   useEffect(() => {
@@ -2519,9 +2577,13 @@ export default function IBDRsRankingPage() {
 
   /** 並排小表：只顯示有資料的欄，空欄不 render（篩選後筆數少時不會留空白表） */
   const parallelChunksToShow = useMemo(() => {
-    const chunks = splitIntoColumnChunks(visible, IBDRS_PARALLEL_GROUPS);
+    const chunks = splitIntoColumnChunks(
+      visible,
+      IBDRS_PARALLEL_GROUPS,
+      isDesktopRsGrid ? 'horizontal' : 'vertical'
+    );
     return chunks.filter((c) => c.length > 0);
-  }, [visible]);
+  }, [visible, isDesktopRsGrid]);
 
   const hasActiveFilter = Object.entries(filters).some(([k, v]) => v !== '' && v !== DEFAULT_FILTERS[k]);
 
@@ -2809,31 +2871,13 @@ export default function IBDRsRankingPage() {
     <Layout title="IBD RS Ranking">
       <main className="ibd-rs-ranking-main" style={{ padding: '8px 0 12px', minWidth: 0 }}>
         <div className="ibd-rs-ranking-page-inner" style={{ padding: '0 10px', minWidth: 0 }}>
-          {/* ── 頂欄：左＝標題列＋統計列；中／右跨兩列以便與左側整塊垂直對齊 ─────────────── */}
+          {/* ── 頂欄 ─────────────────────────────────────────────────────────── */}
           <div style={{ marginBottom: 8 }}>
             <div
               className="ibd-rs-ranking-topbar-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
-                gridTemplateRows: showStatsRow ? 'auto auto' : 'auto',
-                alignItems: showStatsRow ? 'stretch' : 'center',
-                gap: showStatsRow ? '4px 12px' : '8px 12px',
-                width: '100%',
-              }}
+              style={{ width: '100%' }}
             >
-              <div
-                style={{
-                  gridColumn: 1,
-                  gridRow: 1,
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: '8px 10px',
-                  minWidth: 0,
-                  justifySelf: 'start',
-                }}
-              >
+              <div className="ibd-rs-ranking-topbar-title-cell">
                 <h2 style={{ margin: 0, fontSize: '1.15rem', lineHeight: 1.2 }}>IBD RS Ranking</h2>
                 <button
                   type="button"
@@ -2873,24 +2917,7 @@ export default function IBDRsRankingPage() {
                   觀察列表
                 </Link>
               </div>
-              <div
-                className="ibd-rs-ranking-topbar-filter-summary"
-                style={{
-                  gridColumn: 2,
-                  gridRow: showStatsRow ? '1 / 3' : '1',
-                  justifySelf: 'center',
-                  alignSelf: 'stretch',
-                  minWidth: 0,
-                  maxWidth: 'min(52vw, 440px)',
-                  padding: '0 10px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  textAlign: 'center',
-                  boxSizing: 'border-box',
-                }}
-              >
+              <div className="ibd-rs-ranking-topbar-filter-summary">
                 {hasActiveFilter && (
                   <>
                     <div
@@ -2925,47 +2952,10 @@ export default function IBDRsRankingPage() {
                   </>
                 )}
               </div>
-              <div
-                className="ibd-rs-ranking-topbar-actions"
-                style={{
-                  gridColumn: 3,
-                  gridRow: showStatsRow ? '1 / 3' : '1',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  alignContent: 'center',
-                  gap: 10,
-                  justifyContent: 'flex-end',
-                  minWidth: 0,
-                  justifySelf: 'end',
-                  alignSelf: 'stretch',
-                  height: '100%',
-                  boxSizing: 'border-box',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    flexWrap: 'nowrap',
-                    alignItems: 'center',
-                    gap: 10,
-                    minWidth: 0,
-                    flexShrink: 1,
-                  }}
-                >
+              <div className="ibd-rs-ranking-topbar-actions">
+                <div className="ibd-rs-ranking-topbar-actions-inner">
                   {pageCount > 1 && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        flexWrap: 'nowrap',
-                        flexShrink: 0,
-                        minHeight: 28,
-                      }}
-                    >
+                    <div className="ibd-rs-topbar-pager-wrap">
                       {[
                         { label: '«', target: 0, disabled: safePage === 0 },
                         { label: '‹', target: safePage - 1, disabled: safePage === 0 },
@@ -3045,22 +3035,19 @@ export default function IBDRsRankingPage() {
                 </div>
               </div>
 
-              {showStatsRow && (
-                <div
-                  style={{
-                    gridColumn: 1,
-                    gridRow: 2,
-                    fontSize: 11,
-                    color: '#555',
-                    lineHeight: 1.45,
-                    wordBreak: 'break-word',
-                    minWidth: 0,
-                  }}
-                >
+            </div>
+
+            {showStatsRow && (
+              <div className="ibd-rs-ranking-topbar-stats">
+                <span className="ibd-rs-stats-row-today">
                   <span style={{ color: updatedTodayCount === stocks.length ? '#1e7e34' : '#666' }}>
                     今日 <strong>{updatedTodayCount}</strong>/{stocks.length}
                   </span>
-                  <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
+                </span>
+                <span className="ibd-rs-stats-sep ibd-rs-stats-sep-after-today" style={{ color: '#bbb', margin: '0 6px' }}>
+                  |
+                </span>
+                <span className="ibd-rs-stats-row-second">
                   <span>
                     市<strong style={{ color: '#1565c0' }}>{marketStats.tw}</strong>
                   </span>
@@ -3076,14 +3063,16 @@ export default function IBDRsRankingPage() {
                   )}
                   {displaySyncDate && (
                     <>
-                      <span style={{ color: '#bbb', margin: '0 6px' }}>|</span>
+                      <span className="ibd-rs-stats-sep ibd-rs-stats-sep-before-sync" style={{ color: '#bbb', margin: '0 6px' }}>
+                        |
+                      </span>
                       同步 {displaySyncDate}
                       {lastSyncAt && <span style={{ color: '#999' }}>（{formatRelativeTime(lastSyncAt)}）</span>}
                     </>
                   )}
-                </div>
-              )}
-            </div>
+                </span>
+              </div>
+            )}
           </div>
 
           <SyncProgressBar progress={syncProgress} />
@@ -3097,6 +3086,7 @@ export default function IBDRsRankingPage() {
           {/* ── 篩選：懸浮按鈕 + 視窗 ─────────────────────────────────────────── */}
           <button
             type="button"
+            className="ibd-rs-filter-fab"
             onClick={() => setFilterOpen(true)}
             style={{
               position: 'fixed',
@@ -3122,6 +3112,7 @@ export default function IBDRsRankingPage() {
             <div
               role="dialog"
               aria-modal="true"
+              className="ibd-rs-filter-dialog-backdrop"
               onMouseDown={() => setFilterOpen(false)}
               style={{
                 position: 'fixed',
@@ -3135,6 +3126,7 @@ export default function IBDRsRankingPage() {
               }}
             >
               <div
+                className="ibd-rs-filter-dialog-panel"
                 onMouseDown={(e) => e.stopPropagation()}
                 style={{
                   width: '100%',
@@ -3204,6 +3196,7 @@ export default function IBDRsRankingPage() {
                 </div>
 
                 <div
+                  className="ibd-rs-filter-fields-grid"
                   style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(240px, auto))',
@@ -3424,6 +3417,7 @@ export default function IBDRsRankingPage() {
                 aria-label="RS 排名表（可橫向捲動檢視各欄）"
               >
                 <div
+                  className="ibd-rs-ranking-parallel-tables"
                   style={{
                     display: 'grid',
                     gridTemplateColumns: `repeat(${parallelChunksToShow.length}, ${IBDRS_QUADRANT_TABLE_WIDTH_PX}px)`,
@@ -3572,6 +3566,7 @@ export default function IBDRsRankingPage() {
 
           {/* ── 底欄：同步／重新載入 ─────────────────────────────────────────── */}
           <div
+            className="ibd-rs-ranking-bottom-actions"
             style={{
               display: 'flex',
               flexWrap: 'wrap',

@@ -103,6 +103,88 @@ html.ibd-rs-page .ibd-rs-ranking-main {
   width: 100%;
 }
 
+/* ── RS 頁頂欄：桌面為三欄 grid（內聯勿再設 display:grid，否則手機 media 無法覆蓋） ── */
+.ibd-rs-ranking-topbar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px 12px;
+  width: 100%;
+  align-items: center;
+}
+.ibd-rs-ranking-topbar-title-cell {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+  justify-self: start;
+}
+.ibd-rs-ranking-topbar-filter-summary {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  align-self: stretch;
+  min-width: 0;
+  max-width: min(52vw, 440px);
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  box-sizing: border-box;
+}
+.ibd-rs-ranking-topbar-actions {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  gap: 10px;
+  justify-content: flex-end;
+  min-width: 0;
+  justify-self: end;
+  align-self: stretch;
+  height: 100%;
+  box-sizing: border-box;
+}
+.ibd-rs-ranking-topbar-actions-inner {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+/* 統計列：grid 外的兄弟元素，桌面靠 margin-top 貼近，手機靠 media query 撐開 */
+.ibd-rs-ranking-topbar-stats {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0;
+  font-size: 11px;
+  color: #555;
+  line-height: 1.45;
+  word-break: break-word;
+  min-width: 0;
+  margin-top: 4px;
+}
+.ibd-rs-topbar-pager-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
 @media (max-width: 996px) {
   .ibd-rs-ranking-page-inner .ibd-rs-ranking-table-scroll {
     margin-left: -10px;
@@ -112,20 +194,191 @@ html.ibd-rs-page .ibd-rs-ranking-main {
     padding-bottom: 10px;
   }
 
-  /* 頂欄：標題獨列，搜尋＋翻頁下一列較好點 */
-  .ibd-rs-ranking-topbar-row {
+}
+
+/* ── RS 頁：手機與窄螢幕（≤768px） ── */
+@media (max-width: 768px) {
+  html.ibd-rs-page .ibd-rs-ranking-page-inner {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  html.ibd-rs-page .ibd-rs-ranking-topbar-row {
+    display: flex !important;
     flex-direction: column;
     align-items: stretch !important;
+    gap: 12px !important;
   }
-  .ibd-rs-ranking-topbar-actions {
+
+  html.ibd-rs-page .ibd-rs-ranking-topbar-title-cell,
+  html.ibd-rs-page .ibd-rs-ranking-topbar-filter-summary,
+  html.ibd-rs-page .ibd-rs-ranking-topbar-actions {
+    grid-column: unset !important;
+    grid-row: unset !important;
+    max-width: 100% !important;
     width: 100%;
+    justify-self: stretch !important;
+    align-self: stretch !important;
+    height: auto !important;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  html.ibd-rs-page .ibd-rs-ranking-topbar-title-cell {
+    order: 1;
+  }
+  html.ibd-rs-page .ibd-rs-ranking-topbar-filter-summary {
+    order: 2;
+    padding: 8px 10px;
+    background: var(--ifm-background-surface-color, #f8fafc);
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    align-items: stretch;
+    text-align: left;
+  }
+  html.ibd-rs-page .ibd-rs-ranking-topbar-actions {
+    order: 3;
+    box-sizing: border-box;
+  }
+
+  /* 統計列：在 topbar-row 之外，直接用 margin-top 撐開 */
+  html.ibd-rs-page .ibd-rs-ranking-topbar-stats {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 20px;
+    width: 100%;
+  }
+
+  html.ibd-rs-page .ibd-rs-stats-row-today,
+  html.ibd-rs-page .ibd-rs-stats-row-second {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* 手機：第一行只要「今日 x/y」，第二行「市·櫃 | 同步」；隱藏今日與後段之間的 | */
+  html.ibd-rs-page .ibd-rs-stats-sep-after-today {
+    display: none !important;
+  }
+
+  html.ibd-rs-page .ibd-rs-ranking-topbar-actions-inner {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+    gap: 10px !important;
     justify-content: flex-start !important;
   }
-  .ibd-rs-ranking-topbar-actions input.ibd-rs-topbar-search {
-    flex: 1 1 auto;
-    max-width: none;
-    width: auto;
-    min-width: 0;
+
+  html.ibd-rs-page .ibd-rs-topbar-pager-wrap {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+
+  html.ibd-rs-page .ibd-rs-ranking-topbar-actions input.ibd-rs-topbar-search {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 44px;
+    font-size: 16px; /* 避免 iOS 自動放大 */
+  }
+
+  /* 並排小表改直向堆疊 */
+  html.ibd-rs-page .ibd-rs-ranking-parallel-tables {
+    display: flex !important;
+    flex-direction: column;
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  /* 底欄同步按鈕 */
+  html.ibd-rs-page .ibd-rs-ranking-bottom-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  html.ibd-rs-page .ibd-rs-ranking-bottom-actions > button {
+    width: 100%;
+    min-height: 44px;
+    font-size: 15px !important;
+  }
+
+  /* 篩選 FAB */
+  html.ibd-rs-page button.ibd-rs-filter-fab {
+    right: max(12px, env(safe-area-inset-right)) !important;
+    bottom: max(72px, calc(16px + env(safe-area-inset-bottom))) !important;
+    padding: 12px 18px !important;
+    min-height: 48px;
+  }
+
+  /* 篩選面板：底部抽屜式 */
+  html.ibd-rs-page .ibd-rs-filter-dialog-backdrop {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+  html.ibd-rs-page .ibd-rs-filter-dialog-panel {
+    max-width: 100% !important;
+    width: 100% !important;
+    min-height: 55vh;
+    max-height: min(92vh, 100dvh) !important;
+    border-radius: 14px 14px 0 0 !important;
+    padding: 14px 14px max(20px, env(safe-area-inset-bottom)) !important;
+  }
+  html.ibd-rs-page .ibd-rs-filter-fields-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 個股圖表 modal */
+  html.ibd-rs-page .ibd-rs-chart-modal-backdrop {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+  html.ibd-rs-page .ibd-rs-chart-modal-panel {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: min(92dvh, 100dvh) !important;
+    max-height: min(92dvh, 100dvh) !important;
+    border-radius: 14px 14px 0 0 !important;
+    padding: 10px 12px 8px !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  }
+
+  /* 今日重點 modal */
+  html.ibd-rs-page .ibd-rs-major-moves-backdrop {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+  html.ibd-rs-page .ibd-rs-major-moves-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: min(92dvh, 100dvh) !important;
+    border-radius: 14px 14px 0 0 !important;
+  }
+  html.ibd-rs-page .ibd-rs-major-moves-panel .ibd-rs-major-moves-header {
+    padding: 12px 14px 10px !important;
+  }
+  html.ibd-rs-page .ibd-rs-major-moves-panel .ibd-rs-major-moves-body {
+    padding: 12px 14px 16px !important;
+  }
+
+  html.ibd-rs-page .ibd-rs-ranking-topbar-title-cell button,
+  html.ibd-rs-page .ibd-rs-ranking-topbar-title-cell a {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  html.ibd-rs-page .ibd-rs-topbar-pager-wrap button {
+    min-width: 40px;
+    min-height: 40px;
   }
 }
 

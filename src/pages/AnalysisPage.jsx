@@ -162,21 +162,12 @@ const AnalysisPage = () => {
     };
     const needReload = lastSyncAllAt != null && lastFetchedAt != null && lastSyncAllAt > lastFetchedAt;
 
-    // 依 startAnalysisBackgroundSync 內的預設並發／延遲估算時間（粗略）
-    const SYNC_CONCURRENCY = 3;
-
     const handleSyncAll = async () => {
         if (syncingAll || stocks.length === 0) return;
-        // 追蹤表同步目標：確保切頁仍在背景跑；並在可接受限流風險下提升速度
-        // 來源：fetchCompleteStockData 本身會做退避重試；外層只做節奏控流與並行度調整。
+        // 追蹤表同步：與 RS 全市場同步相同預設（並發 5、組間 400ms+jitter、每 300 檔長休息）
         const list = [...stocks];
         try {
-            await startAnalysisBackgroundSync({
-                stocks: list,
-                concurrency: 3,
-                delayMs: 1200,
-                delayJitterMs: 500,
-            });
+            await startAnalysisBackgroundSync({ stocks: list });
         } catch (e) {
             console.error('[追蹤表同步] 啟動失敗:', e);
         }
@@ -403,7 +394,7 @@ const AnalysisPage = () => {
                             </button>
                             {stocks.length > 0 && !syncingAll && (
                                 <span style={{ fontSize: '0.9em', color: '#666' }}>
-                                    共 {stocks.length} 檔，約需 {Math.ceil((stocks.length / SYNC_CONCURRENCY) * 3.5 / 60)} 分鐘
+                                    共 {stocks.length} 檔，約需 {Math.ceil((stocks.length / 5) * 3.5 / 60)} 分鐘
                                 </span>
                             )}
                         </div>

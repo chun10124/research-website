@@ -95,6 +95,11 @@ function toYahooBare(stockCode) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Yahoo 歷史價起算回溯月數（須與 rsApi.js 內 RS_PRICE_LOOKBACK_MONTHS 保持一致）
+ */
+const YAHOO_TRACKING_LOOKBACK_MONTHS = 15;
+
 /** Yahoo 經 proxy 易觸發 429，對可重試狀態與網路錯誤做指數退避 */
 const YAHOO_RETRYABLE_HTTP = new Set([408, 429, 502, 503, 504]);
 
@@ -153,6 +158,33 @@ export const fetchYahooPrice = async (stockCode) => {
   }
   return null;
 };
+
+/** Yahoo chart meta → 顯示名稱（longName 優先，多為英文公司全名） */
+function parseYahooChartMetaDisplayName(json) {
+  const meta = json?.chart?.result?.[0]?.meta;
+  if (!meta) return null;
+  const longN = meta.longName != null ? String(meta.longName).trim() : '';
+  const shortN = meta.shortName != null ? String(meta.shortName).trim() : '';
+  if (longN) return longN;
+  if (shortN) return shortN;
+  return null;
+}
+
+/** 輕量抓 Yahoo 股票名稱（5 日 chart），suffix 順序與價量 API 一致 */
+async function fetchYahooStockDisplayName(stockCode, market) {
+  const bare = toYahooBare(stockCode);
+  if (!bare) return null;
+  const suffixes =
+    market === 'TPEX' ? ['.TWO', '.TW'] : market === 'TWSE' ? ['.TW', '.TWO'] : ['.TW', '.TWO'];
+  for (let si = 0; si < suffixes.length; si++) {
+    if (si > 0) await sleep(400 + Math.floor(Math.random() * 200));
+    const json = await fetchYahooChart(`${bare}${suffixes[si]}`, '5d');
+    if (!json) continue;
+    const name = parseYahooChartMetaDisplayName(json);
+    if (name) return name;
+  }
+  return null;
+}
 
 /** 依起迄日數選 Yahoo chart range 參數 */
 function yahooRangeForDays(days) {
@@ -356,10 +388,14 @@ export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr, 
  */
 export const fetchYahooHistoricalPriceVolumeMaps = async (stockCode, startStr, endStr, opts = {}) => {
   const bare = toYahooBare(stockCode);
-  if (!bare) return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {}, ohlcSeries: [] };
+  if (!bare) {
+    return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {}, ohlcSeries: [], displayName: null };
+  }
   const start = (startStr || '').slice(0, 10);
   const end = (endStr || '').slice(0, 10);
-  if (!start) return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {}, ohlcSeries: [] };
+  if (!start) {
+    return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {}, ohlcSeries: [], displayName: null };
+  }
   const startDay = new Date(start).getTime() / (24 * 60 * 60 * 1000);
   const endDay = end ? new Date(end).getTime() / (24 * 60 * 60 * 1000) : startDay + 365;
   const days = Math.ceil(endDay - startDay) + 1;
@@ -379,12 +415,21 @@ export const fetchYahooHistoricalPriceVolumeMaps = async (stockCode, startStr, e
       if (!json) continue;
       const { priceMap, highMap, lowMap, volumeMap } = parseChartToPriceVolumeMaps(json, start, end);
       const ohlcSeries = parseChartToOhlcSeries(json, start, end);
-      if (Object.keys(priceMap).length > 0) return { priceMap, highMap, lowMap, volumeMap, ohlcSeries };
+      if (Object.keys(priceMap).length > 0) {
+        return {
+          priceMap,
+          highMap,
+          lowMap,
+          volumeMap,
+          ohlcSeries,
+          displayName: parseYahooChartMetaDisplayName(json),
+        };
+      }
     } catch (e) {
       console.warn(`fetchYahooHistoricalPriceVolumeMaps(${symbol}) failed:`, e?.message);
     }
   }
-  return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {}, ohlcSeries: [] };
+  return { priceMap: {}, highMap: {}, lowMap: {}, volumeMap: {}, ohlcSeries: [], displayName: null };
 };
 
 /**
@@ -433,6 +478,68 @@ export const fetchCurrentPrice = async (stockCode) => {
     return null;
   }
 };
+
+/** FinMind 陣列列中最新一筆日期 YYYY-MM-DD */
+function getLatestDateFromFinmindRows(arr) {
+  if (!arr?.length) return null;
+  let maxStr = null;
+  for (const row of arr) {
+    const d = row.date ?? row.Date ?? row.trade_date ?? row.TradeDate;
+    const str = d ? String(d).trim().split(' ')[0] : null;
+    if (str && /^\d{4}-\d{2}-\d{2}$/.test(str) && (!maxStr || str > maxStr)) maxStr = str;
+  }
+  return maxStr;
+}
+
+/**
+ * 追蹤表價量：Yahoo 為主（與 RS 的 fetchRsPriceData 相同：回溯月數 + ISO 起迄日），無資料再 FinMind TaiwanStockPrice。
+ */
+async function fetchTrackingTablePriceVolumeRows(stockCode, market, chartOpts = {}) {
+  const sCode = String(stockCode || '').trim();
+  if (!sCode) return null;
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setMonth(startDate.getMonth() - YAHOO_TRACKING_LOOKBACK_MONTHS);
+  const startStr = startDate.toISOString().slice(0, 10);
+  const endStr = endDate.toISOString().slice(0, 10);
+
+  const yahoo = await fetchYahooHistoricalPriceVolumeMaps(sCode, startStr, endStr, { market, ...chartOpts });
+  const pm = yahoo.priceMap || {};
+  const vm = yahoo.volumeMap || {};
+  const datesAsc = Object.keys(pm).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  if (datesAsc.length > 0) {
+    const datesDesc = [...datesAsc].reverse();
+    return {
+      priceCloseArray_NewestFirst: datesDesc.map((d) => pm[d]),
+      volumeArray_NewestFirst: datesDesc.map((d) => {
+        const v = vm[d];
+        return v != null && Number.isFinite(v) ? v : 0;
+      }),
+      latestPriceDate: datesAsc[datesAsc.length - 1],
+      currentPrice: pm[datesAsc[datesAsc.length - 1]] ?? 0,
+      yesterdayClose: datesAsc.length >= 2 ? pm[datesAsc[datesAsc.length - 2]] : 0,
+      yahooDisplayName: yahoo.displayName || null,
+    };
+  }
+
+  await sleep(400 + Math.floor(Math.random() * 200));
+  const finmindId = toFinmindStockId(sCode);
+  const finUrl = getFinmindPriceUrl(finmindId, startStr);
+  const fin = await safeFetch(finUrl);
+  const rows = fin?.data;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const priceData = rows.slice().reverse();
+  return {
+    priceCloseArray_NewestFirst: priceData.map((d) => Number(d.close)),
+    volumeArray_NewestFirst: priceData.map(
+      (d) => Number(d.Trading_Volume ?? d.trading_volume ?? d.volume ?? 0) || 0
+    ),
+    latestPriceDate: getLatestDateFromFinmindRows(rows),
+    currentPrice: Number(priceData[0]?.close) || 0,
+    yesterdayClose: Number(priceData[1]?.close) || 0,
+    yahooDisplayName: null,
+  };
+}
 
 const safeFetch = async (targetUrl) => {
     try {
@@ -492,40 +599,33 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
     return `${FINMIND_BASE}?${params.toString()}`;
   };
 
-  const getLatestDate = (arr) => {
-    if (!arr?.length) return null;
-    let maxStr = null;
-    for (const row of arr) {
-      const d = row.date ?? row.Date ?? row.trade_date ?? row.TradeDate;
-      const str = d ? String(d).trim().split(' ')[0] : null;
-      if (str && /^\d{4}-\d{2}-\d{2}$/.test(str) && (!maxStr || str > maxStr)) maxStr = str;
-    }
-    return maxStr;
-  };
-
   try {
     onProgress(` [${sCode}] 正在抓取三年長線持股數據以計算策略門檻...`);
 
-    const pricePromise = skipPrice ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockPrice", DATA_START_DATE));
+    const priceBundlePromise = skipPrice
+      ? Promise.resolve(null)
+      : fetchTrackingTablePriceVolumeRows(sCode, options.market, options.yahooChartOpts);
     const holdingPromise = skipHoldings ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START));
     const revenuePromise = skipRevenue ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE));
-    const infoPromise = skipInfo ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockInfo", ""));
     const pePromise = skipPER ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockPER", DATA_START_DATE));
+    /** skipPrice 時價量不打 Yahoo，另發 5d chart 只取名稱 */
+    const yahooNameOnlyPromise =
+      skipInfo || !skipPrice ? Promise.resolve(null) : fetchYahooStockDisplayName(sCode, options.market);
 
-    const [priceRes, holdingRes, revenueRes, infoRes, peRes] = await Promise.all([
-      pricePromise,
+    const [priceBundle, holdingRes, revenueRes, peRes, yahooNameOnly] = await Promise.all([
+      priceBundlePromise,
       holdingPromise,
       revenuePromise,
-      infoPromise,
-      pePromise
+      pePromise,
+      yahooNameOnlyPromise,
     ]);
 
-    if (!skipPrice && (!priceRes || !priceRes.data || priceRes.data.length === 0)) {
-        throw new Error("無法取得基礎股價數據，請檢查代碼或隧道狀態");
+    if (!skipPrice && !priceBundle) {
+      throw new Error("無法取得基礎股價數據，請檢查代碼或隧道狀態");
     }
 
     const latestPER = skipPER ? String(options.existingPER ?? '--') : ((peRes?.data && peRes.data.length > 0) ? peRes.data[peRes.data.length - 1].PER : '--');
-    const latestPERDate = skipPER ? (options.existingPERDate || null) : (peRes?.data?.length ? getLatestDate(peRes.data) : null);
+    const latestPERDate = skipPER ? (options.existingPERDate || null) : (peRes?.data?.length ? getLatestDateFromFinmindRows(peRes.data) : null);
 
     let priceCloseArray_NewestFirst;
     let volumeArray_NewestFirst;
@@ -539,12 +639,11 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       currentPrice = options.existingPrice.currentPrice ?? (priceCloseArray_NewestFirst[0] || 0);
       yesterdayClose = options.existingPrice.yesterdayClose ?? (priceCloseArray_NewestFirst[1] || 0);
     } else {
-      const priceData = (priceRes.data || []).slice().reverse();
-      priceCloseArray_NewestFirst = priceData.map(d => d.close);
-      volumeArray_NewestFirst = priceData.map(d => Number(d.Trading_Volume ?? d.trading_volume ?? d.volume ?? 0) || 0);
-      latestPriceDate = getLatestDate(priceRes.data);
-      currentPrice = priceCloseArray_NewestFirst[0] || 0;
-      yesterdayClose = priceCloseArray_NewestFirst[1] || 0;
+      priceCloseArray_NewestFirst = priceBundle.priceCloseArray_NewestFirst;
+      volumeArray_NewestFirst = priceBundle.volumeArray_NewestFirst;
+      latestPriceDate = priceBundle.latestPriceDate;
+      currentPrice = priceBundle.currentPrice;
+      yesterdayClose = priceBundle.yesterdayClose;
     }
 
     let foreignTotal_NewestFirst;
@@ -556,7 +655,7 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       const rawHoldingData = holdingRes?.data || [];
       foreignTotal_NewestFirst = rawHoldingData
         .map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000)).reverse();
-      latestHoldingsDate = getLatestDate(holdingRes?.data);
+      latestHoldingsDate = getLatestDateFromFinmindRows(holdingRes?.data);
     }
     
     let revenueArray_OldestFirst;
@@ -566,7 +665,7 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       latestRevenueDate = options.existingRevenue.latestRevenueDate || null;
     } else {
       revenueArray_OldestFirst = (revenueRes?.data || []).map(d => Math.round((d.revenue || 0) / 1000));
-      latestRevenueDate = revenueRes?.data?.length ? getLatestDate(revenueRes.data) : null;
+      latestRevenueDate = revenueRes?.data?.length ? getLatestDateFromFinmindRows(revenueRes.data) : null;
     }
     const revenueYoYArray_OldestFirst = (skipRevenue && Array.isArray(options.existingRevenue?.revenueYoY) && options.existingRevenue.revenueYoY.length > 0)
       ? options.existingRevenue.revenueYoY
@@ -576,7 +675,19 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
             return (prev && prev > 0) ? parseFloat(((cur - prev) / prev * 100).toFixed(2)) : null;
           }).filter(val => val !== null);
 
-    const stockName = skipInfo ? options.existingInfo.name : ((infoRes?.data || []).find(d => d.stock_id === sCode)?.stock_name || "未知");
+    let stockName;
+    if (skipInfo) {
+      stockName = options.existingInfo.name;
+    } else {
+      const rawYahooName = skipPrice ? yahooNameOnly : priceBundle?.yahooDisplayName;
+      const trimmedYahoo = rawYahooName != null ? String(rawYahooName).trim() : '';
+      if (trimmedYahoo) {
+        stockName = trimmedYahoo;
+      } else {
+        const infoRes = await safeFetch(getFinmindUrl("TaiwanStockInfo", ""));
+        stockName = (infoRes?.data || []).find((d) => d.stock_id === sCode)?.stock_name || '未知';
+      }
+    }
 
     return {
       code: sCode,
@@ -652,7 +763,7 @@ export const syncStockSnapshots = async (stock) => {
       opts.skipInfo = true;
       opts.existingInfo = { name: stock.name };
     }
-    const latestData = await fetchCompleteStockData(stock.code, () => {}, opts);
+    const latestData = await fetchCompleteStockData(stock.code, () => {}, { ...opts, market: stock.market });
     if (!latestData) return { updated: false, skipped: true, failed: false };
     await updateAnalysisField(stock.id, {
       ...latestData,
