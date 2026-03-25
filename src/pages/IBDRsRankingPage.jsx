@@ -687,20 +687,42 @@ function IbdRsComboChart({ data }) {
   };
 
   const handleChartTouchStart = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
     const t = e.touches[0];
     if (t) applyHoverClient(e.currentTarget, t.clientX, t.clientY);
   };
 
   const handleChartTouchMove = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
     const t = e.touches[0];
     if (t) applyHoverClient(e.currentTarget, t.clientX, t.clientY);
   };
 
-  const handleChartTouchEnd = () => {
+  const handleChartTouchEnd = (e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     setHoverIdx(null);
   };
 
+  const handleChartWheel = (e) => {
+    // 防止觸控板/滑鼠滾輪在圖表上誤觸造成 modal 或背景捲動
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   const hd = hoverIdx != null ? data[hoverIdx] : null;
+  const tooltipHeightEstimate = 122;
+  const tooltipTop =
+    hoverIdx == null
+      ? 0
+      : Math.min(
+          Math.max(4, h - tooltipHeightEstimate - 4),
+          Math.max(4, mousePos.y - 10),
+        );
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -720,6 +742,7 @@ function IbdRsComboChart({ data }) {
         onTouchMove={handleChartTouchMove}
         onTouchEnd={handleChartTouchEnd}
         onTouchCancel={handleChartTouchEnd}
+        onWheel={handleChartWheel}
       >
         {/* 繪圖區底色 */}
         <rect x={PAD_L} y={PAD_T} width={innerW} height={innerH} fill="#ffffff" />
@@ -794,7 +817,7 @@ function IbdRsComboChart({ data }) {
         <div
           style={{
             position: 'absolute',
-            top: Math.max(4, mousePos.y - 10),
+            top: tooltipTop,
             left: mousePos.x > w / 2 ? Math.max(4, mousePos.x - 175) : mousePos.x + 14,
             pointerEvents: 'none',
             zIndex: 20,
@@ -1548,8 +1571,13 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               flexDirection: 'column',
               gap: 0,
               width: '100%',
-              overflow: 'auto',
+              overflow: 'hidden',
               WebkitOverflowScrolling: 'touch',
+            }}
+            onWheel={(e) => {
+              // 圖表區不應觸發垂直捲動（尤其下半部靠近底部時）
+              e.preventDefault();
+              e.stopPropagation();
             }}
           >
             <section
@@ -1566,6 +1594,10 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                 padding: '10px 12px 8px',
                 background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
                 boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+              }}
+              onWheel={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
               }}
             >
               <header
