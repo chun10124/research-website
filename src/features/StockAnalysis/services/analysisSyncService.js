@@ -196,6 +196,7 @@ export function startAnalysisBackgroundSync({
       running = false;
       currentAbortController = null;
       runPromise = null;
+      emit(); // running 已變 false，通知 UI 解除 loading 狀態
     }
   })();
 

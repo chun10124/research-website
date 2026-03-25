@@ -22,7 +22,6 @@ import {
   VCP_WEIGHT_PRICE,
   VCP_WEIGHT_VOLUME,
 } from '../features/StockAnalysis/utils/rsCalculator';
-import Link from '@docusaurus/Link';
 import IbdRsQuadrantTable from '../features/StockAnalysis/components/IbdRsQuadrantTable';
 import {
   splitIntoColumnChunks,
@@ -101,10 +100,22 @@ const MM_FOCUS_MODAL_WIDTH_PX = MM_FOCUS_TABLE_MIN_PX + 2 + MM_FOCUS_MODAL_CONTE
 /** 大螢幕時視窗至少此寬（表格 colgroup 不變，多餘為右側留白；內容靠左） */
 const MM_FOCUS_MODAL_WIDTH_FLOOR_PX = 700;
 
-/** 橫向並排幾組「完整欄位」（每組一張表） */
+/** 首頁卡片：超過 15 檔改用分頁 */
+const IBDRS_HOME_CARD_PAGE_SIZE = 15;
+/** 首頁卡片：統一內容區高度（表頭 + 15 列） */
+const IBDRS_HOME_CARD_TABLE_HEAD_PX = 32;
+const IBDRS_HOME_CARD_ROW_PX = 26;
+const IBDRS_HOME_CARD_BODY_MIN_PX = IBDRS_HOME_CARD_TABLE_HEAD_PX + IBDRS_HOME_CARD_PAGE_SIZE * IBDRS_HOME_CARD_ROW_PX;
+/** 首頁卡片：首次出現追蹤（紅點）快取 key */
+const IBDRS_HOME_FIRST_SEEN_MAP_KEY = 'ibd-rs-home-first-seen-v1';
+/** 首頁紅點：首次出現後顯示天數 */
+const IBDRS_HOME_DOT_DAYS = 3;
+/** 首頁首次出現追蹤僅保留最近 3 個月（約 90 天） */
+const IBDRS_HOME_FIRST_SEEN_KEEP_DAYS = 90;
+/** 完整排行：每頁固定 4 個大欄 */
 const IBDRS_PARALLEL_GROUPS = 4;
-/** 與 custom.css 行為一致：<=768 視為手機版版面 */
-const IBDRS_DESKTOP_MIN_WIDTH_PX = 769;
+/** 手機版切換門檻（與既有樣式一致） */
+const IBDRS_MOBILE_MAX_WIDTH_PX = 768;
 
 /** 第一段「重大變動」：單日 |ΔRS| 須嚴格大於此值 */
 const IBDRS_MAJOR_MOVE_DELTA_GT = 5;
@@ -127,7 +138,7 @@ const IBDRS_MODAL_HL_RS_GT = 85;
 /** 每個大欄（一張小表）一頁幾筆；總筆數 = 此值 × 大欄數 */
 const IBDRS_ROWS_PER_QUADRANT = 100;
 
-/** 每頁總筆數（各大欄加總） */
+/** 第二頁大表：每頁總筆數（4 欄 × 各 100 檔） */
 const PAGE_SIZE = IBDRS_ROWS_PER_QUADRANT * IBDRS_PARALLEL_GROUPS;
 
 // ─── 工具函式 ────────────────────────────────────────────────────────────────
@@ -176,6 +187,41 @@ function formatRelativeTime(ts) {
   if (diff < hr) return `${Math.floor(diff / min)} 分鐘前`;
   if (diff < day) return `${Math.floor(diff / hr)} 小時前`;
   return `${Math.floor(diff / day)} 天前`;
+}
+
+function parseYmdToUtcMs(ymd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ''))) return null;
+  const y = Number(ymd.slice(0, 4));
+  const m = Number(ymd.slice(5, 7));
+  const d = Number(ymd.slice(8, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  return Date.UTC(y, m - 1, d);
+}
+
+function dayDiffYmd(fromYmd, toYmd) {
+  const a = parseYmdToUtcMs(fromYmd);
+  const b = parseYmdToUtcMs(toYmd);
+  if (a == null || b == null) return null;
+  return Math.floor((b - a) / 86400000);
+}
+
+function loadHomeFirstSeenMap() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(IBDRS_HOME_FIRST_SEEN_MAP_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveHomeFirstSeenMap(firstSeenMap) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(IBDRS_HOME_FIRST_SEEN_MAP_KEY, JSON.stringify(firstSeenMap || {}));
+  } catch {}
 }
 
 /**
@@ -641,19 +687,16 @@ function IbdRsComboChart({ data }) {
   };
 
   const handleChartTouchStart = (e) => {
-    e.stopPropagation();
     const t = e.touches[0];
     if (t) applyHoverClient(e.currentTarget, t.clientX, t.clientY);
   };
 
   const handleChartTouchMove = (e) => {
-    e.stopPropagation();
     const t = e.touches[0];
     if (t) applyHoverClient(e.currentTarget, t.clientX, t.clientY);
   };
 
-  const handleChartTouchEnd = (e) => {
-    e.stopPropagation();
+  const handleChartTouchEnd = () => {
     setHoverIdx(null);
   };
 
@@ -1573,7 +1616,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                     }}
                   >
                     <strong style={{ color: '#c0392b' }}>紅線</strong>＝RS（左）　
-                    <strong style={{ color: '#1565c0' }}>藍線</strong>＝加權 ^TWII（右）；K 線與折線共用 Yahoo 交易日對齊
+                    <strong style={{ color: '#1565c0' }}>藍線</strong>＝加權 ^TWII（右）
                   </span>
                 </div>
               </header>
@@ -1643,6 +1686,213 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         </div>
       </div>
     </div>
+  );
+}
+
+function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, onMeasure, mobileLayout = false }) {
+  const { key, title, subtitle, items, totalCount, emptyText } = section;
+  const cardRef = useRef(null);
+  const [cardPage, setCardPage] = useState(0);
+  const cardPageCount = Math.max(1, Math.ceil(items.length / IBDRS_HOME_CARD_PAGE_SIZE));
+  const safeCardPage = Math.min(cardPage, cardPageCount - 1);
+  const visibleItems = useMemo(
+    () => items.slice(safeCardPage * IBDRS_HOME_CARD_PAGE_SIZE, (safeCardPage + 1) * IBDRS_HOME_CARD_PAGE_SIZE),
+    [items, safeCardPage]
+  );
+
+  useEffect(() => {
+    setCardPage(0);
+  }, [key, items]);
+
+  useEffect(() => {
+    if (cardPage !== safeCardPage) setCardPage(safeCardPage);
+  }, [cardPage, safeCardPage]);
+
+  useLayoutEffect(() => {
+    if (typeof onMeasure !== 'function') return;
+    const el = cardRef.current;
+    if (!el) return;
+    onMeasure(key, Math.ceil(el.getBoundingClientRect().height));
+  }, [key, items.length, safeCardPage, onMeasure]);
+  const th = {
+    padding: '5px 4px',
+    borderBottom: '1px solid #e5e7eb',
+    background: '#f8fafc',
+    fontSize: 10,
+    fontWeight: 800,
+    color: '#334155',
+    textAlign: 'center',
+    whiteSpace: 'nowrap',
+  };
+  const td = {
+    padding: '5px 4px',
+    borderBottom: '1px solid #f8fafc',
+    fontSize: 10.5,
+    textAlign: 'center',
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+  };
+  const fmtPct = (v) => (v != null && Number.isFinite(v) ? `${v > 0 ? '+' : ''}${Math.round(v)}` : '—');
+  const fmtHl = (v) => (v != null && Number.isFinite(v) ? v.toFixed(2) : '—');
+
+  return (
+    <section
+      ref={cardRef}
+      key={key}
+      style={{
+        background: '#fff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 12,
+        overflow: 'hidden',
+        boxShadow: '0 2px 12px rgba(15, 23, 42, 0.04)',
+        minHeight: uniformHeight || undefined,
+      }}
+    >
+      <header
+        style={{
+          padding: '8px 10px',
+          borderBottom: '1px solid #f1f5f9',
+          background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 8,
+          flexWrap: 'wrap',
+        }}
+      >
+        <strong style={{ color: '#0f766e', fontSize: 13 }}>{title}</strong>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{totalCount} 檔</span>
+        {subtitle ? <span style={{ fontSize: 11, color: '#94a3b8' }}>{subtitle}</span> : null}
+        {cardPageCount > 1 ? (
+          <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button
+              type="button"
+              onClick={() => setCardPage((p) => Math.max(0, p - 1))}
+              disabled={safeCardPage === 0}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#475569',
+                fontSize: 14,
+                lineHeight: 1,
+                padding: '0 3px',
+                cursor: safeCardPage === 0 ? 'default' : 'pointer',
+                opacity: safeCardPage === 0 ? 0.45 : 1,
+              }}
+            >
+              ‹
+            </button>
+            <span style={{ fontSize: 11, color: '#64748b', minWidth: 40, textAlign: 'center' }}>
+              {safeCardPage + 1}/{cardPageCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCardPage((p) => Math.min(cardPageCount - 1, p + 1))}
+              disabled={safeCardPage >= cardPageCount - 1}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#475569',
+                fontSize: 14,
+                lineHeight: 1,
+                padding: '0 3px',
+                cursor: safeCardPage >= cardPageCount - 1 ? 'default' : 'pointer',
+                opacity: safeCardPage >= cardPageCount - 1 ? 0.45 : 1,
+              }}
+            >
+              ›
+            </button>
+          </div>
+        ) : null}
+      </header>
+      <div
+        style={{
+          overflowX: 'hidden',
+          overflowY: 'visible',
+          minHeight: mobileLayout ? undefined : IBDRS_HOME_CARD_BODY_MIN_PX,
+          paddingLeft: 12,
+          paddingRight: 12,
+        }}
+      >
+        {items.length === 0 ? (
+          <div style={{ padding: '14px 12px', fontSize: 12, color: '#94a3b8' }}>{emptyText || '今日無符合條件股票'}</div>
+        ) : (
+          <table style={{ width: '100%', minWidth: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '11.3333%' }} />
+              <col style={{ width: '11.3333%' }} />
+              <col style={{ width: '11.3333%' }} />
+              <col style={{ width: '11.3333%' }} />
+              <col style={{ width: '11.3333%' }} />
+              <col style={{ width: '11.3333%' }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th style={th}>代號</th>
+                <th style={{ ...th, textAlign: 'left', paddingLeft: 6 }}>名稱</th>
+                <th style={th}>RS</th>
+                <th style={th}>Δ5</th>
+                <th style={th}>Δ20</th>
+                <th style={th}>5D</th>
+                <th style={th}>20D</th>
+                <th style={th}>HL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleItems.map((s, idx) => {
+                const displayRs = getEffectiveDisplayRs(s);
+                const isNew = newIdSet?.has(s.id) === true;
+                return (
+                  <tr
+                    key={`${key}-${s.id}-${idx}`}
+                    onClick={() => onPickStock?.(s)}
+                    title={isNew ? '今日新出現' : undefined}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td style={{ ...td, color: '#334155' }}>
+                      {s.id}
+                    </td>
+                    <td
+                      style={{
+                        ...td,
+                        textAlign: 'left',
+                        paddingLeft: 4,
+                        color: '#111827',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      <span>{s.name}</span>
+                      {isNew ? (
+                        <span
+                          aria-label="今日新出現"
+                          style={{
+                            display: 'inline-block',
+                            width: 7,
+                            height: 7,
+                            borderRadius: '50%',
+                            background: '#0084ff',
+                            marginLeft: 6,
+                            verticalAlign: 'middle',
+                          }}
+                        />
+                      ) : null}
+                    </td>
+                    <td style={{ ...td, color: '#334155' }}>{displayRs ?? '—'}</td>
+                    <td style={{ ...td, color: getDeltaColor(s.delta5d) }}>{fmtDelta(s.delta5d)}</td>
+                    <td style={{ ...td, color: getDeltaColor(s.delta20d) }}>{fmtDelta(s.delta20d)}</td>
+                    <td style={{ ...td, color: getDeltaColor(s.pricePct5d) }}>{fmtPct(s.pricePct5d)}</td>
+                    <td style={{ ...td, color: getDeltaColor(s.pricePct20d) }}>{fmtPct(s.pricePct20d)}</td>
+                    <td style={{ ...td, color: '#475569' }}>{fmtHl(s.pricePos6m)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -2216,6 +2466,7 @@ export default function IBDRsRankingPage() {
   const { stocks, loading, syncing, syncProgress, syncRs, lastSyncAt, refresh } = useIbdRsData();
   const { idSet: rsWatchlistIdSet, toggle: toggleRsWatchlist } = useIbdRsWatchlist();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [activeView, setActiveView] = useState('home');
   const [page, setPage] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [lastSyncDateLocal, setLastSyncDateLocal] = useState(null);
@@ -2226,9 +2477,11 @@ export default function IBDRsRankingPage() {
   const [majorMovesOpen, setMajorMovesOpen] = useState(false);
   const [testMsg, setTestMsg] = useState(null);
   const [batchRunning, setBatchRunning] = useState(false);
-  const [isDesktopRsGrid, setIsDesktopRsGrid] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return window.matchMedia(`(min-width: ${IBDRS_DESKTOP_MIN_WIDTH_PX}px)`).matches;
+  const [homeSectionNewMap, setHomeSectionNewMap] = useState(() => new Map());
+  const [homeCardUniformHeight, setHomeCardUniformHeight] = useState(null);
+  const [isMobileLayout, setIsMobileLayout] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(`(max-width: ${IBDRS_MOBILE_MAX_WIDTH_PX}px)`).matches;
   });
   const batchAbortRef = useRef(null);
 
@@ -2283,19 +2536,6 @@ export default function IBDRsRankingPage() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const mql = window.matchMedia(`(min-width: ${IBDRS_DESKTOP_MIN_WIDTH_PX}px)`);
-    const update = () => setIsDesktopRsGrid(mql.matches);
-    update();
-    if (typeof mql.addEventListener === 'function') {
-      mql.addEventListener('change', update);
-      return () => mql.removeEventListener('change', update);
-    }
-    mql.addListener(update);
-    return () => mql.removeListener(update);
-  }, []);
-
-  useEffect(() => {
     setMounted(true);
     try {
       const v = localStorage.getItem(IBDRS_LAST_SYNC_DATE_KEY);
@@ -2336,6 +2576,19 @@ export default function IBDRsRankingPage() {
       if (v) setLastSyncDateLocal(v);
     } catch (_) {}
   }, [lastSyncAt]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mql = window.matchMedia(`(max-width: ${IBDRS_MOBILE_MAX_WIDTH_PX}px)`);
+    const update = () => setIsMobileLayout(mql.matches);
+    update();
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', update);
+      return () => mql.removeEventListener('change', update);
+    }
+    mql.addListener(update);
+    return () => mql.removeListener(update);
+  }, []);
 
   // 今日台北時間
   const todayYmd = mounted ? getTaiwanYmd() : null;
@@ -2574,16 +2827,15 @@ export default function IBDRsRankingPage() {
   /** 篩選後筆數變少時，page state 可能大於最後一頁 → 用 safePage 切 slice 與翻頁 */
   const safePage = pageCount > 0 ? Math.min(page, pageCount - 1) : 0;
   const visible = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
-
-  /** 並排小表：只顯示有資料的欄，空欄不 render（篩選後筆數少時不會留空白表） */
   const parallelChunksToShow = useMemo(() => {
-    const chunks = splitIntoColumnChunks(
-      visible,
-      IBDRS_PARALLEL_GROUPS,
-      isDesktopRsGrid ? 'horizontal' : 'vertical'
-    );
+    const chunks = splitIntoColumnChunks(visible, IBDRS_PARALLEL_GROUPS, 'horizontal');
     return chunks.filter((c) => c.length > 0);
-  }, [visible, isDesktopRsGrid]);
+  }, [visible]);
+
+  const watchlistStocks = useMemo(() => {
+    if (!rsWatchlistIdSet || rsWatchlistIdSet.size === 0) return [];
+    return globalSorted.filter((s) => rsWatchlistIdSet.has(s.id));
+  }, [globalSorted, rsWatchlistIdSet]);
 
   const hasActiveFilter = Object.entries(filters).some(([k, v]) => v !== '' && v !== DEFAULT_FILTERS[k]);
 
@@ -2701,6 +2953,99 @@ export default function IBDRsRankingPage() {
     out.sort((a, b) => (b.pricePos6m ?? 0) - (a.pricePos6m ?? 0));
     return out;
   }, [enriched, focusPanelRefYmd]);
+
+  /** 首頁卡片篩選母體：永遠以全市場 filtered 結果為準 */
+  const filteredIdSet = useMemo(() => new Set(filtered.map((s) => s.id)), [filtered]);
+
+  const homeSections = useMemo(
+    () => [
+      {
+        key: 'watchlist',
+        title: '觀察清單',
+        subtitle: '自選追蹤',
+        items: watchlistStocks.filter((s) => filteredIdSet.has(s.id)),
+        totalCount: watchlistStocks.filter((s) => filteredIdSet.has(s.id)).length,
+        emptyText: '觀察清單目前沒有股票',
+      },
+      {
+        key: 'hlHigh',
+        title: `HL（6M）> ${IBDRS_MODAL_HL_GT}`,
+        subtitle: `且 RS > ${IBDRS_MODAL_HL_RS_GT}`,
+        items: hlHighList.filter((s) => filteredIdSet.has(s.id)),
+        totalCount: hlHighList.filter((s) => filteredIdSet.has(s.id)).length,
+      },
+      {
+        key: 'majorMove',
+        title: `單日 |ΔRS| > ${IBDRS_MAJOR_MOVE_DELTA_GT} 且 RS > ${IBDRS_MAJOR_MOVE_RS_GT}`,
+        subtitle: '',
+        items: majorMoveStocksToday.filter((s) => filteredIdSet.has(s.id)),
+        totalCount: majorMoveStocksToday.filter((s) => filteredIdSet.has(s.id)).length,
+      },
+      {
+        key: 'priceBigMove',
+        title: `當日漲跌停 且 RS > ${IBDRS_FOCUS_PRICE_RS_GT}`,
+        subtitle: '',
+        items: priceBigMoveHighRsToday.filter((s) => filteredIdSet.has(s.id)),
+        totalCount: priceBigMoveHighRsToday.filter((s) => filteredIdSet.has(s.id)).length,
+      },
+      {
+        key: 'break80',
+        title: `向上突破 ${IBDRS_RS_BREAK_LEVEL_80}`,
+        subtitle: '由下往上穿越',
+        items: rsBreakthrough80Today.filter((s) => filteredIdSet.has(s.id)),
+        totalCount: rsBreakthrough80Today.filter((s) => filteredIdSet.has(s.id)).length,
+      },
+      {
+        key: 'break90',
+        title: `向上突破 ${IBDRS_RS_BREAK_LEVEL_90}`,
+        subtitle: '由下往上穿越',
+        items: rsBreakthrough90Today.filter((s) => filteredIdSet.has(s.id)),
+        totalCount: rsBreakthrough90Today.filter((s) => filteredIdSet.has(s.id)).length,
+      },
+    ],
+    [
+      filteredIdSet,
+      watchlistStocks,
+      majorMoveStocksToday,
+      priceBigMoveHighRsToday,
+      rsBreakthrough80Today,
+      rsBreakthrough90Today,
+      hlHighList,
+    ]
+  );
+
+  useEffect(() => {
+    if (!todayYmd || !Array.isArray(homeSections) || homeSections.length === 0) return;
+    const firstSeenMap = loadHomeFirstSeenMap();
+    const nextFirstSeenMap = {};
+    const nextNewMap = new Map();
+
+    // 只保留近 3 個月首次出現紀錄
+    for (const [id, ymd] of Object.entries(firstSeenMap || {})) {
+      const diff = dayDiffYmd(ymd, todayYmd);
+      if (diff != null && diff >= 0 && diff <= IBDRS_HOME_FIRST_SEEN_KEEP_DAYS) {
+        nextFirstSeenMap[id] = ymd;
+      }
+    }
+
+    // 以首頁實際出現為準，寫入首次出現日；紅點顯示 3 天
+    for (const sec of homeSections) {
+      const dotSet = new Set();
+      for (const s of sec.items) {
+        const id = String(s.id || '').trim();
+        if (!id) continue;
+        if (!nextFirstSeenMap[id]) nextFirstSeenMap[id] = todayYmd;
+        const diff = dayDiffYmd(nextFirstSeenMap[id], todayYmd);
+        if (diff != null && diff >= 0 && diff < IBDRS_HOME_DOT_DAYS) {
+          dotSet.add(id);
+        }
+      }
+      nextNewMap.set(sec.key, dotSet);
+    }
+
+    saveHomeFirstSeenMap(nextFirstSeenMap);
+    setHomeSectionNewMap(nextNewMap);
+  }, [todayYmd, homeSections]);
 
   // ── 同步：按一次跑完全市場（略過已快取）；Shift＝強制重抓
   const handleSync = (e) => {
@@ -2866,6 +3211,12 @@ export default function IBDRsRankingPage() {
   }, [page, pageCount]);
 
   const showStatsRow = mounted && stocks.length > 0;
+  const handleHomeCardMeasure = useCallback((secKey, height) => {
+    if (isMobileLayout) return;
+    if (secKey !== 'hlHigh') return;
+    if (!Number.isFinite(height) || height <= 0) return;
+    setHomeCardUniformHeight((prev) => (prev === height ? prev : height));
+  }, [isMobileLayout]);
 
   return (
     <Layout title="IBD RS Ranking">
@@ -2875,47 +3226,108 @@ export default function IBDRsRankingPage() {
           <div style={{ marginBottom: 8 }}>
             <div
               className="ibd-rs-ranking-topbar-row"
-              style={{ width: '100%' }}
+              style={{
+                width: '100%',
+                alignItems: isMobileLayout ? 'stretch' : 'center',
+                flexDirection: isMobileLayout ? 'column' : 'row',
+                gap: isMobileLayout ? 6 : undefined,
+              }}
             >
-              <div className="ibd-rs-ranking-topbar-title-cell">
-                <h2 style={{ margin: 0, fontSize: '1.15rem', lineHeight: 1.2 }}>IBD RS Ranking</h2>
-                <button
-                  type="button"
-                  onClick={() => setMajorMovesOpen(true)}
-                  disabled={loading}
-                  title={`今日重點：|ΔRS|>${IBDRS_MAJOR_MOVE_DELTA_GT}且RS>${IBDRS_MAJOR_MOVE_RS_GT}／|1D%|>${IBDRS_FOCUS_PRICE_PCT_ABS_GT}且RS>${IBDRS_FOCUS_PRICE_RS_GT}／突破80·90／HL(6M)>${IBDRS_MODAL_HL_GT}且RS>${IBDRS_MODAL_HL_RS_GT}；點列開折線圖`}
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    padding: '5px 10px',
-                    borderRadius: 8,
-                    border: '1px solid #0d9488',
-                    background: '#ecfdf5',
-                    color: '#0f766e',
-                    cursor: loading ? 'wait' : 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  今日重點
-                </button>
-                <Link
-                  to="/RSWatchlistPage"
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    padding: '5px 10px',
-                    borderRadius: 8,
-                    border: '1px solid #d97706',
-                    background: '#fffbeb',
-                    color: '#b45309',
-                    whiteSpace: 'nowrap',
-                    textDecoration: 'none',
-                    display: 'inline-block',
-                    lineHeight: 1.25,
-                  }}
-                >
-                  觀察列表
-                </Link>
+              <div style={{ display: 'flex', minWidth: 0 }}>
+                <div className="ibd-rs-ranking-topbar-title-cell">
+                  <h2 style={{ margin: 0, fontSize: '1.15rem', lineHeight: 1.2 }}>IBD RS Ranking</h2>
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {[
+                      { key: 'home', label: '首頁總覽' },
+                      { key: 'table', label: '完整排行' },
+                    ].map((tab) => {
+                      const active = activeView === tab.key;
+                      return (
+                        <button
+                          key={tab.key}
+                          type="button"
+                          onClick={() => {
+                            setActiveView(tab.key);
+                            if (tab.key === 'table') setPage(0);
+                          }}
+                          style={{
+                            border: 0,
+                            padding: '5px 10px',
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            background: active ? '#0f766e' : '#fff',
+                            color: active ? '#fff' : '#334155',
+                          transition: 'background-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
+                          boxShadow: active ? 'inset 0 0 0 1px rgba(15,118,110,0.2)' : 'none',
+                          }}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {showStatsRow && (
+                    <div className="ibd-rs-ranking-topbar-stats" style={{ marginTop: 0 }}>
+                      {isMobileLayout ? (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: '#666',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          同步 {displaySyncDate || '—'}
+                        </div>
+                      ) : (
+                        <>
+                          <span className="ibd-rs-stats-row-today">
+                            <span style={{ color: updatedTodayCount === stocks.length ? '#1e7e34' : '#666' }}>
+                              今日 <strong>{updatedTodayCount}</strong>/{stocks.length}
+                            </span>
+                          </span>
+                          <span className="ibd-rs-stats-sep ibd-rs-stats-sep-after-today" style={{ color: '#bbb', margin: '0 6px' }}>
+                            |
+                          </span>
+                          <span className="ibd-rs-stats-row-second">
+                            <span>
+                              市<strong style={{ color: '#1565c0' }}>{marketStats.tw}</strong>
+                            </span>
+                            <span style={{ color: '#bbb', margin: '0 4px' }}>·</span>
+                            <span>
+                              櫃<strong style={{ color: '#6a1b9a' }}>{marketStats.tp}</strong>
+                            </span>
+                            {marketStats.unknown > 0 && (
+                              <span style={{ color: '#999' }}>
+                                {' '}
+                                · 未標註 <strong>{marketStats.unknown}</strong>
+                              </span>
+                            )}
+                            {displaySyncDate && (
+                              <>
+                                <span className="ibd-rs-stats-sep ibd-rs-stats-sep-before-sync" style={{ color: '#bbb', margin: '0 6px' }}>
+                                  |
+                                </span>
+                                同步 {displaySyncDate}
+                                {lastSyncAt && <span style={{ color: '#999' }}>（{formatRelativeTime(lastSyncAt)}）</span>}
+                              </>
+                            )}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="ibd-rs-ranking-topbar-filter-summary">
                 {hasActiveFilter && (
@@ -2952,9 +3364,26 @@ export default function IBDRsRankingPage() {
                   </>
                 )}
               </div>
-              <div className="ibd-rs-ranking-topbar-actions">
-                <div className="ibd-rs-ranking-topbar-actions-inner">
-                  {pageCount > 1 && (
+              <div
+                className="ibd-rs-ranking-topbar-actions"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  width: isMobileLayout ? '100%' : undefined,
+                  justifyContent: isMobileLayout ? 'flex-start' : undefined,
+                }}
+              >
+                <div
+                  className="ibd-rs-ranking-topbar-actions-inner"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: isMobileLayout ? '100%' : undefined,
+                    justifyContent: isMobileLayout ? 'space-between' : undefined,
+                  }}
+                >
+                  {activeView === 'table' && pageCount > 1 && (
                     <div className="ibd-rs-topbar-pager-wrap">
                       {[
                         { label: '«', target: 0, disabled: safePage === 0 },
@@ -3024,7 +3453,7 @@ export default function IBDRsRankingPage() {
                       borderRadius: 6,
                       fontSize: 12,
                       lineHeight: 1.25,
-                      width: 200,
+                      width: isMobileLayout ? 'min(100%, 280px)' : 200,
                       maxWidth: 220,
                       minHeight: 28,
                       boxSizing: 'border-box',
@@ -3036,43 +3465,6 @@ export default function IBDRsRankingPage() {
               </div>
 
             </div>
-
-            {showStatsRow && (
-              <div className="ibd-rs-ranking-topbar-stats">
-                <span className="ibd-rs-stats-row-today">
-                  <span style={{ color: updatedTodayCount === stocks.length ? '#1e7e34' : '#666' }}>
-                    今日 <strong>{updatedTodayCount}</strong>/{stocks.length}
-                  </span>
-                </span>
-                <span className="ibd-rs-stats-sep ibd-rs-stats-sep-after-today" style={{ color: '#bbb', margin: '0 6px' }}>
-                  |
-                </span>
-                <span className="ibd-rs-stats-row-second">
-                  <span>
-                    市<strong style={{ color: '#1565c0' }}>{marketStats.tw}</strong>
-                  </span>
-                  <span style={{ color: '#bbb', margin: '0 4px' }}>·</span>
-                  <span>
-                    櫃<strong style={{ color: '#6a1b9a' }}>{marketStats.tp}</strong>
-                  </span>
-                  {marketStats.unknown > 0 && (
-                    <span style={{ color: '#999' }}>
-                      {' '}
-                      · 未標註 <strong>{marketStats.unknown}</strong>
-                    </span>
-                  )}
-                  {displaySyncDate && (
-                    <>
-                      <span className="ibd-rs-stats-sep ibd-rs-stats-sep-before-sync" style={{ color: '#bbb', margin: '0 6px' }}>
-                        |
-                      </span>
-                      同步 {displaySyncDate}
-                      {lastSyncAt && <span style={{ color: '#999' }}>（{formatRelativeTime(lastSyncAt)}）</span>}
-                    </>
-                  )}
-                </span>
-              </div>
-            )}
           </div>
 
           <SyncProgressBar progress={syncProgress} />
@@ -3376,9 +3768,9 @@ export default function IBDRsRankingPage() {
             </div>
           )}
 
-          {/* ── 表格：並排多組（橫向捲在 .ibd-rs-ranking-table-scroll） ── */}
+          {/* ── 首頁區塊 / 第二頁完整排行 ─────────────────────────────────────── */}
           <div style={{ marginBottom: 8 }}>
-            {vcpFilterActive && vcpLoading && stocksNeedingVcpFetch.length > 0 && (
+            {activeView === 'table' && vcpFilterActive && vcpLoading && stocksNeedingVcpFetch.length > 0 && (
               <div
                 style={{
                   marginBottom: 8,
@@ -3395,7 +3787,35 @@ export default function IBDRsRankingPage() {
                 ；完成後才套用 VCP 上下限（載入中其餘條件仍有效）。
               </div>
             )}
-            {loading && stocks.length === 0 ? (
+            {activeView === 'home' ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobileLayout
+                    ? 'minmax(0, 1fr)'
+                    : 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))',
+                  gap: 8,
+                  alignItems: 'start',
+                }}
+              >
+                {homeSections.map((sec) => (
+                  <HomeStockSectionCard
+                    key={sec.key}
+                    section={sec}
+                    newIdSet={homeSectionNewMap.get(sec.key)}
+                    uniformHeight={isMobileLayout ? null : homeCardUniformHeight}
+                    mobileLayout={isMobileLayout}
+                    onMeasure={handleHomeCardMeasure}
+                    onPickStock={(s) => {
+                      setChartNavOverride({
+                        list: sec.items,
+                      });
+                      setSelectedStock(s);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : loading && stocks.length === 0 ? (
               <div style={{ padding: 36, textAlign: 'center', color: '#888', fontSize: 13 }}>載入中...</div>
             ) : visible.length === 0 ? (
               <div
@@ -3414,7 +3834,7 @@ export default function IBDRsRankingPage() {
               <div
                 className="ibd-rs-ranking-table-scroll"
                 role="region"
-                aria-label="RS 排名表（可橫向捲動檢視各欄）"
+                aria-label="RS 排名表（每頁 4 大欄）"
               >
                 <div
                   className="ibd-rs-ranking-parallel-tables"

@@ -730,7 +730,12 @@ export const syncStockSnapshots = async (stock) => {
       ? `${now.getFullYear() - 1}-12`
       : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
     const haveLatestRevenue = stock.latestRevenueDate && toRevenueMonthStr(stock.latestRevenueDate) === lastCompleteMonth;
-    const haveHoldingsAndBefore9PM = isBeforeTaiwan9PM() && stock.history?.foreignTotalHolding?.length > 0 && stock.latestHoldingsDate;
+    // 9 點前 FinMind 尚未更新今日持股：只要有「昨天或更近」的資料就跳過，否則仍重抓
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    const holdingsDateFresh = stock.latestHoldingsDate >= yesterdayStr;
+    const haveHoldingsAndBefore9PM = isBeforeTaiwan9PM() && holdingsDateFresh && stock.history?.foreignTotalHolding?.length > 0;
     const havePriceData = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
     const haveVolumeData = Array.isArray(stock.history?.volume) && stock.history.volume.length > 0;
     const haveLatestPrice = havePriceData && haveVolumeData;
