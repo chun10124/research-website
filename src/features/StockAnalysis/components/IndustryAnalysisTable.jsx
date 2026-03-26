@@ -208,7 +208,6 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         cursor: onStockNameClick ? 'pointer' : undefined,
-                        textDecoration: onStockNameClick ? 'underline dotted #bbb' : undefined,
                     }}
                     onClick={() => onStockNameClick?.(stock)}
                     title={stock.name || undefined}
@@ -375,7 +374,6 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
                                             cursor: onStockNameClick ? 'pointer' : undefined,
-                                            textDecoration: onStockNameClick ? 'underline dotted #bbb' : undefined,
                                         }}
                                         onClick={() => onStockNameClick?.(stock)}
                                         title={stock.name || undefined}

@@ -161,7 +161,6 @@ export default function IbdRsQuadrantTable({
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                       cursor: onNameClick ? 'pointer' : undefined,
-                      textDecoration: onNameClick ? 'underline dotted #bbb' : undefined,
                     }}
                   >
                     {s.name}

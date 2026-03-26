@@ -94,6 +94,7 @@ function toYahooBare(stockCode) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const YAHOO_FETCH_TIMEOUT_MS = 20000;
 
 /**
  * Yahoo 歷史價起算回溯月數（須與 rsApi.js 內 RS_PRICE_LOOKBACK_MONTHS 保持一致）
@@ -112,12 +113,20 @@ const YAHOO_RETRYABLE_HTTP = new Set([408, 429, 502, 503, 504]);
 async function fetchYahooChart(symbol, range = '5d', opts = {}) {
   const maxRetries = opts.maxRetries ?? 6;
   const baseDelayMs = opts.baseDelayMs ?? 900;
+  const timeoutMs = Math.max(3000, Number(opts.timeoutMs) || YAHOO_FETCH_TIMEOUT_MS);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`;
   const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const res = await fetch(fullUrl);
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+      let res;
+      try {
+        res = await fetch(fullUrl, ctrl ? { signal: ctrl.signal } : undefined);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
       if (res.ok) return await res.json();
 
       if (!YAHOO_RETRYABLE_HTTP.has(res.status) || attempt === maxRetries) {
