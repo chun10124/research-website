@@ -135,10 +135,10 @@ const IBDRS_MODAL_HL_GT = 0.98;
 /** 觀察窗第三段：與 HL 條件並用，RS 須嚴格大於此值 */
 const IBDRS_MODAL_HL_RS_GT = 85;
 
-/** 每個大欄（一張小表）一頁幾筆；總筆數 = 此值 × 大欄數 */
-const IBDRS_ROWS_PER_QUADRANT = 100;
+/** 每個大欄（一張小表）一頁幾筆；完整排行固定每欄 25 檔 */
+const IBDRS_ROWS_PER_QUADRANT = 25;
 
-/** 第二頁大表：每頁總筆數（4 欄 × 各 100 檔） */
+/** 第二頁大表：每頁總筆數（4 欄 × 各 25 檔 = 100 檔） */
 const PAGE_SIZE = IBDRS_ROWS_PER_QUADRANT * IBDRS_PARALLEL_GROUPS;
 
 // ─── 工具函式 ────────────────────────────────────────────────────────────────
@@ -2860,7 +2860,8 @@ export default function IBDRsRankingPage() {
   const safePage = pageCount > 0 ? Math.min(page, pageCount - 1) : 0;
   const visible = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
   const parallelChunksToShow = useMemo(() => {
-    const chunks = splitIntoColumnChunks(visible, IBDRS_PARALLEL_GROUPS, 'horizontal');
+    // 垂直連號：第1欄 1-25、第2欄 26-50、第3欄 51-75、第4欄 76-100
+    const chunks = splitIntoColumnChunks(visible, IBDRS_PARALLEL_GROUPS, 'vertical');
     return chunks.filter((c) => c.length > 0);
   }, [visible]);
 
