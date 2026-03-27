@@ -671,7 +671,7 @@ function IbdRsComboChart({ data }) {
     ? [0, 1, 2, 3].map((t) => iMin + ((iMax - iMin) * t) / 3)
     : [];
 
-  /* Hover（滑鼠 + 觸控；觸控 stopPropagation 避免與個股 modal 快滑換股搶同一條 touch 鏈） */
+  /* Hover（滑鼠 + 觸控；觸控不可 stopPropagation，讓冒泡到 modal 以橫滑換股） */
   const applyHoverClient = (svgEl, clientX, clientY) => {
     if (n === 0) return;
     const rect = svgEl.getBoundingClientRect();
@@ -687,24 +687,20 @@ function IbdRsComboChart({ data }) {
   };
 
   const handleChartTouchStart = (e) => {
-    e.stopPropagation();
+    // 不可 stopPropagation：須冒泡到個股 modal panel 才能偵測橫滑換股
     e.preventDefault();
     const t = e.touches[0];
     if (t) applyHoverClient(e.currentTarget, t.clientX, t.clientY);
   };
 
   const handleChartTouchMove = (e) => {
-    e.stopPropagation();
     e.preventDefault();
     const t = e.touches[0];
     if (t) applyHoverClient(e.currentTarget, t.clientX, t.clientY);
   };
 
   const handleChartTouchEnd = (e) => {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
+    if (e) e.preventDefault();
     setHoverIdx(null);
   };
 
