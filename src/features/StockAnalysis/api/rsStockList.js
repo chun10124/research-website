@@ -295,3 +295,108 @@ export async function fetchTaiwanStockList() {
 
   return all;
 }
+
+/** 單次頁面連線內共用，避免重複 getDoc */
+let _stockListFromDbMemo = null;
+let _stockListFromDbInflight = null;
+
+/**
+ * 僅從 Firestore `ibdRsMeta/stockList` 讀上市櫃清單，不打 OpenAPI、不讀 localStorage。
+ * 清單須先由分析／RS 流程寫入；無資料時回傳 null。
+ * @returns {Promise<Array<{ id: string, name: string, market?: string }>|null>}
+ */
+export async function fetchTaiwanStockListFromDb() {
+  if (_stockListFromDbMemo) return _stockListFromDbMemo;
+  if (_stockListFromDbInflight) return _stockListFromDbInflight;
+  _stockListFromDbInflight = (async () => {
+    try {
+      const snap = await getDoc(STOCK_LIST_DOC_REF);
+      if (!snap.exists()) return null;
+      const { list } = snap.data();
+      if (!Array.isArray(list) || list.length === 0) return null;
+      _stockListFromDbMemo = list;
+      return list;
+    } catch (e) {
+      console.warn('[RS StockList] fetchTaiwanStockListFromDb failed:', e?.message);
+      return null;
+    } finally {
+      _stockListFromDbInflight = null;
+    }
+  })();
+  return _stockListFromDbInflight;
+}
+
+/** 強制下次重新 getDoc（例如手動「重新檢查」要比最新清單） */
+export function invalidateTaiwanStockListFromDbCache() {
+  _stockListFromDbMemo = null;
+  _stockListFromDbInflight = null;
+}
+
+/**
+ * 比對交易日誌與 Firestore 股票清單（不寫入）
+ * @returns {{ mismatches: Array, notInDb: Array, skippedNonFour: Array }}
+ */
+export function buildJournalNameMismatchReport(entries, list) {
+  if (!list || !Array.isArray(entries)) {
+    return { mismatches: [], notInDb: [], skippedNonFour: [] };
+  }
+  const idToName = new Map(list.map((s) => [s.id, String(s.name || '').trim()]));
+  const mismatches = [];
+  const notInDb = [];
+  const skippedNonFour = [];
+  for (const e of entries) {
+    const code = normalizeTaiwanStockCode(e.code);
+    if (!/^\d{4}$/.test(code)) {
+      skippedNonFour.push({
+        id: e.id,
+        date: e.date,
+        code: e.code,
+        name: e.name,
+      });
+      continue;
+    }
+    const dbName = idToName.get(code);
+    if (!dbName) {
+      notInDb.push({
+        id: e.id,
+        date: e.date,
+        code,
+        nameInRecord: (e.name || '').trim(),
+      });
+      continue;
+    }
+    if ((e.name || '').trim() !== dbName) {
+      mismatches.push({
+        id: e.id,
+        date: e.date,
+        code,
+        nameInRecord: (e.name || '').trim(),
+        nameInDb: dbName,
+      });
+    }
+  }
+  return { mismatches, notInDb, skippedNonFour };
+}
+
+/** 正規化台股代碼：去空白、移除 .TW / .TWO */
+export function normalizeTaiwanStockCode(stockCode) {
+  return String(stockCode || '').trim().replace(/\.(TW|TWO)$/i, '');
+}
+
+/**
+ * 依 Firestore 上市櫃清單查中文簡稱（僅 DB，與 fetchTaiwanStockList 分離）
+ * @returns {Promise<string|null>}
+ */
+export async function getTaiwanStockDisplayName(stockCode) {
+  const code = normalizeTaiwanStockCode(stockCode);
+  if (!isRegularCode(code)) return null;
+  try {
+    const list = await fetchTaiwanStockListFromDb();
+    if (!list) return null;
+    const hit = list.find((s) => s.id === code);
+    return hit?.name ? String(hit.name).trim() : null;
+  } catch (e) {
+    console.warn('[RS StockList] getTaiwanStockDisplayName failed:', e?.message);
+    return null;
+  }
+}

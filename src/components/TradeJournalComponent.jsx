@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { setDoc, onSnapshot } from 'firebase/firestore'; // 只需要 setDoc 和 onSnapshot
 
@@ -11,6 +11,13 @@ import { PNL_COLOR, GOLDEN_BORDER_COLOR, formatQuantity, formatAvgCost, formatPn
 // 3. 引入核心計算邏輯
 import { calculatePnlSummary, getStartDate } from '../utils/pnlCalculator';
 import { fetchCurrentPrice } from '../features/StockAnalysis/api/stockApi';
+import {
+  buildJournalNameMismatchReport,
+  fetchTaiwanStockListFromDb,
+  getTaiwanStockDisplayName,
+  invalidateTaiwanStockListFromDbCache,
+  normalizeTaiwanStockCode,
+} from '../features/StockAnalysis/api/rsStockList';
 
 import styles from './TradeJournal.module.css';
 
@@ -39,6 +46,19 @@ function TradeJournal() {
   const [pnlFilterStock, setPnlFilterStock] = useState(''); // 新增：損益區搜尋狀態
   const [positionPrices, setPositionPrices] = useState({}); // code -> currentPrice，供未實現損益
   const [positionPricesLoading, setPositionPricesLoading] = useState(false);
+  /** 四位數代碼：API 成功帶入名稱後鎖定；失敗或非四位數則允許手動輸入名稱 */
+  const [allowManualName, setAllowManualName] = useState(false);
+  const [stockNameLoading, setStockNameLoading] = useState(false);
+  /** 歷史紀錄名稱 vs Firestore 股票清單比對結果 */
+  const [nameDbCheck, setNameDbCheck] = useState({
+    loading: false,
+    error: null,
+    noDbList: false,
+    mismatches: [],
+    notInDb: [],
+    skippedNonFour: [],
+  });
+  const [nameDbCheckOpen, setNameDbCheckOpen] = useState(false);
 
   // 1. 數據加載與即時同步 (useEffect 區塊)
   useEffect(() => {
@@ -63,7 +83,7 @@ function TradeJournal() {
 }, []);
 
   // 2. 數據儲存 (saveJournalToCloud 函數)
-const saveJournalToCloud = async (entries) => {
+  const saveJournalToCloud = useCallback(async (entries) => {
     try {
         // 1. 先在本地更新 UI (確保響應快速)，複製再排序避免 mutate 傳入的陣列
         const sorted = [...entries].sort((a, b) => {
@@ -87,7 +107,123 @@ const saveJournalToCloud = async (entries) => {
         console.error("寫入 Firestore 失敗:", error);
         alert("警告：數據寫入雲端失敗，請檢查網路連線。");
     }
-};
+  }, []);
+
+  const emptyNameDbCheck = useCallback(
+    () => ({
+      loading: false,
+      error: null,
+      noDbList: false,
+      mismatches: [],
+      notInDb: [],
+      skippedNonFour: [],
+    }),
+    []
+  );
+
+  /** 比對 Firestore 股票清單、更新面板；若有四位數代碼與資料庫不一致則寫回修正 */
+  const syncJournalNamesWithDb = useCallback(
+    async ({ forceRefresh = false, cancelledRef } = {}) => {
+      const aborted = () => cancelledRef?.current;
+      if (journalEntries.length === 0) {
+        if (!aborted()) setNameDbCheck(emptyNameDbCheck());
+        return;
+      }
+      if (forceRefresh) invalidateTaiwanStockListFromDbCache();
+      if (!aborted()) setNameDbCheck((prev) => ({ ...prev, loading: true, error: null }));
+      try {
+        const list = await fetchTaiwanStockListFromDb();
+        if (aborted()) return;
+        if (!list) {
+          setNameDbCheck({
+            loading: false,
+            error: null,
+            noDbList: true,
+            mismatches: [],
+            notInDb: [],
+            skippedNonFour: [],
+          });
+          return;
+        }
+        const report = buildJournalNameMismatchReport(journalEntries, list);
+        if (aborted()) return;
+        setNameDbCheck({
+          loading: false,
+          error: null,
+          noDbList: false,
+          ...report,
+        });
+
+        const idToName = new Map(list.map((s) => [s.id, String(s.name || '').trim()]));
+        const fixed = journalEntries.map((e) => {
+          const code = normalizeTaiwanStockCode(e.code);
+          if (!/^\d{4}$/.test(code)) return e;
+          const apiName = idToName.get(code);
+          if (!apiName) return e;
+          if ((e.name || '').trim() === apiName) return e;
+          return { ...e, name: apiName };
+        });
+        const changed = fixed.some((e, i) => e.name !== journalEntries[i].name);
+        if (!changed || aborted()) return;
+        await saveJournalToCloud(fixed);
+      } catch (e) {
+        console.warn('交易日誌：與上市櫃名稱同步失敗', e?.message);
+        if (!aborted()) {
+          setNameDbCheck((prev) => ({
+            ...prev,
+            loading: false,
+            error: e?.message || String(e),
+          }));
+        }
+      }
+    },
+    [journalEntries, saveJournalToCloud, emptyNameDbCheck]
+  );
+
+  // 2b. 載入／紀錄變更時：比對並自動修正名稱
+  useEffect(() => {
+    const cancelledRef = { current: false };
+    syncJournalNamesWithDb({ forceRefresh: false, cancelledRef });
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [journalEntries, syncJournalNamesWithDb]);
+
+  // 2c. 輸入代號後自動帶入名稱（四位數上市櫃／ETF）
+  useEffect(() => {
+    const raw = String(formData.code ?? '').trim();
+    if (!raw) {
+      setStockNameLoading(false);
+      setAllowManualName(true);
+      setFormData((prev) => {
+        if (!prev.name) return prev;
+        return { ...prev, name: '' };
+      });
+      return;
+    }
+    const code = normalizeTaiwanStockCode(formData.code);
+    if (!/^\d{4}$/.test(code)) {
+      setStockNameLoading(false);
+      setAllowManualName(true);
+      return;
+    }
+    setAllowManualName(false);
+    setStockNameLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const n = await getTaiwanStockDisplayName(code);
+        setFormData((prev) => {
+          if (normalizeTaiwanStockCode(prev.code) !== code) return prev;
+          if (n) return { ...prev, name: n };
+          return { ...prev, name: '' };
+        });
+        setAllowManualName(!n);
+      } finally {
+        setStockNameLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [formData.code]);
 
   // 3. 歷史記錄列表的過濾數據 (保持不變)
   const historyFilteredEntries = useMemo(() => {
@@ -179,19 +315,31 @@ const saveJournalToCloud = async (entries) => {
       setFormData(prevData => ({ ...prevData, direction }));
   };
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     
     const quantity = Number(formData.quantity);
     const price = Number(formData.price);
-    
-    if (!formData.code || !formData.name || quantity < 1 || price < 0.1) {
-        alert("請填寫股票名稱、代號，並確保數量 >= 1 且價格 >= 0.1！");
+    const codeNorm = normalizeTaiwanStockCode(formData.code);
+    let nameToSave = (formData.name || '').trim();
+
+    if (!codeNorm || quantity < 1 || price < 0.1) {
+        alert("請填寫股票代號，並確保數量 >= 1 且價格 >= 0.1！");
+        return;
+    }
+
+    if (!nameToSave && /^\d{4}$/.test(codeNorm)) {
+      nameToSave = (await getTaiwanStockDisplayName(codeNorm)) || '';
+    }
+    if (!nameToSave) {
+        alert("請填寫股票名稱，或確認四位數代號於上市櫃清單內可查得簡稱！");
         return;
     }
 
     const entryToSave = {
       ...formData,
+      code: codeNorm,
+      name: nameToSave,
       quantity: quantity,
       price: price,
     };
@@ -489,22 +637,46 @@ const saveJournalToCloud = async (entries) => {
         style={{ marginBottom: '30px',border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
           borderRadius: '5px',
           padding: '15px', }}>
-         <div className={styles.formInputRow} style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-          <input
-            name="name"
-            value={formData.name}
-            onChange={handleInputChange}
-            placeholder="股票名稱 (e.g., 台積電)"
-            required
-            style={{ flex: '1 1 auto', minWidth:'0', padding: '8px', border: '1px solid #a4a4a4ff' }}
-          />
+         <div className={styles.formInputRow} style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             name="code"
             value={formData.code}
             onChange={handleInputChange}
-            placeholder="代號 (e.g., 2330)"
+            placeholder="代號"
             required
-            style={{ flex: '1 1 auto', minWidth:'0', padding: '8px', border: '1px solid #a4a4a4ff' }}
+            autoComplete="off"
+            style={{ flex: '1 1 120px', minWidth:'0', padding: '8px', border: '1px solid #a4a4a4ff' }}
+          />
+          <input
+            name="name"
+            value={formData.name}
+            onChange={handleInputChange}
+            placeholder={
+              stockNameLoading
+                ? '名稱載入中…'
+                : allowManualName &&
+                    /^\d{4}$/.test(normalizeTaiwanStockCode(formData.code))
+                  ? '名稱（請手動輸入）'
+                  : '名稱'
+            }
+            readOnly={
+              !allowManualName &&
+              /^\d{4}$/.test(normalizeTaiwanStockCode(formData.code)) &&
+              !!formData.name.trim()
+            }
+            required
+            style={{
+              flex: '1 1 160px',
+              minWidth: '0',
+              padding: '8px',
+              border: '1px solid #a4a4a4ff',
+              backgroundColor:
+                !allowManualName &&
+                /^\d{4}$/.test(normalizeTaiwanStockCode(formData.code)) &&
+                !!formData.name.trim()
+                  ? 'rgba(0,0,0,0.04)'
+                  : undefined,
+            }}
           />
           
           <input
@@ -624,6 +796,154 @@ const saveJournalToCloud = async (entries) => {
 
       {/* II. 追蹤表/摘要區塊 */}
       {renderPnlSummary()}
+
+      {/* 歷史紀錄名稱 vs Firestore 股票清單（折疊） */}
+      <div
+        style={{
+          marginTop: '30px',
+          border: `1px solid ${GOLDEN_BORDER_COLOR}`,
+          borderRadius: '5px',
+          padding: '12px 15px',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '10px',
+            marginBottom: nameDbCheckOpen ? '10px' : 0,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setNameDbCheckOpen((o) => !o)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              flex: '1 1 auto',
+              minWidth: 0,
+              margin: 0,
+              padding: 0,
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              textAlign: 'left',
+            }}
+            aria-expanded={nameDbCheckOpen}
+          >
+            <span style={{ fontSize: '0.7rem', color: '#64748b', width: '1em', flexShrink: 0 }}>
+              {nameDbCheckOpen ? '▼' : '▶'}
+            </span>
+            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>名稱與資料庫比對</h3>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              syncJournalNamesWithDb({ forceRefresh: true });
+            }}
+            disabled={nameDbCheck.loading || journalEntries.length === 0}
+            style={{
+              padding: '8px 14px',
+              cursor: journalEntries.length === 0 ? 'not-allowed' : 'pointer',
+              borderRadius: '3px',
+              border: '1px solid var(--ifm-color-primary)',
+              background: 'white',
+              color: 'var(--ifm-color-primary)',
+              fontWeight: 'bold',
+              flexShrink: 0,
+            }}
+          >
+            重新檢查
+          </button>
+        </div>
+        {nameDbCheckOpen && (
+          <>
+        <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#666', lineHeight: 1.55 }}>
+          比對來源為 Firestore <code style={{ fontSize: '0.85em' }}>ibdRsMeta/stockList</code>（與代號自動帶入相同）。
+          <strong>不會</strong>因紀錄名稱與清單不同而產生程式錯誤；若不一致，載入時會改寫為清單簡稱。此區供你確認是否仍有差異、或代碼不在清單內。
+        </p>
+        {nameDbCheck.loading && <p style={{ margin: 0, color: '#888' }}>檢查中…</p>}
+        {nameDbCheck.error && (
+          <p style={{ margin: '8px 0 0 0', color: 'crimson' }}>{nameDbCheck.error}</p>
+        )}
+        {nameDbCheck.noDbList && (
+          <p style={{ margin: '8px 0 0 0', color: '#b45309' }}>
+            尚無股票清單文件，請先至分析／RS 相關流程同步全台股清單後再比對。
+          </p>
+        )}
+        {!nameDbCheck.loading && !nameDbCheck.noDbList && journalEntries.length > 0 && (
+          <>
+            {nameDbCheck.mismatches.length === 0 && nameDbCheck.notInDb.length === 0 ? (
+              <p style={{ margin: 0, color: '#15803d', fontWeight: 'bold' }}>
+                所有可比對之四位數代碼，名稱皆與資料庫一致。
+              </p>
+            ) : null}
+            {nameDbCheck.mismatches.length > 0 && (
+              <div style={{ marginTop: '12px' }}>
+                <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#b45309' }}>
+                  名稱與資料庫不同（{nameDbCheck.mismatches.length} 筆）
+                </p>
+                <div style={{ overflowX: 'auto' }}>
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      fontSize: '0.88rem',
+                      minWidth: '420px',
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #ccc', textAlign: 'left' }}>
+                        <th style={{ padding: '6px 8px' }}>日期</th>
+                        <th style={{ padding: '6px 8px' }}>代號</th>
+                        <th style={{ padding: '6px 8px' }}>紀錄中的名稱</th>
+                        <th style={{ padding: '6px 8px' }}>資料庫簡稱</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nameDbCheck.mismatches.map((row) => (
+                        <tr key={row.id} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={{ padding: '6px 8px' }}>{row.date}</td>
+                          <td style={{ padding: '6px 8px' }}>{row.code}</td>
+                          <td style={{ padding: '6px 8px' }}>{row.nameInRecord || '—'}</td>
+                          <td style={{ padding: '6px 8px', fontWeight: 'bold' }}>{row.nameInDb}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {nameDbCheck.notInDb.length > 0 && (
+              <div style={{ marginTop: '14px' }}>
+                <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#b45309' }}>
+                  四位數代碼在清單中查無（{nameDbCheck.notInDb.length} 筆）
+                </p>
+                <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.88rem', lineHeight: 1.6 }}>
+                  {nameDbCheck.notInDb.map((row) => (
+                    <li key={row.id}>
+                      [{row.date}] {row.code} — 紀錄名稱：{row.nameInRecord || '—'}（清單無此代碼，無法自動對名）
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {nameDbCheck.skippedNonFour.length > 0 && (
+              <p style={{ margin: '14px 0 0 0', fontSize: '0.88rem', color: '#64748b' }}>
+                另有 {nameDbCheck.skippedNonFour.length}{' '}
+                筆為非四位數代碼（權證等），未與上市櫃清單比對，屬正常。
+              </p>
+            )}
+          </>
+        )}
+          </>
+        )}
+      </div>
       
       {/* III. 歷史記錄列表區塊 */}
       {renderHistory()}
