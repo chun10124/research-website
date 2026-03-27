@@ -335,17 +335,46 @@ html.ibd-rs-page .ibd-rs-ranking-main {
 
   /* 個股圖表 modal */
   html.ibd-rs-page .ibd-rs-chart-modal-backdrop {
-    padding: 0 !important;
+    padding: 0 0 max(10px, env(safe-area-inset-bottom)) !important;
     align-items: flex-end !important;
   }
-  html.ibd-rs-page .ibd-rs-chart-modal-panel {
+  html.ibd-rs-page .ibd-rs-chart-modal-panel,
+  .ibd-rs-chart-modal-panel {
     max-width: 100% !important;
     width: 100% !important;
-    height: min(92dvh, 100dvh) !important;
-    max-height: min(92dvh, 100dvh) !important;
-    border-radius: 14px 14px 0 0 !important;
-    padding: 10px 12px 8px !important;
-    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    height: min(62dvh, 100dvh) !important;
+    max-height: min(62dvh, 100dvh) !important;
+    border-radius: 14px !important;
+    padding: 10px 6px 8px !important;
+    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+  }
+
+  /* 圖表卡片：維持原本圓角＋邊框；標題列不再被負 margin 拉歪 */
+  .ibd-rs-chart-modal-chart-wrap {
+    min-height: max(160px, 22vh) !important;
+    border-radius: 10px !important;
+  }
+
+  /* 僅 SVG 區向左右 bleed，不動標題 header */
+  .ibd-rs-chart-modal-svg-bleed {
+    margin-left: -12px !important;
+    margin-right: -12px !important;
+    width: calc(100% + 24px) !important;
+  }
+
+  /* 手機：完整圖例改短版，版面仍像原版（標題＋副標） */
+  .ibd-rs-chart-legend-text--full {
+    display: none !important;
+  }
+  .ibd-rs-chart-legend-text--short {
+    display: inline !important;
+  }
+
+  /* header 精簡：隱藏 VCP 詳細、收盤日期前綴、K 線圖連結 */
+  .ibd-rs-chart-modal-vcp-detail,
+  .ibd-rs-chart-modal-close-date,
+  .ibd-rs-chart-modal-tv-link {
+    display: none !important;
   }
 
   /* 今日重點 modal */

@@ -609,8 +609,8 @@ function IbdRsComboChart({ data }) {
     return () => { if (ro) ro.disconnect(); };
   }, []);
 
-  const PAD_L = 46;
-  const PAD_R = 56;
+  const PAD_L = 22;
+  const PAD_R = 28;
   const PAD_T = 10;
   const PAD_B = 26;
 
@@ -789,17 +789,15 @@ function IbdRsComboChart({ data }) {
 
         {/* 左軸 RS */}
         {rsTicks.map((v) => (
-          <text key={`rl-${v}`} x={PAD_L - 5} y={yRs(v) + 4} textAnchor="end" fontSize={10} fill="#c0392b" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</text>
+          <text key={`rl-${v}`} x={PAD_L - 3} y={yRs(v) + 4} textAnchor="end" fontSize={10} fill="#c0392b" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</text>
         ))}
-        <text x={12} y={PAD_T + innerH / 2} textAnchor="middle" fontSize={10} fill="#c0392b" transform={`rotate(-90,12,${PAD_T + innerH / 2})`}>RS</text>
 
         {/* 右軸 大盤 */}
         {idxTicks.map((v, i) => (
-          <text key={`il-${i}`} x={PAD_L + innerW + 5} y={yIdx(v) + 4} textAnchor="start" fontSize={10} fill="#1565c0" style={{ fontVariantNumeric: 'tabular-nums' }}>
-            {v >= 1000 ? `${(v / 1000).toFixed(0)}k` : Math.round(v)}
+          <text key={`il-${i}`} x={PAD_L + innerW + 3} y={yIdx(v) + 4} textAnchor="start" fontSize={10} fill="#1565c0" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {v >= 1000 ? `${Math.round(v / 1000)}k` : Math.round(v)}
           </text>
         ))}
-        <text x={w - 10} y={PAD_T + innerH / 2} textAnchor="middle" fontSize={10} fill="#1565c0" transform={`rotate(90,${w - 10},${PAD_T + innerH / 2})`}>加權</text>
 
         {/* X 軸日期 */}
         {xTickIdxs.map((i) => (
@@ -1405,7 +1403,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                 title="Yahoo Finance 日 K 最近一筆；非交易日則為前一交易日收盤"
                 style={{ fontSize: 13, color: '#1565c0', fontWeight: 700, lineHeight: 1.2 }}
               >
-                {formatYmdSlash(closeQuote.dateStr)} 收盤 {closeQuote.price.toFixed(2)}
+                {formatYmdSlash(closeQuote.dateStr)} 收盤 {closeQuote.price.toFixed(1)}
               </span>
             ) : (
               <span
@@ -1450,7 +1448,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                   <span style={{ fontWeight: 600, color: '#9ca3af' }}>VCP</span>{' '}
                   {vcpSnapshot.composite != null && Number.isFinite(vcpSnapshot.composite) ? (
                     <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
-                      {vcpSnapshot.composite.toFixed(3)}
+                      {vcpSnapshot.composite.toFixed(2)}
                     </span>
                   ) : (
                     <span style={{ color: '#9ca3af' }}>—</span>
@@ -1581,6 +1579,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             }}
           >
             <section
+              className="ibd-rs-chart-modal-chart-wrap"
               style={{
                 flex: '1 1 0',
                 display: 'flex',
@@ -1639,6 +1638,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                     RS 與大盤
                   </span>
                   <span
+                    className="ibd-rs-chart-legend-text ibd-rs-chart-legend-text--full"
                     style={{
                       color: '#64748b',
                       whiteSpace: 'nowrap',
@@ -1650,9 +1650,24 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                     <strong style={{ color: '#c0392b' }}>紅線</strong>＝RS（左）　
                     <strong style={{ color: '#1565c0' }}>藍線</strong>＝加權 ^TWII（右）
                   </span>
+                  <span
+                    className="ibd-rs-chart-legend-text ibd-rs-chart-legend-text--short"
+                    style={{
+                      color: '#64748b',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      minWidth: 0,
+                      display: 'none',
+                    }}
+                  >
+                    <strong style={{ color: '#c0392b' }}>紅</strong>＝RS ·{' '}
+                    <strong style={{ color: '#1565c0' }}>藍</strong>＝加權
+                  </span>
                 </div>
               </header>
               <div
+                className="ibd-rs-chart-modal-svg-bleed"
                 style={{
                   flex: '1 1 0',
                   minHeight: 0,

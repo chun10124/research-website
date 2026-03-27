@@ -354,85 +354,68 @@ async function runFinalizePhases(stockList, stockListTotal, todayStr, existingMa
 
   const validRanked = ranked.filter((r) => r.ibdRsRating != null);
   let writeDone = 0;
-  const WRITE_BATCH = 10;
+  const WRITE_BATCH = 400;
 
-  for (let i = 0; i < validRanked.length; i += WRITE_BATCH) {
+  // 先在 JS 準備好所有文件資料（純運算，不需等待）
+  const anchorStr = historyAnchorYmd(todayStr);
+  const preparedDocs = validRanked.map((item) => {
+    const newRating = ratingMap[item.id];
+    if (newRating == null) return null;
+
+    const existing = existingMap[item.id] ?? {};
+    const prevHistory = Array.isArray(existing.ibdRsHistory) ? existing.ibdRsHistory : [];
+    const prevRating = typeof existing.ibdRsRating === 'number' ? existing.ibdRsRating : null;
+
+    const withoutSlot = prevHistory.filter((h) => historyAnchorYmd(h.d) !== anchorStr);
+    const newHistory = [...withoutSlot, { d: anchorStr, r: newRating }]
+      .sort((a, b) => (a.d < b.d ? -1 : 1))
+      .slice(-RS_HISTORY_MAX);
+
+    const r7 = ratingMap7[item.id];
+    const r30 = ratingMap30[item.id];
+    const snap = rawById[item.id];
+
+    return {
+      id: item.id,
+      name: item.name,
+      market: item.market,
+      ibdRsRating: newRating,
+      ibdRsUpdatedDate: todayStr,
+      ibdRsSnapshotDate: todayStr,
+      ibdRsPriceFetchedDate: todayStr,
+      ibdRsRaw: snap?.rsRaw ?? null,
+      ibdRsRaw7: snap?.rsRaw7 ?? null,
+      ibdRsRaw30: snap?.rsRaw30 ?? null,
+      ibdRsHistory: newHistory,
+      ibdRsDelta7d: newRating != null && r7 != null ? newRating - r7 : null,
+      ibdRsDelta30d: newRating != null && r30 != null ? newRating - r30 : null,
+      ibdRsPrevRating: prevRating,
+      pricePct1d: snap?.pricePct1d ?? null,
+      pricePct5d: snap?.pricePct5d ?? null,
+      pricePct20d: snap?.pricePct20d ?? null,
+      pricePos6m: snap?.pricePos6m ?? null,
+      ibdRsLastClose: snap?.ibdRsLastClose ?? null,
+      ibdRsLastCloseDate: snap?.ibdRsLastCloseDate ?? null,
+      updatedAt: Date.now(),
+    };
+  }).filter(Boolean);
+
+  for (let i = 0; i < preparedDocs.length; i += WRITE_BATCH) {
     if (extraDone.signal?.aborted) throw new Error('已取消');
-    const batch = validRanked.slice(i, i + WRITE_BATCH);
-
-    await Promise.all(
-      batch.map(async (item) => {
-        const newRating = ratingMap[item.id];
-        if (newRating == null) return;
-
-        const existing = existingMap[item.id] ?? {};
-        const prevHistory = Array.isArray(existing.ibdRsHistory) ? existing.ibdRsHistory : [];
-        const prevRating = typeof existing.ibdRsRating === 'number' ? existing.ibdRsRating : null;
-
-        const anchorStr = historyAnchorYmd(todayStr);
-        const withoutSlot = prevHistory.filter((h) => historyAnchorYmd(h.d) !== anchorStr);
-        const newHistory = [...withoutSlot, { d: anchorStr, r: newRating }]
-          .sort((a, b) => (a.d < b.d ? -1 : 1))
-          .slice(-RS_HISTORY_MAX);
-
-        const r7 = ratingMap7[item.id];
-        const r30 = ratingMap30[item.id];
-        const ibdRsDelta7d = newRating != null && r7 != null ? newRating - r7 : null;
-        const ibdRsDelta30d = newRating != null && r30 != null ? newRating - r30 : null;
-
-        const snap = rawById[item.id];
-        const ibdRsRaw = snap ? snap.rsRaw : null;
-        const ibdRsRaw7 = snap ? snap.rsRaw7 : null;
-        const ibdRsRaw30 = snap ? snap.rsRaw30 : null;
-        const pricePct1d = snap?.pricePct1d ?? null;
-        const pricePct5d = snap?.pricePct5d ?? null;
-        const pricePct20d = snap?.pricePct20d ?? null;
-        const pricePos6m = snap?.pricePos6m ?? null;
-        const ibdRsLastClose = snap?.ibdRsLastClose ?? null;
-        const ibdRsLastCloseDate = snap?.ibdRsLastCloseDate ?? null;
-
-        await setDoc(
-          doc(RS_RATINGS_COLLECTION, item.id),
-          {
-            id: item.id,
-            name: item.name,
-            market: item.market,
-            ibdRsRating: newRating,
-            ibdRsUpdatedDate: todayStr,
-            ibdRsSnapshotDate: todayStr,
-            ibdRsPriceFetchedDate: todayStr,
-            ibdRsRaw,
-            ibdRsRaw7,
-            ibdRsRaw30,
-            ibdRsHistory: newHistory,
-            ibdRsDelta7d,
-            ibdRsDelta30d,
-            ibdRsPrevRating: prevRating,
-            pricePct1d,
-            pricePct5d,
-            pricePct20d,
-            pricePos6m,
-            ibdRsLastClose,
-            ibdRsLastCloseDate,
-            updatedAt: Date.now(),
-          },
-          { merge: true }
-        );
-
-        writeDone++;
-        onProgress({
-          phase: 'write',
-          done: writeDone,
-          total: validRanked.length,
-          msg: item.id,
-          ...listMeta,
-        });
-      })
-    );
-
-    if (i + WRITE_BATCH < validRanked.length) {
-      await new Promise((r) => setTimeout(r, 150 + Math.floor(Math.random() * 120)));
+    const chunk = preparedDocs.slice(i, i + WRITE_BATCH);
+    const batch = writeBatch(db);
+    for (const data of chunk) {
+      batch.set(doc(RS_RATINGS_COLLECTION, data.id), data, { merge: true });
     }
+    await batch.commit();
+    writeDone += chunk.length;
+    onProgress({
+      phase: 'write',
+      done: writeDone,
+      total: preparedDocs.length,
+      msg: `寫入 ${writeDone}/${preparedDocs.length}`,
+      ...listMeta,
+    });
   }
 
   const sk = extraDone.skippedYahooCount ?? 0;
@@ -613,14 +596,15 @@ async function runMonolithicSync(
       if (isRestPoint) {
         const batchNo = Math.ceil(absEnd / superBatchSize);
         const batchTotal = Math.ceil(stockListTotal / superBatchSize);
+        const restMs = interBatchRestMs + Math.floor(Math.random() * 5000);
         onProgress({
           phase: 'fetch',
           done: absEnd,
           total: stockListTotal,
-          msg: `第 ${batchNo}/${batchTotal} 批完成（${absEnd} 檔），休息 ${Math.round(interBatchRestMs / 1000)}s…`,
+          msg: `第 ${batchNo}/${batchTotal} 批完成（${absEnd} 檔），休息 ${Math.round(restMs / 1000)}s…`,
           ...listMeta,
         });
-        await new Promise((r) => setTimeout(r, interBatchRestMs + Math.floor(Math.random() * 5000)));
+        await new Promise((r) => setTimeout(r, restMs));
       } else {
         await new Promise((r) => setTimeout(r, delayMs + Math.floor(Math.random() * 300)));
       }
