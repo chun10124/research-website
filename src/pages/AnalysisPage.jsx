@@ -441,6 +441,13 @@ const AnalysisPage = () => {
                                     ? `${now.getFullYear() - 1}-12`
                                     : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
                                 const priceOk = stocks.filter(s => (s.latestPriceDate || '') === todayStr).length;
+                                /** 與股價同日線對齊；追蹤表 Yahoo/FinMind 價量同捆 */
+                                const volumeOk = stocks.filter(
+                                    (s) =>
+                                        (s.latestPriceDate || '') === todayStr &&
+                                        Array.isArray(s.history?.volume) &&
+                                        s.history.volume.length > 0
+                                ).length;
                                 const holdingsOk = stocks.filter(s => (s.latestHoldingsDate || '') === todayStr).length;
                                 const revenueOk = stocks.filter(s => {
                                     const parsed = toRevenueMonth(s.latestRevenueDate || '');
@@ -450,11 +457,13 @@ const AnalysisPage = () => {
                                 const total = stocks.length;
                                 const overNine = (ok) => total > 0 && ok / total >= 0.9;
                                 const hasPriceAll = overNine(priceOk);
+                                const hasVolumeAll = overNine(volumeOk);
                                 const hasHoldingsAll = overNine(holdingsOk);
                                 const hasRevenueAll = overNine(revenueOk);
                                 const countStr = (n, t) => t > 0 ? `（${n}/${t}）` : '';
                                 const fields = [
                                     { label: '股價', has: hasPriceAll, text: (f) => f.has ? `已有新數據（${formatDate(todayStr)}）${countStr(priceOk, total)}` : `尚未提供今日數據${countStr(priceOk, total)}` },
+                                    { label: '量能', has: hasVolumeAll, text: (f) => f.has ? `已有新數據（${formatDate(todayStr)}）${countStr(volumeOk, total)}` : `尚未提供今日數據${countStr(volumeOk, total)}` },
                                     { label: '外資持股（外資指標）', has: hasHoldingsAll, text: (f) => f.has ? `已有新數據（${formatDate(todayStr)}）${countStr(holdingsOk, total)}` : `尚未提供今日數據${countStr(holdingsOk, total)}` },
                                     { label: '營收', has: hasRevenueAll, text: () => latestRevenueDateStr ? `最新：${formatRevenueMonth(latestRevenueDateStr)}${countStr(revenueOk, total)}` : '尚無資料' },
                                 ];
