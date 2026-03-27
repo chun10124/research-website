@@ -10,6 +10,7 @@ import { PNL_COLOR, GOLDEN_BORDER_COLOR, formatQuantity, formatAvgCost, formatPn
 
 // 3. 引入核心計算邏輯
 import { calculatePnlSummary, getStartDate } from '../utils/pnlCalculator';
+import { autoDetectCashFlows, getCumulativeCFUpTo } from '../utils/periodReturns';
 import { fetchCurrentPrice } from '../features/StockAnalysis/api/stockApi';
 import {
   buildJournalNameMismatchReport,
@@ -59,6 +60,7 @@ function TradeJournal() {
     skippedNonFour: [],
   });
   const [nameDbCheckOpen, setNameDbCheckOpen] = useState(false);
+  const [positionLevelDetailOpen, setPositionLevelDetailOpen] = useState(false);
 
   // 1. 數據加載與即時同步 (useEffect 區塊)
   useEffect(() => {
@@ -305,6 +307,48 @@ function TradeJournal() {
     }, 0);
   }, [pnlSummary.byStock, positionPrices]);
 
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const autoCashFlows = useMemo(() => autoDetectCashFlows(journalEntries), [journalEntries]);
+  /** 交易明細自動識別之累計入金 */
+  const totalDeposits = useMemo(
+    () => getCumulativeCFUpTo(autoCashFlows, todayStr),
+    [autoCashFlows, todayStr]
+  );
+
+  /** 全時段已實現損益（淨額） */
+  const allTimePnlSummary = useMemo(
+    () => calculatePnlSummary(journalEntries, 'ALL'),
+    [journalEntries]
+  );
+
+  /** 總持倉市值：有現價用現價，否則用平均成本估算 */
+  const totalHoldingMarketValue = useMemo(() => {
+    return pnlSummary.byStock.reduce((sum, s) => {
+      if (s.netQuantity === 0) return sum;
+      const px = positionPrices[s.code];
+      const usePx = px != null && px > 0 ? px : s.avgCost;
+      return sum + Math.abs(s.netQuantity * usePx);
+    }, 0);
+  }, [pnlSummary.byStock, positionPrices]);
+
+  /**
+   * 可用於投資（買股）的總資產（與績效頁一致）：
+   * 累計入金 + 已實現損益 + 未實現損益 ≈ 現金 + 持倉市值
+   */
+  const totalTradingAssets = useMemo(
+    () =>
+      totalDeposits +
+      allTimePnlSummary.totalRealizedPnl +
+      totalUnrealizedPnl,
+    [totalDeposits, allTimePnlSummary.totalRealizedPnl, totalUnrealizedPnl]
+  );
+
+  /** 持倉水位：目前持倉市值 ÷ 上述總資產（持倉佔可投資資產比例） */
+  const positionLevelPct =
+    totalTradingAssets > 0
+      ? (totalHoldingMarketValue / totalTradingAssets) * 100
+      : null;
+
   // 5. 表單處理 (保持不變)
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -441,19 +485,113 @@ function TradeJournal() {
             </div>
         </div>
         
-        {/* 保留原本的卡片區塊 */}
-        <div className={styles.responsiveFlexRow} style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
-            <div className={styles.pnlSummaryCard} style={{ flex: 1, padding: '12px', border: '1px solid #ccc', borderRadius: '5px'}}> 
+        {/* 摘要卡片 */}
+        <div
+          className={styles.responsiveFlexRow}
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '15px',
+            marginBottom: '15px',
+          }}
+        >
+            <div className={styles.pnlSummaryCard} style={{ flex: '1 1 160px', minWidth: '140px', padding: '12px', border: '1px solid #ccc', borderRadius: '5px'}}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>總已實現損益</h4>
                 <p style={{ margin: 0, fontSize: '1.5em', ...pnlColorStyle }}>
                     {formatPnl(totalRealizedPnl)}
                 </p>
             </div>
-            <div className={styles.pnlSummaryCard} style={{ flex: 1, padding: '15px', border: '1px solid #ccc', borderRadius: '5px'}}> 
+            <div className={styles.pnlSummaryCard} style={{ flex: '1 1 160px', minWidth: '140px', padding: '15px', border: '1px solid #ccc', borderRadius: '5px'}}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>未實現損益</h4>
                 <p style={{ margin: 0, fontSize: '1.5em', ...(positionPricesLoading ? {} : unrealizedColorStyle) }}>
                     {positionPricesLoading ? '—' : formatPnl(Math.round(totalUnrealizedPnl))}
                 </p>
+            </div>
+            <div className={styles.pnlSummaryCard} style={{ flex: '1 1 160px', minWidth: '140px', padding: '15px', border: '1px solid #ccc', borderRadius: '5px'}}> 
+                <h4 style={{ margin: '0 0 5px 0', fontSize: '0.95rem' }}>總持倉金額</h4>
+                <p style={{ margin: 0, fontSize: '1.5em', fontWeight: 'bold' }}>
+                    {Math.round(totalHoldingMarketValue).toLocaleString()}
+                </p>
+            </div>
+            <div
+              className={styles.pnlSummaryCard}
+              style={{
+                flex: positionLevelDetailOpen ? '1 1 100%' : '1 1 160px',
+                minWidth: '140px',
+                padding: '15px',
+                border: '1px solid #ccc',
+                borderRadius: '5px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setPositionLevelDetailOpen((o) => !o)}
+                aria-expanded={positionLevelDetailOpen}
+                aria-label={positionLevelDetailOpen ? '收合持倉水位細項' : '展開持倉水位細項'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  width: '100%',
+                  margin: '0 0 5px 0',
+                  padding: 0,
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  color: 'inherit',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold' }}>持倉水位</span>
+                <span style={{ fontSize: '0.65rem', color: '#94a3b8', flexShrink: 0 }}>
+                  {positionLevelDetailOpen ? '▼' : '▶'}
+                </span>
+              </button>
+              <p style={{ margin: 0, fontSize: '1.5em', fontWeight: 'bold' }}>
+                {positionLevelPct != null ? `${positionLevelPct.toFixed(1)}%` : '—'}
+              </p>
+              {positionLevelDetailOpen && (
+                <div
+                  style={{
+                    marginTop: '12px',
+                    paddingTop: '12px',
+                    borderTop: '1px solid #e2e8f0',
+                    fontSize: '0.82rem',
+                    lineHeight: 1.65,
+                    color: '#334155',
+                  }}
+                >
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>分母 · 總可投資資產</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 12px', alignItems: 'baseline' }}>
+                    <span>累計入金（自動識別）</span>
+                    <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {Math.round(totalDeposits).toLocaleString()}
+                    </span>
+                    <span>已實現損益（全時段）</span>
+                    <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: PNL_COLOR(allTimePnlSummary.totalRealizedPnl) }}>
+                      {formatPnl(allTimePnlSummary.totalRealizedPnl)}
+                    </span>
+                    <span>未實現損益</span>
+                    <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: positionPricesLoading ? '#94a3b8' : PNL_COLOR(totalUnrealizedPnl) }}>
+                      {positionPricesLoading ? '—' : formatPnl(Math.round(totalUnrealizedPnl))}
+                    </span>
+                    <span style={{ fontWeight: 'bold', paddingTop: '6px', borderTop: '1px dashed #cbd5e1' }}>合計（分母）</span>
+                    <span style={{ textAlign: 'right', fontWeight: 'bold', paddingTop: '6px', borderTop: '1px dashed #cbd5e1', fontVariantNumeric: 'tabular-nums' }}>
+                      {Math.round(totalTradingAssets).toLocaleString()}
+                    </span>
+                  </div>
+                  <p style={{ margin: '12px 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>分子 · 持倉市值</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 12px' }}>
+                    <span>目前持倉市值加總</span>
+                    <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 'bold' }}>
+                      {Math.round(totalHoldingMarketValue).toLocaleString()}
+                    </span>
+                  </div>
+                  <p style={{ margin: '10px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                    水位 % ＝ 持倉市值 ÷ 總可投資資產；入金為交易明細推估，未實現需現價。
+                  </p>
+                </div>
+              )}
             </div>
         </div>
 
