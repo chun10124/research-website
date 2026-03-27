@@ -3002,8 +3002,8 @@ export default function IBDRsRankingPage() {
       },
       {
         key: 'hlHigh',
-        title: `HL（6M）> ${IBDRS_MODAL_HL_GT}`,
-        subtitle: `且 RS > ${IBDRS_MODAL_HL_RS_GT}`,
+        title: `HL（6M）> ${IBDRS_MODAL_HL_GT} 且 RS > ${IBDRS_MODAL_HL_RS_GT}`,
+        subtitle: '',
         items: hlHighList.filter((s) => filteredIdSet.has(s.id)),
         totalCount: hlHighList.filter((s) => filteredIdSet.has(s.id)).length,
       },
