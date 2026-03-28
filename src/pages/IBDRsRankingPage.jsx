@@ -161,7 +161,8 @@ function getTradingViewChartUrl(stock) {
   if (!raw) return null;
   const ex = stock?.market === 'TPEX' ? 'TPEX' : 'TWSE';
   const symbol = `${ex}:${raw}`;
-  return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
+  /* tw 子網域＝台灣站 UI 繁中；www 預設英文（與 StockLinkGenerator 一致） */
+  return `https://tw.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
 }
 
 /** Firestore market → 顯示文字（個股視窗用） */
