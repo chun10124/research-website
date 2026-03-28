@@ -1,7 +1,7 @@
 /* src/pages/IBDRsRankingPage.jsx */
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { onSnapshot } from 'firebase/firestore';
+import { getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import Layout from '@theme/Layout';
 import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps } from '../features/StockAnalysis/api/stockApi';
 import { syncSingleStock, syncTestBatch } from '../features/StockAnalysis/api/rsApi';
@@ -33,7 +33,7 @@ import {
 import { clampIbdDeltaDays, enrichIbdRsRow } from '../features/StockAnalysis/utils/ibdRsRankingEnrich';
 import { RS_OPEN_STOCK_SESSION_KEY } from '../features/StockAnalysis/api/ibdRsWatchlistFirestore';
 import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
-import { SYNC_STATUS_DOC_REF } from '../utils/firebaseConfig';
+import { IBD_RS_HOME_FIRST_SEEN_DOC_REF, SYNC_STATUS_DOC_REF } from '../utils/firebaseConfig';
 
 /** 篩選 input 用 data 屬性，placeholder 顏色用 CSS 選 `input[data-ibd-rs-filter]`（見 custom.css ＋掛載時注入 head） */
 const FILTER_INPUT_MARK = { 'data-ibd-rs-filter': '1' };
@@ -106,9 +106,9 @@ const IBDRS_HOME_CARD_PAGE_SIZE = 15;
 const IBDRS_HOME_CARD_TABLE_HEAD_PX = 32;
 const IBDRS_HOME_CARD_ROW_PX = 26;
 const IBDRS_HOME_CARD_BODY_MIN_PX = IBDRS_HOME_CARD_TABLE_HEAD_PX + IBDRS_HOME_CARD_PAGE_SIZE * IBDRS_HOME_CARD_ROW_PX;
-/** 首頁卡片：首次出現追蹤（紅點）快取 key */
+/** 舊版 localStorage key（僅一次性匯入 Firestore 後清除） */
 const IBDRS_HOME_FIRST_SEEN_MAP_KEY = 'ibd-rs-home-first-seen-v1';
-/** 首頁紅點：首次出現後顯示天數 */
+/** 首頁藍點：首次出現後顯示天數 */
 const IBDRS_HOME_DOT_DAYS = 3;
 /** 首頁首次出現追蹤僅保留最近 3 個月（約 90 天） */
 const IBDRS_HOME_FIRST_SEEN_KEEP_DAYS = 90;
@@ -216,13 +216,6 @@ function loadHomeFirstSeenMap() {
   } catch {
     return {};
   }
-}
-
-function saveHomeFirstSeenMap(firstSeenMap) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(IBDRS_HOME_FIRST_SEEN_MAP_KEY, JSON.stringify(firstSeenMap || {}));
-  } catch {}
 }
 
 /**
@@ -2522,6 +2515,9 @@ export default function IBDRsRankingPage() {
   const [testMsg, setTestMsg] = useState(null);
   const [batchRunning, setBatchRunning] = useState(false);
   const [homeSectionNewMap, setHomeSectionNewMap] = useState(() => new Map());
+  /** Firestore `ibdRsMeta/homeFirstSeen`.byId：首次出現於首頁區塊的台北曆日 */
+  const [homeFirstSeenById, setHomeFirstSeenById] = useState(() => ({}));
+  const homeFirstSeenLocalMigratedRef = useRef(false);
   const [homeCardUniformHeight, setHomeCardUniformHeight] = useState(null);
   const [isMobileLayout, setIsMobileLayout] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -3059,38 +3055,93 @@ export default function IBDRsRankingPage() {
     ]
   );
 
+  /** 訂閱 Firestore 首頁首次出現日（跨裝置一致） */
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const unsub = onSnapshot(
+      IBD_RS_HOME_FIRST_SEEN_DOC_REF,
+      (snap) => {
+        const raw = snap.exists() ? snap.data()?.byId : null;
+        setHomeFirstSeenById(raw && typeof raw === 'object' ? { ...raw } : {});
+      },
+      (err) => console.warn('[RS homeFirstSeen] snapshot', err),
+    );
+    return () => unsub();
+  }, []);
+
+  /** 依目前首頁清單合併／寫回 byId，並清舊版 localStorage 一次性匯入 */
   useEffect(() => {
     if (!todayYmd || !Array.isArray(homeSections) || homeSections.length === 0) return;
-    const firstSeenMap = loadHomeFirstSeenMap();
-    const nextFirstSeenMap = {};
-    const nextNewMap = new Map();
-
-    // 只保留近 3 個月首次出現紀錄
-    for (const [id, ymd] of Object.entries(firstSeenMap || {})) {
-      const diff = dayDiffYmd(ymd, todayYmd);
-      if (diff != null && diff >= 0 && diff <= IBDRS_HOME_FIRST_SEEN_KEEP_DAYS) {
-        nextFirstSeenMap[id] = ymd;
+    const unionIds = new Set();
+    for (const sec of homeSections) {
+      for (const s of sec.items) {
+        const id = String(s.id || '').trim();
+        if (id) unionIds.add(id);
       }
     }
+    void (async () => {
+      try {
+        const snap = await getDoc(IBD_RS_HOME_FIRST_SEEN_DOC_REF);
+        let byId = snap.exists() && snap.data()?.byId && typeof snap.data().byId === 'object'
+          ? { ...snap.data().byId }
+          : {};
+        let changed = false;
+        if (!homeFirstSeenLocalMigratedRef.current) {
+          homeFirstSeenLocalMigratedRef.current = true;
+          const local = loadHomeFirstSeenMap();
+          for (const [id, ymd] of Object.entries(local)) {
+            if (!byId[id] && typeof ymd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+              byId[id] = ymd;
+              changed = true;
+            }
+          }
+          try {
+            window.localStorage.removeItem(IBDRS_HOME_FIRST_SEEN_MAP_KEY);
+          } catch (_) {}
+        }
+        for (const id of Object.keys(byId)) {
+          const ymd = byId[id];
+          const diff = dayDiffYmd(ymd, todayYmd);
+          if (diff == null || diff < 0 || diff > IBDRS_HOME_FIRST_SEEN_KEEP_DAYS) {
+            delete byId[id];
+            changed = true;
+          }
+        }
+        for (const id of unionIds) {
+          if (!byId[id]) {
+            byId[id] = todayYmd;
+            changed = true;
+          }
+        }
+        if (changed) {
+          await setDoc(IBD_RS_HOME_FIRST_SEEN_DOC_REF, { byId }, { merge: true });
+        }
+      } catch (e) {
+        console.warn('[RS homeFirstSeen] merge', e);
+      }
+    })();
+  }, [todayYmd, homeSections]);
 
-    // 以首頁實際出現為準，寫入首次出現日；紅點顯示 3 天
+  /** 由 Firestore byId 計算各區塊藍點 */
+  useEffect(() => {
+    if (!todayYmd || !Array.isArray(homeSections) || homeSections.length === 0) return;
+    const nextNewMap = new Map();
     for (const sec of homeSections) {
       const dotSet = new Set();
       for (const s of sec.items) {
         const id = String(s.id || '').trim();
         if (!id) continue;
-        if (!nextFirstSeenMap[id]) nextFirstSeenMap[id] = todayYmd;
-        const diff = dayDiffYmd(nextFirstSeenMap[id], todayYmd);
+        const ymd = homeFirstSeenById[id];
+        if (!ymd) continue;
+        const diff = dayDiffYmd(ymd, todayYmd);
         if (diff != null && diff >= 0 && diff < IBDRS_HOME_DOT_DAYS) {
           dotSet.add(id);
         }
       }
       nextNewMap.set(sec.key, dotSet);
     }
-
-    saveHomeFirstSeenMap(nextFirstSeenMap);
     setHomeSectionNewMap(nextNewMap);
-  }, [todayYmd, homeSections]);
+  }, [todayYmd, homeSections, homeFirstSeenById]);
 
   // ── 同步：按一次跑完全市場（略過已快取）；Shift＝強制重抓
   const handleSync = (e) => {
