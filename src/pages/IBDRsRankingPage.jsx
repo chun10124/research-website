@@ -131,7 +131,7 @@ const IBDRS_RS_BREAK_LEVEL_80 = 80;
 const IBDRS_RS_BREAK_LEVEL_90 = 90;
 
 /** 觀察窗第三段：HL（6M 區間價位 0～1）須嚴格大於此值 */
-const IBDRS_MODAL_HL_GT = 0.98;
+const IBDRS_MODAL_HL_GT = 0.95;
 /** 觀察窗第三段：與 HL 條件並用，RS 須嚴格大於此值 */
 const IBDRS_MODAL_HL_RS_GT = 85;
 
