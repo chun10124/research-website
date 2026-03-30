@@ -165,6 +165,16 @@ function getTradingViewChartUrl(stock) {
   return `https://tw.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
 }
 
+/** 個股名稱點擊：用搜尋引擎查 MoneyDJ + 股號 */
+function getMoneyDjSearchUrl(stock) {
+  const rawId = String(stock?.id ?? '')
+    .replace(/\.(TW|TWO)$/i, '')
+    .trim();
+  if (!rawId) return null;
+  const keyword = [rawId, String(stock?.name ?? '').trim(), '新聞'].filter(Boolean).join(' ');
+  return `https://www.google.com/search?q=${encodeURIComponent(keyword)}`;
+}
+
 /** Firestore market → 顯示文字（個股視窗用） */
 function formatIbdMarketLabel(market) {
   if (market === 'TWSE') {
@@ -1224,6 +1234,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const isEmpty = !loading && !error && chartData.length === 0;
   const marketBadge = formatIbdMarketLabel(stock?.market);
   const tradingViewUrl = stock ? getTradingViewChartUrl(stock) : null;
+  const moneyDjSearchUrl = stock ? getMoneyDjSearchUrl(stock) : null;
 
   const swipeTouchRef = useRef({ x0: null, y0: null, id: null, t0: null });
 
@@ -1367,7 +1378,26 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             }}
           >
             <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>{stock.id}</span>
-            <span style={{ fontWeight: 500, fontSize: 14, lineHeight: 1.2 }}>{stock.name}</span>
+            {moneyDjSearchUrl ? (
+              <a
+                href={moneyDjSearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`搜尋 MoneyDJ：${stock.id} ${stock.name ?? ''}`.trim()}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  fontWeight: 500,
+                  fontSize: 14,
+                  lineHeight: 1.2,
+                  color: 'inherit',
+                  textDecoration: 'none',
+                }}
+              >
+                {stock.name}
+              </a>
+            ) : (
+              <span style={{ fontWeight: 500, fontSize: 14, lineHeight: 1.2 }}>{stock.name}</span>
+            )}
             <span
               title={
                 stock.market === 'TWSE'
