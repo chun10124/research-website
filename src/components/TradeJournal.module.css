@@ -154,17 +154,20 @@ input[type="number"] {
         align-items: stretch !important;
     }
 
-    /* 2. 主輸入欄位 (formInputRow) 修正 */
-    .formInputRow,
-    form > div:nth-child(1) { 
-        flex-direction: column !important; 
+    /* 2. 主輸入欄位 (formInputRow) 修正
+       先前強制單欄 + input 100% 造成格子看起來過大 */
+    .formInputRow {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr);
         gap: 8px !important;
+        width: 100%;
     }
-    
-    /* VVVV 關鍵修正：確保輸入框佔滿寬度 VVVV */
-    form > div:nth-child(1) input {
-        width: 100% !important; /* 強制佔滿寬度 */
-        /* 移除 flex: 1 1 100% !important; 避免和內聯樣式衝突 */
+    .formInputRow input {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+    .formInputRow input[name="date"] {
+        grid-column: 1 / -1;
     }
 
     /* 3. 卡片區塊 (追蹤表總體指標) */
@@ -322,8 +325,6 @@ input[type="number"] {
 
     /* 修正表單容器，確保內部元素不會溢出 */
     .formInputRow {
-        display: flex;
-        flex-direction: column;
         width: 100%;
         overflow: hidden; /* 防止子元素撐開 */
     }
