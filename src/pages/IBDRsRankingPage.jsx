@@ -2710,6 +2710,7 @@ export default function IBDRsRankingPage() {
     [stocks, todayTradingYmd]
   );
 
+
   /** Firestore 載入資料之上市／上櫃筆數（舊文件無 market 則列入未標註） */
   const marketStats = useMemo(() => {
     let tw = 0;
