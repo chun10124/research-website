@@ -2663,11 +2663,11 @@ export default function IBDRsRankingPage() {
   // 今日台北時間
   const todayYmd = mounted ? getTaiwanYmd() : null;
 
-  /** 全庫最後一筆 ibdRsUpdatedDate（取最大後，週末對齊到週五） */
+  /** 全庫最後一筆 ibdRsLastCloseDate（Yahoo 實際回傳的收盤日，代表 RS 是用哪天收盤價算的） */
   const latestIbdRsDataYmd = useMemo(() => {
     let max = null;
     for (const s of stocks) {
-      const d = s.ibdRsUpdatedDate;
+      const d = s.ibdRsLastCloseDate;
       if (!d || typeof d !== 'string') continue;
       const t = d.trim().slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) continue;
@@ -2724,8 +2724,8 @@ export default function IBDRsRankingPage() {
     return { tw, tp, unknown };
   }, [stocks]);
 
-  /** 底部狀態列同步日期：優先共用/本機同步紀錄，否則回退到資料最新交易日 */
-  const displaySyncDate = lastSyncDateLocal || latestIbdRsDataYmd || null;
+  /** 狀態列顯示「資料基準交易日」：取全庫 ibdRsUpdatedDate 最大值（即資料是用哪天的收盤價算的） */
+  const displaySyncDate = latestIbdRsDataYmd || null;
 
   const deltaShortDaysResolved = useMemo(
     () => clampIbdDeltaDays(filters.deltaShortDays, 5),
@@ -3414,7 +3414,7 @@ export default function IBDRsRankingPage() {
                             lineHeight: 1.35,
                           }}
                         >
-                          同步 {displaySyncDate || '—'}
+                          資料日期 {displaySyncDate || '—'}
                         </div>
                       ) : (
                         <>
@@ -3445,8 +3445,7 @@ export default function IBDRsRankingPage() {
                                 <span className="ibd-rs-stats-sep ibd-rs-stats-sep-before-sync" style={{ color: '#bbb', margin: '0 6px' }}>
                                   |
                                 </span>
-                                同步 {displaySyncDate}
-                                {lastSyncAt && <span style={{ color: '#999' }}>（{formatRelativeTime(lastSyncAt)}）</span>}
+                                資料日期 {displaySyncDate}
                               </>
                             )}
                           </span>

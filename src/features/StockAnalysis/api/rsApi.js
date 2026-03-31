@@ -82,8 +82,26 @@ export const RS_SYNC_INTRA_DELAY_MS = 400;
 /** 超級批次內：預設並發數（同時發出 N 個 Yahoo 請求） */
 export const RS_SYNC_DEFAULT_CONCURRENCY = 5;
 
+/**
+ * RS 同步用「基準交易日」：以台股收盤後（14:00 台北時間）為日界線。
+ * 14:00 前 → 前一交易日（當日尚未收盤，Yahoo 僅有至前日收盤的資料）
+ * 14:00（含）後 → 當日交易日（已收盤；週末則回推至週五）
+ */
+const RS_MARKET_CLOSE_HOUR = 14;
+
 function getTaiwanYmd() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const now = new Date();
+  const calendarYmd = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const h = parseInt(
+    now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Taipei', hour12: false }),
+    10,
+  );
+  const afterClose = Number.isFinite(h) ? h >= RS_MARKET_CLOSE_HOUR : true;
+  if (afterClose) {
+    return normalizeYmdToTaiwanTradingDay(calendarYmd) ?? calendarYmd;
+  }
+  const prev = taipeiYmdAddDays(calendarYmd, -1);
+  return normalizeYmdToTaiwanTradingDay(prev) ?? prev;
 }
 
 /**
@@ -524,13 +542,14 @@ async function runMonolithicSync(
         rsRaw = calculateRsRaw(priceMap, todayStr);
         if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
         if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
-        pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
-        pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
-        pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
-        pricePos6m = calcPricePosition6m(priceMap, todayStr);
         const lc = getLatestCloseInPriceMap(priceMap, todayStr);
         ibdRsLastClose = lc.price;
         ibdRsLastCloseDate = lc.dateStr;
+        // pricePct1d 只有在 Yahoo 確實已有今日（todayStr）收盤時才有意義
+        pricePct1d = ibdRsLastCloseDate === todayStr ? calcPriceChangePct(priceMap, todayStr, 1) : null;
+        pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
+        pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
+        pricePos6m = calcPricePosition6m(priceMap, todayStr);
         fetchOk = true;
       } catch (e) {
         console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
@@ -596,7 +615,7 @@ async function runMonolithicSync(
       if (isRestPoint) {
         const batchNo = Math.ceil(absEnd / superBatchSize);
         const batchTotal = Math.ceil(stockListTotal / superBatchSize);
-        const restMs = interBatchRestMs + Math.floor(Math.random() * 5000);
+        const restMs = interBatchRestMs;
         onProgress({
           phase: 'fetch',
           done: absEnd,
@@ -690,13 +709,13 @@ async function runPriceFetchSlice(
         rsRaw = calculateRsRaw(priceMap, todayStr);
         if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
         if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
-        pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
-        pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
-        pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
-        pricePos6m = calcPricePosition6m(priceMap, todayStr);
         const lc = getLatestCloseInPriceMap(priceMap, todayStr);
         ibdRsLastClose = lc.price;
         ibdRsLastCloseDate = lc.dateStr;
+        pricePct1d = ibdRsLastCloseDate === todayStr ? calcPriceChangePct(priceMap, todayStr, 1) : null;
+        pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
+        pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
+        pricePos6m = calcPricePosition6m(priceMap, todayStr);
         fetchOk = true;
       } catch (e) {
         console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
@@ -743,7 +762,7 @@ async function runPriceFetchSlice(
           msg: `${sliceLabel} 第 ${Math.ceil(absEnd / superBatchSize)} 批完成，休息 ${Math.round(interBatchRestMs / 1000)}s…`,
           ...listMeta,
         });
-        await new Promise((r) => setTimeout(r, interBatchRestMs + Math.floor(Math.random() * 5000)));
+        await new Promise((r) => setTimeout(r, interBatchRestMs));
       } else {
         await new Promise((r) => setTimeout(r, delayMs + Math.floor(Math.random() * 300)));
       }
@@ -1155,11 +1174,11 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
   const anchor30Str = taipeiYmdAddDays(todayStr, -30);
   const rsRaw7 = anchor7Str ? calculateRsRaw(priceMap, anchor7Str) : null;
   const rsRaw30 = anchor30Str ? calculateRsRaw(priceMap, anchor30Str) : null;
-  const pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
+  const { price: ibdRsLastClose, dateStr: ibdRsLastCloseDate } = getLatestCloseInPriceMap(priceMap, todayStr);
+  const pricePct1d = ibdRsLastCloseDate === todayStr ? calcPriceChangePct(priceMap, todayStr, 1) : null;
   const pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
   const pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
   const pricePos6m = calcPricePosition6m(priceMap, todayStr);
-  const { price: ibdRsLastClose, dateStr: ibdRsLastCloseDate } = getLatestCloseInPriceMap(priceMap, todayStr);
 
   let rating = null;
   const priceDays = Object.keys(priceMap).length;
@@ -1264,11 +1283,11 @@ export async function syncTestBatch({ count = 10, onProgress = () => {}, signal 
       const rsRaw = calculateRsRaw(priceMap, todayStr);
       const rsRaw7 = anchor7Str ? calculateRsRaw(priceMap, anchor7Str) : null;
       const rsRaw30 = anchor30Str ? calculateRsRaw(priceMap, anchor30Str) : null;
-      const pricePct1d = calcPriceChangePct(priceMap, todayStr, 1);
+      const { price: ibdRsLastClose, dateStr: ibdRsLastCloseDate } = getLatestCloseInPriceMap(priceMap, todayStr);
+      const pricePct1d = ibdRsLastCloseDate === todayStr ? calcPriceChangePct(priceMap, todayStr, 1) : null;
       const pricePct5d = calcPriceChangePct(priceMap, todayStr, 5);
       const pricePct20d = calcPriceChangePct(priceMap, todayStr, 20);
       const pricePos6m = calcPricePosition6m(priceMap, todayStr);
-      const { price: ibdRsLastClose, dateStr: ibdRsLastCloseDate } = getLatestCloseInPriceMap(priceMap, todayStr);
 
       const existingDoc = existingMap[stock.id] ?? {};
       const prevHistory = Array.isArray(existingDoc.ibdRsHistory) ? existingDoc.ibdRsHistory : [];
