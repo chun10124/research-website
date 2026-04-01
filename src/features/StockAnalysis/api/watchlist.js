@@ -1,6 +1,6 @@
 /* src/features/StockAnalysis/api/watchlist.js */
 // 🟢 修正導入：移除 onSnapshot，加入 getDocs
-import { doc, setDoc, getDocs, query, orderBy } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, getDocs, query, orderBy } from "firebase/firestore";
 import { STOCK_WATCHLIST_COLLECTION } from '../../../utils/firebaseConfig'; 
 
 /**
@@ -34,7 +34,14 @@ export const fetchWatchlist = async () => {
 /**
  * 更新或新增股票分析資料
  */
-/** @param {string} docId Firestore 文件 ID（可為 UUID，與股票代碼分離） */
+export const deleteAnalysisDoc = async (docId) => {
+    try {
+        await deleteDoc(doc(STOCK_WATCHLIST_COLLECTION, docId));
+    } catch (error) {
+        console.warn(`[${docId}] 刪除失敗:`, error.message);
+    }
+};
+
 export const updateAnalysisField = async (docId, data) => {
     try {
         const ref = doc(STOCK_WATCHLIST_COLLECTION, docId);

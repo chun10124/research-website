@@ -1,6 +1,6 @@
 /* src/features/StockAnalysis/api/stockApi.js */
 
-import { updateAnalysisField } from './watchlist';
+import { updateAnalysisField, deleteAnalysisDoc } from './watchlist';
 import { getTaiwanStockDisplayName } from './rsStockList';
 const PROXY_BASE = "https://stock-proxy.tzuchun11232004.workers.dev/?url=";
 const FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data";
@@ -743,8 +743,7 @@ export const syncStockSnapshots = async (stock) => {
     const holdingsDateFresh = stock.latestHoldingsDate >= yesterdayStr;
     const haveHoldingsAndBefore9PM = isBeforeTaiwan9PM() && holdingsDateFresh && stock.history?.foreignTotalHolding?.length > 0;
     const havePriceData = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
-    const haveVolumeData = Array.isArray(stock.history?.volume) && stock.history.volume.length > 0;
-    const haveLatestPrice = havePriceData && haveVolumeData;
+    const haveLatestPrice = havePriceData;
     const haveLatestPER = stock.latestPERDate === todayStr && stock.realTimePE != null && stock.realTimePE !== '';
     const opts = {};
     if (haveLatestPrice) {
@@ -776,15 +775,21 @@ export const syncStockSnapshots = async (stock) => {
     }
     const latestData = await fetchCompleteStockData(stock.code, () => {}, { ...opts, market: stock.market });
     if (!latestData) return { updated: false, skipped: true, failed: false };
-    await updateAnalysisField(stock.id, {
+    const targetDocId = stock.code;
+    await updateAnalysisField(targetDocId, {
       ...latestData,
-      id: stock.id,
+      id: targetDocId,
       code: stock.code,
       estimatedEPS: stock.estimatedEPS || 0,
       targetPrice: stock.targetPrice || 0,
       notes: stock.notes || "",
       lastUpdate: Date.now()
     });
+    // 舊文件 ID 是 UUID → 寫入新文件後刪掉舊的
+    if (stock.id !== targetDocId) {
+      await deleteAnalysisDoc(stock.id);
+      console.log(`🗑️ [${stock.code}] 舊 UUID 文件 ${stock.id} 已刪除`);
+    }
     console.log(`✅ [${stock.code}] 數據同步成功。`);
     return { updated: true, skipped: false, failed: false };
   } catch (error) {

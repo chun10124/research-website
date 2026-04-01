@@ -182,12 +182,7 @@ const AnalysisPage = () => {
 
         setStatusMessage(`正在初始化 ${code}...`);
         try {
-            const docId =
-                typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-                    ? crypto.randomUUID()
-                    : `w_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-            // 第一步：先在 Firebase 建立基礎文件 (讓格子先在畫面上跑出來)
-            // docId 與 code 分離：同一檔股票可有多筆（不同產業／備註）
+            const docId = code;
             const initialStockObj = {
                 id: docId,
                 code: code,
@@ -461,10 +456,37 @@ const AnalysisPage = () => {
                                 const hasHoldingsAll = overNine(holdingsOk);
                                 const hasRevenueAll = overNine(revenueOk);
                                 const countStr = (n, t) => t > 0 ? `（${n}/${t}）` : '';
+                                // 資料實際最新日期（眾數 or 最大值）
+                                const latestPriceDateStr = (() => {
+                                    const freq = {};
+                                    for (const s of stocks) {
+                                        const d = s.latestPriceDate;
+                                        if (d) freq[d] = (freq[d] || 0) + 1;
+                                    }
+                                    const entries = Object.entries(freq);
+                                    if (!entries.length) return null;
+                                    return entries.sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))[0][0];
+                                })();
+                                const latestHoldingsDateStr = (() => {
+                                    const dates = stocks.map(s => s.latestHoldingsDate).filter(Boolean);
+                                    return dates.length ? dates.sort().at(-1) : null;
+                                })();
+                                const priceDataLabel = (n, t) =>
+                                    hasPriceAll
+                                        ? `${formatDate(todayStr)}${countStr(n, t)}`
+                                        : latestPriceDateStr
+                                            ? `${formatDate(latestPriceDateStr)}${countStr(n, t)}`
+                                            : `尚無資料${countStr(n, t)}`;
+                                const holdingsDataLabel = (n, t) =>
+                                    hasHoldingsAll
+                                        ? `${formatDate(todayStr)}${countStr(n, t)}`
+                                        : latestHoldingsDateStr
+                                            ? `${formatDate(latestHoldingsDateStr)}${countStr(n, t)}`
+                                            : `尚無資料${countStr(n, t)}`;
                                 const fields = [
-                                    { label: '股價', has: hasPriceAll, text: (f) => f.has ? `已有新數據（${formatDate(todayStr)}）${countStr(priceOk, total)}` : `尚未提供今日數據${countStr(priceOk, total)}` },
-                                    { label: '量能', has: hasVolumeAll, text: (f) => f.has ? `已有新數據（${formatDate(todayStr)}）${countStr(volumeOk, total)}` : `尚未提供今日數據${countStr(volumeOk, total)}` },
-                                    { label: '外資持股（外資指標）', has: hasHoldingsAll, text: (f) => f.has ? `已有新數據（${formatDate(todayStr)}）${countStr(holdingsOk, total)}` : `尚未提供今日數據${countStr(holdingsOk, total)}` },
+                                    { label: '股價', has: hasPriceAll, text: () => priceDataLabel(priceOk, total) },
+                                    { label: '量能', has: hasVolumeAll, text: () => priceDataLabel(volumeOk, total) },
+                                    { label: '外資持股（外資指標）', has: hasHoldingsAll, text: () => holdingsDataLabel(holdingsOk, total) },
                                     { label: '營收', has: hasRevenueAll, text: () => latestRevenueDateStr ? `最新：${formatRevenueMonth(latestRevenueDateStr)}${countStr(revenueOk, total)}` : '尚無資料' },
                                 ];
                                 return (
