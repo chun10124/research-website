@@ -97,8 +97,9 @@ export function previousDay(dateStr) {
 
 /** 某月最後一天 YYYY-MM-DD（month 為 1–12） */
 export function lastDayOfMonth(year, month) {
-  // Date(year, month, 0) = 下個月的第 0 天 = 本月最後一天
-  const d = new Date(year, month, 0);
+  // Date.UTC(year, month, 0)：month 為 1-12；下個月第 0 天 = 本月最後一天
+  // 使用 UTC 避免本地時區（台灣 UTC+8）午夜 00:00 被 toISOString 轉成前一天
+  const d = new Date(Date.UTC(year, month, 0));
   return d.toISOString().slice(0, 10);
 }
 
@@ -207,25 +208,27 @@ export function navReturnPercent(startNAV, endNAV) {
 
 // ─── 期間定義 ────────────────────────────────────────────────
 
+/** 台北時區今日 YYYY-MM-DD */
+function getTaipeiToday() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+}
+
 export function getDefaultPeriods() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const today = now.toISOString().slice(0, 10);
+  const today = getTaipeiToday();
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7)); // 1-12
   const pad = (n) => String(n).padStart(2, '0');
-  const m = now.getMonth() + 1; // 1-12
 
   const monthStart = `${y}-${pad(m)}-01`;
-  const threeMoAgo = new Date(now);
-  threeMoAgo.setMonth(threeMoAgo.getMonth() - 3);
-  const sixMoAgo = new Date(now);
-  sixMoAgo.setMonth(sixMoAgo.getMonth() - 6);
+  const threeMoAgo = new Date(Date.UTC(y, m - 1 - 3, Number(today.slice(8, 10))));
+  const sixMoAgo   = new Date(Date.UTC(y, m - 1 - 6, Number(today.slice(8, 10))));
   const prevMonth = m === 1 ? 12 : m - 1;
-  const prevYear = m === 1 ? y - 1 : y;
+  const prevYear  = m === 1 ? y - 1 : y;
   const prevMonthStart = `${prevYear}-${pad(prevMonth)}-01`;
   const prevMonthEnd = lastDayOfMonth(prevYear, prevMonth);
 
   return [
-    { key: 'thisMonth', label: '本月至今',   startStr: monthStart,                           endStr: today },
+    { key: 'thisMonth', label: '本月至今',   startStr: monthStart,                          endStr: today },
     { key: 'prevMonth', label: '前一月',     startStr: prevMonthStart,                      endStr: prevMonthEnd },
     { key: 'past3m',   label: '近三個月',   startStr: threeMoAgo.toISOString().slice(0, 10), endStr: today },
     { key: 'past6m',   label: '近半年',     startStr: sixMoAgo.toISOString().slice(0, 10), endStr: today },
