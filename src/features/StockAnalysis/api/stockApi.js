@@ -1,6 +1,7 @@
 /* src/features/StockAnalysis/api/stockApi.js */
 
 import { updateAnalysisField } from './watchlist';
+import { getTaiwanStockDisplayName } from './rsStockList';
 const PROXY_BASE = "https://stock-proxy.tzuchun11232004.workers.dev/?url=";
 const FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data";
 const TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNCAxNzowNzo1MyIsInVzZXJfaWQiOiJjaHVuMTAxMjQiLCJpcCI6IjYxLjIyOC43Ni4yMDYifQ.mSi9H6Lrus7e_wkaNxlYd6OoFmh79NQoQ7pZajx166s";
@@ -617,16 +618,11 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
     const holdingPromise = skipHoldings ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START));
     const revenuePromise = skipRevenue ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE));
     const pePromise = skipPER ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockPER", DATA_START_DATE));
-    /** skipPrice 時價量不打 Yahoo，另發 5d chart 只取名稱 */
-    const yahooNameOnlyPromise =
-      skipInfo || !skipPrice ? Promise.resolve(null) : fetchYahooStockDisplayName(sCode, options.market);
-
-    const [priceBundle, holdingRes, revenueRes, peRes, yahooNameOnly] = await Promise.all([
+    const [priceBundle, holdingRes, revenueRes, peRes] = await Promise.all([
       priceBundlePromise,
       holdingPromise,
       revenuePromise,
       pePromise,
-      yahooNameOnlyPromise,
     ]);
 
     if (!skipPrice && !priceBundle) {
@@ -688,11 +684,12 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
     if (skipInfo) {
       stockName = options.existingInfo.name;
     } else {
-      const rawYahooName = skipPrice ? yahooNameOnly : priceBundle?.yahooDisplayName;
-      const trimmedYahoo = rawYahooName != null ? String(rawYahooName).trim() : '';
-      if (trimmedYahoo) {
-        stockName = trimmedYahoo;
+      // 1. TWSE/TPEX 官方中文簡稱（最準確）
+      const twName = await getTaiwanStockDisplayName(sCode);
+      if (twName) {
+        stockName = twName;
       } else {
+        // 2. FinMind TaiwanStockInfo 中文名
         const infoRes = await safeFetch(getFinmindUrl("TaiwanStockInfo", ""));
         stockName = (infoRes?.data || []).find((d) => d.stock_id === sCode)?.stock_name || '未知';
       }
