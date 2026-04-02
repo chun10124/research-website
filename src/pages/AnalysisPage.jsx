@@ -413,7 +413,6 @@ const AnalysisPage = () => {
                                 </button>
                             </div>
                             {mounted && stocks.length > 0 && (() => {
-                                const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
                                 const formatDate = (str) => str ? `${str.slice(0, 4)}/${Number(str.slice(5, 7))}/${Number(str.slice(8, 10))}` : '';
                                 const revenueDates = stocks.map(s => s.latestRevenueDate).filter(Boolean);
                                 const latestRevenueDateStr = revenueDates.length ? revenueDates.sort().slice(-1)[0] : null;
@@ -435,15 +434,37 @@ const AnalysisPage = () => {
                                 const lastCompleteMonth = now.getMonth() === 0
                                     ? `${now.getFullYear() - 1}-12`
                                     : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
-                                const priceOk = stocks.filter(s => (s.latestPriceDate || '') === todayStr).length;
+                                /** 股價／量能：以全表「價格資料日」眾數為準（曆日換日但尚未開盤時，昨收資料仍算最新，不會變成 0/n） */
+                                const latestPriceDateStr = (() => {
+                                    const freq = {};
+                                    for (const s of stocks) {
+                                        const d = s.latestPriceDate;
+                                        if (d) freq[d] = (freq[d] || 0) + 1;
+                                    }
+                                    const entries = Object.entries(freq);
+                                    if (!entries.length) return null;
+                                    return entries.sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))[0][0];
+                                })();
+                                const priceOk = latestPriceDateStr
+                                    ? stocks.filter((s) => (s.latestPriceDate || '') === latestPriceDateStr).length
+                                    : 0;
                                 /** 與股價同日線對齊；追蹤表 Yahoo/FinMind 價量同捆 */
-                                const volumeOk = stocks.filter(
-                                    (s) =>
-                                        (s.latestPriceDate || '') === todayStr &&
-                                        Array.isArray(s.history?.volume) &&
-                                        s.history.volume.length > 0
-                                ).length;
-                                const holdingsOk = stocks.filter(s => (s.latestHoldingsDate || '') === todayStr).length;
+                                const volumeOk = latestPriceDateStr
+                                    ? stocks.filter(
+                                          (s) =>
+                                              (s.latestPriceDate || '') === latestPriceDateStr &&
+                                              Array.isArray(s.history?.volume) &&
+                                              s.history.volume.length > 0
+                                      ).length
+                                    : 0;
+                                /** 持股：以全表最新持股日為準（與顯示日期一致） */
+                                const latestHoldingsDateStr = (() => {
+                                    const dates = stocks.map((s) => s.latestHoldingsDate).filter(Boolean);
+                                    return dates.length ? dates.sort().at(-1) : null;
+                                })();
+                                const holdingsOk = latestHoldingsDateStr
+                                    ? stocks.filter((s) => (s.latestHoldingsDate || '') === latestHoldingsDateStr).length
+                                    : 0;
                                 const revenueOk = stocks.filter(s => {
                                     const parsed = toRevenueMonth(s.latestRevenueDate || '');
                                     const mStr = parsed ? `${parsed.y}-${String(parsed.m).padStart(2, '0')}` : '';
@@ -456,33 +477,14 @@ const AnalysisPage = () => {
                                 const hasHoldingsAll = overNine(holdingsOk);
                                 const hasRevenueAll = overNine(revenueOk);
                                 const countStr = (n, t) => t > 0 ? `（${n}/${t}）` : '';
-                                // 資料實際最新日期（眾數 or 最大值）
-                                const latestPriceDateStr = (() => {
-                                    const freq = {};
-                                    for (const s of stocks) {
-                                        const d = s.latestPriceDate;
-                                        if (d) freq[d] = (freq[d] || 0) + 1;
-                                    }
-                                    const entries = Object.entries(freq);
-                                    if (!entries.length) return null;
-                                    return entries.sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))[0][0];
-                                })();
-                                const latestHoldingsDateStr = (() => {
-                                    const dates = stocks.map(s => s.latestHoldingsDate).filter(Boolean);
-                                    return dates.length ? dates.sort().at(-1) : null;
-                                })();
                                 const priceDataLabel = (n, t) =>
-                                    hasPriceAll
-                                        ? `${formatDate(todayStr)}${countStr(n, t)}`
-                                        : latestPriceDateStr
-                                            ? `${formatDate(latestPriceDateStr)}${countStr(n, t)}`
-                                            : `尚無資料${countStr(n, t)}`;
+                                    latestPriceDateStr
+                                        ? `${formatDate(latestPriceDateStr)}${countStr(n, t)}`
+                                        : `尚無資料${countStr(n, t)}`;
                                 const holdingsDataLabel = (n, t) =>
-                                    hasHoldingsAll
-                                        ? `${formatDate(todayStr)}${countStr(n, t)}`
-                                        : latestHoldingsDateStr
-                                            ? `${formatDate(latestHoldingsDateStr)}${countStr(n, t)}`
-                                            : `尚無資料${countStr(n, t)}`;
+                                    latestHoldingsDateStr
+                                        ? `${formatDate(latestHoldingsDateStr)}${countStr(n, t)}`
+                                        : `尚無資料${countStr(n, t)}`;
                                 const fields = [
                                     { label: '股價', has: hasPriceAll, text: () => priceDataLabel(priceOk, total) },
                                     { label: '量能', has: hasVolumeAll, text: () => priceDataLabel(volumeOk, total) },
@@ -491,7 +493,7 @@ const AnalysisPage = () => {
                                 ];
                                 return (
                                     <div style={{ fontSize: '0.85em', color: '#555' }}>
-                                        <strong style={{ display: 'block', marginBottom: '6px' }}>今日 API 資料狀態</strong>
+                                        <strong style={{ display: 'block', marginBottom: '6px' }}>API 資料狀態</strong>
                                         <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: 1.6 }}>
                                             {fields.map(f => (
                                                 <li key={f.label}>
