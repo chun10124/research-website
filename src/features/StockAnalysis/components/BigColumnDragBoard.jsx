@@ -85,7 +85,7 @@ const BigColumnDragBoard = ({
     return (
         <div>
             <p style={{ margin: '0 0 10px 0', color: '#666', lineHeight: 1.45 }}>
-                拖曳產業標籤到任一大欄；同一欄內可上下調整順序。放到某張標籤上會插到該標籤<strong>上方</strong>；放到欄底空白處則<strong>接在最下面</strong>。
+                拖曳產業標籤到任一大欄（每欄可放任意多個產業）；同一欄內可上下調整順序。放到某張標籤上會插到該標籤<strong>上方</strong>；放到欄底空白處則<strong>接在最下面</strong>。欄內清單過長時可於該欄內捲動。
             </p>
             <div
                 style={{
@@ -112,7 +112,8 @@ const BigColumnDragBoard = ({
                                 border: '1px solid #c5d4e8',
                                 borderRadius: '8px',
                                 background: '#fff',
-                                overflow: 'hidden',
+                                overflow: 'visible',
+                                minHeight: 0,
                             }}
                             onDragEnter={(e) => e.preventDefault()}
                             onDragOver={(e) => e.preventDefault()}
@@ -155,8 +156,10 @@ const BigColumnDragBoard = ({
                             </div>
                             <div
                                 style={{
-                                    flex: 1,
+                                    flex: '0 1 auto',
                                     minHeight: '120px',
+                                    maxHeight: 'min(520px, 72vh)',
+                                    overflowY: 'auto',
                                     padding: '6px 4px',
                                     display: 'flex',
                                     flexDirection: 'column',

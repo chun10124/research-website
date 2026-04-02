@@ -231,7 +231,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
     return (
         <div style={{ padding: '6px' }}>
             
-            {/* 籌碼頁：頂部產業標籤；一般頁：5 大欄無產業列 */}
+            {/* 籌碼頁：頂部產業標籤；一般頁：多欄並排、無獨立產業列（產業標題在表格內各欄） */}
             {isChipMode && (
             <div style={{ marginBottom: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {categories.map(cat => (
