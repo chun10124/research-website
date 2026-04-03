@@ -159,7 +159,7 @@ function WhiteboardComponent() {
 
     saveNotesToCloud(updatedNotes);
     
-    // 清除编辑和展开状态
+    // 清除编辑和展开狀態
     setEditingNote(null);
     setExpandedNoteId(null);
   };
