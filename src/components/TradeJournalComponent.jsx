@@ -721,7 +721,7 @@ function TradeJournal() {
         // VVVV 修正點：將 li 設為主要的容器，並應用類名 VVVV
         <li key={entry.id} className={styles.historyListItem} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', borderRadius: '5px' }}>
             
-            {/* 左側內容：包含第一行與第二行資訊 */}
+            {/* 左側內容：包含第一行、第二行資訊 */}
         <div className={styles.historyDetailsContainer}>
             <div className={styles.historyInfoRow}>
                 <strong>[{entry.date}] {entry.name} ({entry.code})</strong>
