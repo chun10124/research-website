@@ -140,12 +140,12 @@ function PerformancePage() {
           ? (mktPrice - s.avgCost) * qty
           : (s.avgCost - mktPrice) * Math.abs(qty);
       }
-      return { ...s, mktPrice, unrealizedPnl: Math.round(unrealizedPnl) };
+      return { ...s, mktPrice, unrealizedPnl };
     });
   }, [holdings, prices]);
 
   const totalUnrealizedPnl = useMemo(
-    () => holdingsWithPnl.reduce((s, h) => s + h.unrealizedPnl, 0),
+    () => Math.round(holdingsWithPnl.reduce((s, h) => s + h.unrealizedPnl, 0)),
     [holdingsWithPnl]
   );
 

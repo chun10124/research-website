@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Docusaurus Dev Server",
+      "runtimeExecutable": "/usr/local/bin/node",
+      "runtimeArgs": ["/usr/local/lib/node_modules/npm/bin/npm-cli.js", "run", "start"],
+      "port": 3000
+    },
+    {
+      "name": "Docusaurus Preview (serve built)",
+      "runtimeExecutable": "/usr/local/bin/node",
+      "runtimeArgs": ["/usr/local/lib/node_modules/npm/bin/npm-cli.js", "run", "serve"],
+      "port": 3000
+    }
+  ]
+}

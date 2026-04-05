@@ -464,25 +464,13 @@ export const fetchIndexPriceMap = async (startStr, endStr) => {
   }
 };
 
-/** 僅抓該股票最新收盤價，供績效頁未實現損益用 */
+/** 僅抓該股票最新收盤價，供績效頁未實現損益用（改走 Yahoo，不依賴 FinMind token） */
 export const fetchCurrentPrice = async (stockCode) => {
   const code = String(stockCode || '').trim();
   if (!code || code === 'NaN' || code === 'undefined') return null;
-  const finmindId = toFinmindStockId(code);
-  const d = new Date();
-  d.setDate(d.getDate() - 30);
-  const start = d.toISOString().split('T')[0];
   try {
-    const url = getFinmindPriceUrl(finmindId, start);
-    const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
-    const res = await fetch(fullUrl);
-    if (!res.ok) return null;
-    const json = await res.json();
-    const data = json?.data;
-    if (!Array.isArray(data) || data.length === 0) return null;
-    const latest = data[data.length - 1];
-    const close = Number(latest?.close);
-    return close > 0 ? { currentPrice: close } : null;
+    const price = await fetchYahooPrice(code);
+    return price != null && price > 0 ? { currentPrice: price } : null;
   } catch (e) {
     console.warn(`fetchCurrentPrice(${code}) failed:`, e?.message);
     return null;
