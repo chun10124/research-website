@@ -22,6 +22,12 @@ export const fetchBenchmarkReturn = async (startStr, endStr) => {
   const start = (startStr || '').slice(0, 10);
   const end = (endStr || '').slice(0, 10);
   if (!start || !end) return null;
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const cacheKey = `rw-benchmark_${start}_${end}`;
+  try {
+    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+    if (cached?.date === todayStr && cached.value != null) return cached.value;
+  } catch (_) {}
   const INDEX_ID = 'IR0001';
   try {
     const url = getFinmindPriceUrl(INDEX_ID, start);
@@ -48,7 +54,9 @@ export const fetchBenchmarkReturn = async (startStr, endStr) => {
     }
     if (endPrice == null && dates.length) endPrice = byDate[dates[dates.length - 1]];
     if (startPrice == null || endPrice == null || startPrice <= 0) return null;
-    return ((endPrice - startPrice) / startPrice) * 100;
+    const result = ((endPrice - startPrice) / startPrice) * 100;
+    try { localStorage.setItem(cacheKey, JSON.stringify({ date: todayStr, value: result })); } catch (_) {}
+    return result;
   } catch (e) {
     console.warn('fetchBenchmarkReturn failed:', e?.message);
     return null;
@@ -584,12 +592,10 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
   const skipHoldings = options.skipHoldings === true && options.existingHoldings != null && Array.isArray(options.existingHoldings.foreignTotalHolding) && options.existingHoldings.foreignTotalHolding.length > 0;
   const skipInfo = options.skipInfo === true && options.existingInfo?.name;
   const skipPrice = options.skipPrice === true && options.existingPrice != null && Array.isArray(options.existingPrice.priceClose) && options.existingPrice.priceClose.length > 0;
-  const skipPER = options.skipPER === true && options.existingPER != null && options.existingPERDate != null;
   const today = new Date();
   const threeYearsAgo = new Date();
   threeYearsAgo.setFullYear(today.getFullYear() - 3);
   const THREE_YEARS_START = threeYearsAgo.toISOString().split('T')[0];
-  const DATA_START_DATE = "2025-10-15";
   const REVENUE_START_DATE = "2024-01-01";
 
   const getFinmindUrl = (dataset, start) => {
@@ -605,20 +611,18 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       : fetchTrackingTablePriceVolumeRows(sCode, options.market, options.yahooChartOpts);
     const holdingPromise = skipHoldings ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START));
     const revenuePromise = skipRevenue ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE));
-    const pePromise = skipPER ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockPER", DATA_START_DATE));
-    const [priceBundle, holdingRes, revenueRes, peRes] = await Promise.all([
+    const [priceBundle, holdingRes, revenueRes] = await Promise.all([
       priceBundlePromise,
       holdingPromise,
       revenuePromise,
-      pePromise,
     ]);
 
     if (!skipPrice && !priceBundle) {
       throw new Error("無法取得基礎股價數據，請檢查代碼或隧道狀態");
     }
 
-    const latestPER = skipPER ? String(options.existingPER ?? '--') : ((peRes?.data && peRes.data.length > 0) ? peRes.data[peRes.data.length - 1].PER : '--');
-    const latestPERDate = skipPER ? (options.existingPERDate || null) : (peRes?.data?.length ? getLatestDateFromFinmindRows(peRes.data) : null);
+    const latestPER = '--';
+    const latestPERDate = null;
 
     let priceCloseArray_NewestFirst;
     let volumeArray_NewestFirst;
@@ -653,12 +657,15 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
     
     let revenueArray_OldestFirst;
     let latestRevenueDate;
+    let latestRevenueFetchedDate;
     if (skipRevenue && options.existingRevenue) {
       revenueArray_OldestFirst = options.existingRevenue.revenueRaw || [];
       latestRevenueDate = options.existingRevenue.latestRevenueDate || null;
+      latestRevenueFetchedDate = options.existingRevenue.latestRevenueFetchedDate || null;
     } else {
       revenueArray_OldestFirst = (revenueRes?.data || []).map(d => Math.round((d.revenue || 0) / 1000));
       latestRevenueDate = revenueRes?.data?.length ? getLatestDateFromFinmindRows(revenueRes.data) : null;
+      latestRevenueFetchedDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     }
     const revenueYoYArray_OldestFirst = (skipRevenue && Array.isArray(options.existingRevenue?.revenueYoY) && options.existingRevenue.revenueYoY.length > 0)
       ? options.existingRevenue.revenueYoY
@@ -677,9 +684,9 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       if (twName) {
         stockName = twName;
       } else {
-        // 2. FinMind TaiwanStockInfo 中文名
-        const infoRes = await safeFetch(getFinmindUrl("TaiwanStockInfo", ""));
-        stockName = (infoRes?.data || []).find((d) => d.stock_id === sCode)?.stock_name || '未知';
+        // 2. Yahoo Finance 股票名稱
+        const yahooName = await fetchYahooStockDisplayName(sCode, options.market);
+        stockName = yahooName || '未知';
       }
     }
 
@@ -694,6 +701,7 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       latestPERDate,
       latestHoldingsDate,
       latestRevenueDate,
+      latestRevenueFetchedDate,
       history: {
         priceClose: priceCloseArray_NewestFirst,
         volume: volumeArray_NewestFirst,
@@ -723,16 +731,16 @@ export const syncStockSnapshots = async (stock) => {
     const lastCompleteMonth = now.getMonth() === 0
       ? `${now.getFullYear() - 1}-12`
       : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
-    const haveLatestRevenue = stock.latestRevenueDate && toRevenueMonthStr(stock.latestRevenueDate) === lastCompleteMonth;
-    // 9 點前 FinMind 尚未更新今日持股：只要有「昨天或更近」的資料就跳過，否則仍重抓
+    // 已有本月資料，或今天已嘗試抓過（資料還沒出來也不再重打）
+    const haveLatestRevenue = (stock.latestRevenueFetchedDate === todayStr) || (stock.latestRevenueDate && toRevenueMonthStr(stock.latestRevenueDate) === lastCompleteMonth);
+    // 9 點前不抓籌碼（FinMind 尚未更新今日資料），但若 DB 資料已落後超過一天（昨天以前）仍需補抓
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-    const holdingsDateFresh = stock.latestHoldingsDate >= yesterdayStr;
-    const haveHoldingsAndBefore9PM = isBeforeTaiwan9PM() && holdingsDateFresh && stock.history?.foreignTotalHolding?.length > 0;
+    const holdingsUpToDate = stock.latestHoldingsDate >= yesterdayStr;
+    const skipHoldingsThisSync = (isBeforeTaiwan9PM() && holdingsUpToDate) || (stock.latestHoldingsDate === todayStr && stock.history?.foreignTotalHolding?.length > 0);
     const havePriceData = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
     const haveLatestPrice = havePriceData;
-    const haveLatestPER = stock.latestPERDate === todayStr && stock.realTimePE != null && stock.realTimePE !== '';
     const opts = {};
     if (haveLatestPrice) {
       opts.skipPrice = true;
@@ -744,18 +752,13 @@ export const syncStockSnapshots = async (stock) => {
         latestPriceDate: stock.latestPriceDate,
       };
     }
-    if (haveLatestPER) {
-      opts.skipPER = true;
-      opts.existingPER = stock.realTimePE;
-      opts.existingPERDate = stock.latestPERDate;
-    }
     if (haveLatestRevenue) {
       opts.skipRevenue = true;
-      opts.existingRevenue = { revenueRaw: stock.history?.revenueRaw, revenueYoY: stock.history?.revenueYoY, latestRevenueDate: stock.latestRevenueDate };
+      opts.existingRevenue = { revenueRaw: stock.history?.revenueRaw, revenueYoY: stock.history?.revenueYoY, latestRevenueDate: stock.latestRevenueDate, latestRevenueFetchedDate: stock.latestRevenueFetchedDate };
     }
-    if (haveHoldingsAndBefore9PM) {
+    if (skipHoldingsThisSync) {
       opts.skipHoldings = true;
-      opts.existingHoldings = { foreignTotalHolding: stock.history.foreignTotalHolding, latestHoldingsDate: stock.latestHoldingsDate };
+      opts.existingHoldings = { foreignTotalHolding: stock.history?.foreignTotalHolding || [], latestHoldingsDate: stock.latestHoldingsDate };
     }
     if (stock.name && stock.name !== "讀取中..." && stock.name !== "未知") {
       opts.skipInfo = true;
