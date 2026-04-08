@@ -56,6 +56,8 @@ function crossesAnalysisSuperBatch(processedCount, size) {
 
 export function startAnalysisBackgroundSync({
   stocks,
+  /** @type {'all'|'priceVolume'|'holdingsRevenue'} */
+  syncMode = 'all',
   concurrency = RS_SYNC_DEFAULT_CONCURRENCY,
   delayMs = RS_SYNC_INTRA_DELAY_MS,
   /** 額外 0～此值（ms）加在 delayMs 上；RS 同步使用 300 */
@@ -102,7 +104,7 @@ export function startAnalysisBackgroundSync({
         await Promise.all(
           batch.map(async (stock) => {
             try {
-              const result = await syncStockSnapshots(stock);
+              const result = await syncStockSnapshots(stock, { syncMode });
               if (result?.updated) updated += 1;
               else if (result?.failed) failed += 1;
               else skipped += 1;

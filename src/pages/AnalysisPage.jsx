@@ -164,12 +164,11 @@ const AnalysisPage = () => {
     };
     const needReload = lastSyncAllAt != null && lastFetchedAt != null && lastSyncAllAt > lastFetchedAt;
 
-    const handleSyncAll = async () => {
+    const handleSyncAll = async (syncMode = 'all') => {
         if (syncingAll || stocks.length === 0) return;
-        // 追蹤表同步：與 RS 全市場同步相同預設（並發 5、組間 400ms+jitter、每 300 檔長休息）
         const list = [...stocks];
         try {
-            await startAnalysisBackgroundSync({ stocks: list });
+            await startAnalysisBackgroundSync({ stocks: list, syncMode });
         } catch (e) {
             console.error('[追蹤表同步] 啟動失敗:', e);
         }
@@ -372,26 +371,44 @@ const AnalysisPage = () => {
                             </div>
                         </details>
 
-                        <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             <button
                                 type="button"
-                                onClick={handleSyncAll}
+                                onClick={() => handleSyncAll('priceVolume')}
                                 disabled={loading || syncingAll || stocks.length === 0}
                                 style={{
-                                    padding: '10px 20px',
+                                    padding: '9px 18px',
                                     cursor: syncingAll ? 'wait' : 'pointer',
                                     backgroundColor: syncingAll ? '#ccc' : '#25c2a0',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '6px',
                                     fontWeight: 'bold',
+                                    fontSize: '0.93em',
                                 }}
                             >
-                                {syncingAll ? `同步全部中（更新 ${syncAllProgress.current}/${syncAllProgress.total}）…` : '同步全部'}
+                                {syncingAll ? `同步中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新價量'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSyncAll('holdingsRevenue')}
+                                disabled={loading || syncingAll || stocks.length === 0}
+                                style={{
+                                    padding: '9px 18px',
+                                    cursor: syncingAll ? 'wait' : 'pointer',
+                                    backgroundColor: syncingAll ? '#ccc' : '#3498db',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontWeight: 'bold',
+                                    fontSize: '0.93em',
+                                }}
+                            >
+                                {syncingAll ? `同步中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新外資/營收'}
                             </button>
                             {stocks.length > 0 && !syncingAll && (
-                                <span style={{ fontSize: '0.9em', color: '#666' }}>
-                                    共 {stocks.length} 檔，約需 {Math.ceil((stocks.length / 5) * 3.5 / 60)} 分鐘
+                                <span style={{ fontSize: '0.85em', color: '#888' }}>
+                                    {stocks.length} 檔
                                 </span>
                             )}
                         </div>

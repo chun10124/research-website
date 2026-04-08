@@ -726,8 +726,17 @@ const isBeforeTaiwan9PM = () => {
   return taiwanHour < 21;
 };
 
-export const syncStockSnapshots = async (stock) => {
-  console.log(`🚀 正在同步 ${stock.name || stock.code}...`);
+/**
+ * @param {object} stock - 股票物件
+ * @param {object} [syncOptions]
+ * @param {'all'|'priceVolume'|'holdingsRevenue'} [syncOptions.syncMode='all']
+ *   - 'all': 全部更新（預設）
+ *   - 'priceVolume': 僅更新價量（跳過外資持股與營收）
+ *   - 'holdingsRevenue': 僅更新外資持股與營收（跳過價量）
+ */
+export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
+  const modeLabel = syncMode === 'priceVolume' ? '價量' : syncMode === 'holdingsRevenue' ? '籌碼/營收' : '全部';
+  console.log(`🚀 正在同步 ${stock.name || stock.code}（${modeLabel}）...`);
   try {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -745,21 +754,27 @@ export const syncStockSnapshots = async (stock) => {
     const havePriceData = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
     const haveLatestPrice = havePriceData;
     const opts = {};
-    if (haveLatestPrice) {
+
+    // ── syncMode 強制跳過邏輯 ──
+    const forceSkipPrice = syncMode === 'holdingsRevenue';
+    const forceSkipHoldings = syncMode === 'priceVolume';
+    const forceSkipRevenue = syncMode === 'priceVolume';
+
+    if (haveLatestPrice || forceSkipPrice) {
       opts.skipPrice = true;
       opts.existingPrice = {
-        priceClose: stock.history.priceClose,
-        volume: stock.history.volume,
+        priceClose: stock.history?.priceClose || [],
+        volume: stock.history?.volume || [],
         currentPrice: stock.currentPrice,
         yesterdayClose: stock.yesterdayClose,
         latestPriceDate: stock.latestPriceDate,
       };
     }
-    if (haveLatestRevenue) {
+    if (haveLatestRevenue || forceSkipRevenue) {
       opts.skipRevenue = true;
       opts.existingRevenue = { revenueRaw: stock.history?.revenueRaw, revenueYoY: stock.history?.revenueYoY, latestRevenueDate: stock.latestRevenueDate, latestRevenueFetchedDate: stock.latestRevenueFetchedDate };
     }
-    if (skipHoldingsThisSync) {
+    if (skipHoldingsThisSync || forceSkipHoldings) {
       opts.skipHoldings = true;
       opts.existingHoldings = { foreignTotalHolding: stock.history?.foreignTotalHolding || [], latestHoldingsDate: stock.latestHoldingsDate };
     }
