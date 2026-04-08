@@ -781,7 +781,11 @@ export const syncStockSnapshots = async (stock) => {
             const pm = rsData.priceMap;
             const vm = (rsData.volumeMap && typeof rsData.volumeMap === 'object') ? rsData.volumeMap : {};
             const datesAsc = Object.keys(pm).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
-            if (datesAsc.length > 0) {
+            const rsLatestDate = datesAsc[datesAsc.length - 1];
+            // 只有 RS priceMap 確實含有今日資料時才沿用；
+            // 若 RS 同步時 Yahoo 歷史 API 尚未更新當日 K 棒（最新仍為昨日），
+            // 則不採用，繼續去 Yahoo 重抓，避免覆蓋已正確寫入的今日資料。
+            if (datesAsc.length > 0 && rsLatestDate >= todayStr) {
               const datesDesc = [...datesAsc].reverse();
               opts.skipPrice = true;
               opts.existingPrice = {
@@ -792,9 +796,11 @@ export const syncStockSnapshots = async (stock) => {
                 }),
                 currentPrice: pm[datesAsc[datesAsc.length - 1]] ?? 0,
                 yesterdayClose: datesAsc.length >= 2 ? pm[datesAsc[datesAsc.length - 2]] : 0,
-                latestPriceDate: datesAsc[datesAsc.length - 1],
+                latestPriceDate: rsLatestDate,
               };
               console.log(`[${stock.code}] 沿用 RS 今日 priceMap，跳過 Yahoo`);
+            } else if (datesAsc.length > 0) {
+              console.log(`[${stock.code}] RS priceMap 最新日 ${rsLatestDate} < 今日 ${todayStr}，不沿用，重抓 Yahoo`);
             }
           }
         }
