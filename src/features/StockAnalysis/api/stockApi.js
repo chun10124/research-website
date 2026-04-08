@@ -2,6 +2,9 @@
 
 import { updateAnalysisField, deleteAnalysisDoc } from './watchlist';
 import { getTaiwanStockDisplayName } from './rsStockList';
+import { calculateSingleStockIndicators } from '../utils/analysisUtils';
+import { getDoc, doc } from 'firebase/firestore';
+import { RS_RATINGS_COLLECTION } from '../../../utils/firebaseConfig';
 const PROXY_BASE = "https://stock-proxy.tzuchun11232004.workers.dev/?url=";
 const FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data";
 const TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNCAxNzowNzo1MyIsInVzZXJfaWQiOiJjaHVuMTAxMjQiLCJpcCI6IjYxLjIyOC43Ni4yMDYifQ.mSi9H6Lrus7e_wkaNxlYd6OoFmh79NQoQ7pZajx166s";
@@ -764,8 +767,45 @@ export const syncStockSnapshots = async (stock) => {
       opts.skipInfo = true;
       opts.existingInfo = { name: stock.name };
     }
+    // 若 RS 今日已同步且有 priceMap/volumeMap，直接沿用，跳過 Yahoo 請求
+    if (!opts.skipPrice) {
+      try {
+        const rsSnap = await getDoc(doc(RS_RATINGS_COLLECTION, stock.code));
+        if (rsSnap.exists()) {
+          const rsData = rsSnap.data();
+          if (
+            rsData?.ibdRsPriceFetchedDate === todayStr &&
+            rsData?.priceMap && typeof rsData.priceMap === 'object' &&
+            Object.keys(rsData.priceMap).length > 0
+          ) {
+            const pm = rsData.priceMap;
+            const vm = (rsData.volumeMap && typeof rsData.volumeMap === 'object') ? rsData.volumeMap : {};
+            const datesAsc = Object.keys(pm).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+            if (datesAsc.length > 0) {
+              const datesDesc = [...datesAsc].reverse();
+              opts.skipPrice = true;
+              opts.existingPrice = {
+                priceClose: datesDesc.map((d) => pm[d]),
+                volume: datesDesc.map((d) => {
+                  const v = vm[d];
+                  return v != null && Number.isFinite(v) ? v : 0;
+                }),
+                currentPrice: pm[datesAsc[datesAsc.length - 1]] ?? 0,
+                yesterdayClose: datesAsc.length >= 2 ? pm[datesAsc[datesAsc.length - 2]] : 0,
+                latestPriceDate: datesAsc[datesAsc.length - 1],
+              };
+              console.log(`[${stock.code}] 沿用 RS 今日 priceMap，跳過 Yahoo`);
+            }
+          }
+        }
+      } catch (e) {
+        // RS doc 讀取失敗，繼續正常 Yahoo 抓取
+      }
+    }
     const latestData = await fetchCompleteStockData(stock.code, () => {}, { ...opts, market: stock.market });
     if (!latestData) return { updated: false, skipped: true, failed: false };
+    // 計算籌碼指標：以 stock（舊的 foreignBCount）延續連續 B 天計數
+    const indicators = calculateSingleStockIndicators({ ...stock, ...latestData });
     const targetDocId = stock.code;
     await updateAnalysisField(targetDocId, {
       ...latestData,
@@ -774,6 +814,9 @@ export const syncStockSnapshots = async (stock) => {
       estimatedEPS: stock.estimatedEPS || 0,
       targetPrice: stock.targetPrice || 0,
       notes: stock.notes || "",
+      foreignSignal: indicators.foreignSignal,
+      foreignBCount: indicators.foreignBCount,
+      zScore: indicators.zScore,
       lastUpdate: Date.now()
     });
     // 舊文件 ID 是 UUID → 寫入新文件後刪掉舊的

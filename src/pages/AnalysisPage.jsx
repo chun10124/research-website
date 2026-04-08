@@ -10,6 +10,7 @@ import BigColumnDragBoard from '../features/StockAnalysis/components/BigColumnDr
 import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
 import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF } from '../utils/firebaseConfig';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
+import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
 import { RsChartModal } from './IBDRsRankingPage';
 import {
     startAnalysisBackgroundSync,
@@ -45,6 +46,10 @@ const AnalysisPage = () => {
     const [bigColumnConfig, setBigColumnConfig] = useState({});
     const [columnLabels, setColumnLabels] = useState(Array(NUM_BIG_COLUMNS).fill(''));
     const [selectedRsId, setSelectedRsId] = useState(null);
+
+    const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
+    const { stocks: rsRatings, loading: rsLoading } = useIbdRsData();
+    const { idSet: rsWatchlistIdSet, toggle: toggleRsWatchlist } = useIbdRsWatchlist();
 
     useEffect(() => {
         setMounted(true);
@@ -105,7 +110,7 @@ const AnalysisPage = () => {
         return () => {
             unsub?.();
         };
-    }, []);
+    }, [refreshData]);
 
     useEffect(() => {
         const unsub = onSnapshot(ANALYSIS_LAYOUT_DOC_REF, (snap) => {
@@ -120,9 +125,6 @@ const AnalysisPage = () => {
         }, (err) => console.error('分析版面 Firestore 監聽失敗:', err));
         return () => unsub();
     }, []);
-
-    const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
-    const { stocks: rsRatings, loading: rsLoading } = useIbdRsData();
 
     const rsById = useMemo(() => Object.fromEntries((rsRatings || []).map((s) => [s.id, s])), [rsRatings]);
     const navigationList = useMemo(() => {
@@ -519,7 +521,8 @@ const AnalysisPage = () => {
                     navigationList={navigationList}
                     onNavigate={(st) => setSelectedRsId(st?.id ?? null)}
                     onClose={() => setSelectedRsId(null)}
-                    inWatchlist={false}
+                    inWatchlist={rsWatchlistIdSet.has(selectedStock.id)}
+                    onToggleWatchlist={async (st) => { await toggleRsWatchlist(st.id); }}
                 />
             )}
         </Layout>
