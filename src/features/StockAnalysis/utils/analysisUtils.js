@@ -50,7 +50,7 @@ export const calculateForeignForce = (holdings = [], prevBCount = 0) => {
     
     // 確保數據足夠計算 10D ROC 以及 700 個交易日(3年) 的標準差 [cite: 8]
     if (!holdings || holdings.length < 700 + N) {
-        return { signal: "N", bCount: 0, roc: 0, threshold: 0 };
+        return { signal: "N", bCount: 0, roc: 0, threshold: 0, zScore: 0 };
     }
 
     // 1. 計算 ROC 序列: (當天 - N天前) / N天前 [cite: 7]

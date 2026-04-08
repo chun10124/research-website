@@ -814,9 +814,9 @@ export const syncStockSnapshots = async (stock) => {
       estimatedEPS: stock.estimatedEPS || 0,
       targetPrice: stock.targetPrice || 0,
       notes: stock.notes || "",
-      foreignSignal: indicators.foreignSignal,
-      foreignBCount: indicators.foreignBCount,
-      zScore: indicators.zScore,
+      foreignSignal: indicators.foreignSignal ?? "N",
+      foreignBCount: indicators.foreignBCount ?? 0,
+      zScore: indicators.zScore ?? 0,
       lastUpdate: Date.now()
     });
     // 舊文件 ID 是 UUID → 寫入新文件後刪掉舊的
