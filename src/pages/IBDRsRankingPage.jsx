@@ -1102,7 +1102,6 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal（觀察列表頁亦共用） */
 export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist }) {
   const [watchlistBusy, setWatchlistBusy] = useState(false);
-  const [vcpDetailVisible, setVcpDetailVisible] = useState(false);
   const [indexMap, setIndexMap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1450,8 +1449,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             )}
             {/* VCP：與收盤價同一基線；載入中占位避免版面跳動 */}
             <span
-              title="價格項：近10個交易日最大單日|報酬|÷近40個交易日最大（收盤）；成交量項：近10日均量÷近40日均量；各 0～1；加權 70% / 30%"
-              style={{
+style={{
                 fontSize: 12,
                 fontWeight: 500,
                 lineHeight: 1.2,
@@ -1477,26 +1475,12 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                   <span style={{ fontWeight: 600, color: '#9ca3af' }}>VCP</span>{' '}
                   {vcpSnapshot.composite != null && Number.isFinite(vcpSnapshot.composite) ? (
                     <span
-                      style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151', cursor: 'default' }}
-                      onMouseEnter={() => setVcpDetailVisible(true)}
-                      onMouseLeave={() => setVcpDetailVisible(false)}
+                      style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}
                     >
                       {vcpSnapshot.composite.toFixed(2)}
                     </span>
                   ) : (
                     <span style={{ color: '#9ca3af' }}>—</span>
-                  )}
-                  {vcpDetailVisible && (
-                    <span style={{ marginLeft: 6, fontSize: 11, color: '#9ca3af' }}>
-                      價 {vcpSnapshot.priceRatio != null && Number.isFinite(vcpSnapshot.priceRatio)
-                        ? vcpSnapshot.priceRatio.toFixed(2)
-                        : '—'}
-                      ×{Math.round(VCP_WEIGHT_PRICE * 100)}% 量{' '}
-                      {vcpSnapshot.volRatio != null && Number.isFinite(vcpSnapshot.volRatio)
-                        ? vcpSnapshot.volRatio.toFixed(2)
-                        : '—'}
-                      ×{Math.round(VCP_WEIGHT_VOLUME * 100)}%
-                    </span>
                   )}
                 </>
               )}
