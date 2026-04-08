@@ -4,7 +4,7 @@ import { updateAnalysisField, deleteAnalysisDoc } from './watchlist';
 import { getTaiwanStockDisplayName } from './rsStockList';
 import { calculateSingleStockIndicators } from '../utils/analysisUtils';
 import { getDoc, doc } from 'firebase/firestore';
-import { RS_RATINGS_COLLECTION } from '../../../utils/firebaseConfig';
+import { RS_RATINGS_COLLECTION, STOCK_WATCHLIST_COLLECTION } from '../../../utils/firebaseConfig';
 const PROXY_BASE = "https://stock-proxy.tzuchun11232004.workers.dev/?url=";
 const FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data";
 const TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNCAxNzowNzo1MyIsInVzZXJfaWQiOiJjaHVuMTAxMjQiLCJpcCI6IjYxLjIyOC43Ni4yMDYifQ.mSi9H6Lrus7e_wkaNxlYd6OoFmh79NQoQ7pZajx166s";
@@ -810,9 +810,35 @@ export const syncStockSnapshots = async (stock) => {
     }
     const latestData = await fetchCompleteStockData(stock.code, () => {}, { ...opts, market: stock.market });
     if (!latestData) return { updated: false, skipped: true, failed: false };
+
+    // ── 防止股價日期倒退 ──────────────────────────────
+    // 讀取 Firestore 現有的 latestPriceDate，若本次抓到的日期更舊，
+    // 則保留 Firestore 中較新的股價資料，只更新非股價欄位（籌碼、營收等）。
+    // 這是最終安全網，無論資料來自 RS priceMap / Yahoo / FinMind 都能攔截。
+    const targetDocId = stock.code;
+    try {
+      const existingSnap = await getDoc(doc(STOCK_WATCHLIST_COLLECTION, targetDocId));
+      if (existingSnap.exists()) {
+        const existingDate = existingSnap.data()?.latestPriceDate;
+        if (existingDate && latestData.latestPriceDate && latestData.latestPriceDate < existingDate) {
+          console.warn(`⚠️ [${stock.code}] 防止股價倒退：新 ${latestData.latestPriceDate} < 現有 ${existingDate}，保留現有股價`);
+          const existingDoc = existingSnap.data();
+          latestData.latestPriceDate = existingDate;
+          latestData.currentPrice = existingDoc.currentPrice ?? latestData.currentPrice;
+          latestData.yesterdayClose = existingDoc.yesterdayClose ?? latestData.yesterdayClose;
+          if (Array.isArray(existingDoc.history?.priceClose) && existingDoc.history.priceClose.length > 0) {
+            latestData.history.priceClose = existingDoc.history.priceClose;
+            latestData.history.volume = existingDoc.history.volume || latestData.history.volume;
+          }
+        }
+      }
+    } catch (e) {
+      // 讀取失敗不阻擋同步，繼續正常寫入
+      console.warn(`[${stock.code}] 日期倒退檢查讀取失敗:`, e?.message);
+    }
+
     // 計算籌碼指標：以 stock（舊的 foreignBCount）延續連續 B 天計數
     const indicators = calculateSingleStockIndicators({ ...stock, ...latestData });
-    const targetDocId = stock.code;
     await updateAnalysisField(targetDocId, {
       ...latestData,
       id: targetDocId,
