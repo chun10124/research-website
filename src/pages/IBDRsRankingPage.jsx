@@ -841,6 +841,14 @@ function IbdRsComboChart({ data }) {
           {Number.isFinite(hd.close) && (
             <div style={{ color: '#374151', fontWeight: 700, paddingBottom: 2 }}>收：{Math.round(hd.close)}</div>
           )}
+          {Number.isFinite(hd.close) && hoverIdx > 0 && Number.isFinite(data[hoverIdx - 1]?.close) && (() => {
+            const pct = (hd.close - data[hoverIdx - 1].close) / data[hoverIdx - 1].close * 100;
+            return (
+              <div style={{ color: pct > 0 ? '#c0392b' : pct < 0 ? '#2e7d32' : '#666', fontWeight: 700 }}>
+                漲跌：{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -1094,6 +1102,7 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal（觀察列表頁亦共用） */
 export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist }) {
   const [watchlistBusy, setWatchlistBusy] = useState(false);
+  const [vcpDetailVisible, setVcpDetailVisible] = useState(false);
   const [indexMap, setIndexMap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1467,22 +1476,28 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                 <>
                   <span style={{ fontWeight: 600, color: '#9ca3af' }}>VCP</span>{' '}
                   {vcpSnapshot.composite != null && Number.isFinite(vcpSnapshot.composite) ? (
-                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
+                    <span
+                      style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151', cursor: 'default' }}
+                      onMouseEnter={() => setVcpDetailVisible(true)}
+                      onMouseLeave={() => setVcpDetailVisible(false)}
+                    >
                       {vcpSnapshot.composite.toFixed(2)}
                     </span>
                   ) : (
                     <span style={{ color: '#9ca3af' }}>—</span>
                   )}
-                  <span style={{ marginLeft: 6, fontSize: 11, color: '#9ca3af' }}>
-                    價 {vcpSnapshot.priceRatio != null && Number.isFinite(vcpSnapshot.priceRatio)
-                      ? vcpSnapshot.priceRatio.toFixed(3)
-                      : '—'}
-                    ×{Math.round(VCP_WEIGHT_PRICE * 100)}% 量{' '}
-                    {vcpSnapshot.volRatio != null && Number.isFinite(vcpSnapshot.volRatio)
-                      ? vcpSnapshot.volRatio.toFixed(3)
-                      : '—'}
-                    ×{Math.round(VCP_WEIGHT_VOLUME * 100)}%
-                  </span>
+                  {vcpDetailVisible && (
+                    <span style={{ marginLeft: 6, fontSize: 11, color: '#9ca3af' }}>
+                      價 {vcpSnapshot.priceRatio != null && Number.isFinite(vcpSnapshot.priceRatio)
+                        ? vcpSnapshot.priceRatio.toFixed(2)
+                        : '—'}
+                      ×{Math.round(VCP_WEIGHT_PRICE * 100)}% 量{' '}
+                      {vcpSnapshot.volRatio != null && Number.isFinite(vcpSnapshot.volRatio)
+                        ? vcpSnapshot.volRatio.toFixed(2)
+                        : '—'}
+                      ×{Math.round(VCP_WEIGHT_VOLUME * 100)}%
+                    </span>
+                  )}
                 </>
               )}
             </span>

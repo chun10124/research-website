@@ -280,12 +280,13 @@ export async function fetchRsPriceData(stockCode, market) {
   const endDate = new Date();
   const startDate = new Date();
   startDate.setMonth(startDate.getMonth() - RS_PRICE_LOOKBACK_MONTHS);
-  return fetchYahooHistoricalPriceMap(
+  const result = await fetchYahooHistoricalPriceVolumeMaps(
     stockCode,
     startDate.toISOString().slice(0, 10),
     endDate.toISOString().slice(0, 10),
-    { market }
+    { market },
   );
+  return { priceMap: result.priceMap, volumeMap: result.volumeMap };
 }
 
 /**
@@ -537,8 +538,12 @@ async function runMonolithicSync(
       let ibdRsLastClose = null;
       let ibdRsLastCloseDate = null;
       let fetchOk = false;
+      let priceMap = {};
+      let volumeMap = {};
       try {
-        const priceMap = await fetchRsPriceData(stock.id, stock.market);
+        const fetched = await fetchRsPriceData(stock.id, stock.market);
+        priceMap = fetched.priceMap;
+        volumeMap = fetched.volumeMap;
         rsRaw = calculateRsRaw(priceMap, todayStr);
         if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
         if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
@@ -567,6 +572,8 @@ async function runMonolithicSync(
         pricePos6m,
         ibdRsLastClose,
         ibdRsLastCloseDate,
+        priceMap,
+        volumeMap,
       };
       rawResults.push(snap);
       batchSnapshots.push({ ...snap, fetchOk });
@@ -601,6 +608,8 @@ async function runMonolithicSync(
               ibdRsLastClose: s.ibdRsLastClose,
               ibdRsLastCloseDate: s.ibdRsLastCloseDate,
               ibdRsPriceFetchedDate: todayStr,
+              priceMap: s.priceMap,
+              volumeMap: s.volumeMap,
               updatedAt: Date.now(),
             },
             { merge: true },
@@ -703,9 +712,13 @@ async function runPriceFetchSlice(
       let ibdRsLastClose = null;
       let ibdRsLastCloseDate = null;
       let fetchOk = false;
+      let priceMap = {};
+      let volumeMap = {};
 
       try {
-        const priceMap = await fetchRsPriceData(stock.id, stock.market);
+        const fetched = await fetchRsPriceData(stock.id, stock.market);
+        priceMap = fetched.priceMap;
+        volumeMap = fetched.volumeMap;
         rsRaw = calculateRsRaw(priceMap, todayStr);
         if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
         if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
@@ -730,6 +743,8 @@ async function runPriceFetchSlice(
             pricePct1d, pricePct5d, pricePct20d, pricePos6m,
             ibdRsLastClose, ibdRsLastCloseDate,
             ibdRsPriceFetchedDate: todayStr,
+            priceMap,
+            volumeMap,
             updatedAt: Date.now(),
           },
           { merge: true }
@@ -1168,7 +1183,7 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
   const mkt = market || info?.market || 'TPEX';
 
   onProgress({ phase: 'fetch', done: 0, total: 1, msg: `抓取 ${stockId} ${name} 股價…` });
-  const priceMap = await fetchRsPriceData(stockId, mkt);
+  const { priceMap, volumeMap: _vm } = await fetchRsPriceData(stockId, mkt);
   const rsRaw = calculateRsRaw(priceMap, todayStr);
   const anchor7Str = taipeiYmdAddDays(todayStr, -7);
   const anchor30Str = taipeiYmdAddDays(todayStr, -30);
@@ -1229,6 +1244,7 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
       pricePos6m,
       ibdRsLastClose,
       ibdRsLastCloseDate,
+      priceMap,
       updatedAt: Date.now(),
     },
     { merge: true }
@@ -1279,7 +1295,7 @@ export async function syncTestBatch({ count = 10, onProgress = () => {}, signal 
     const stock = batch[i];
     onProgress({ phase: 'fetch', done: i, total, msg: `${stock.id} ${stock.name}`, ...listMeta });
     try {
-      const priceMap = await fetchRsPriceData(stock.id, stock.market);
+      const { priceMap, volumeMap: _vm2 } = await fetchRsPriceData(stock.id, stock.market);
       const rsRaw = calculateRsRaw(priceMap, todayStr);
       const rsRaw7 = anchor7Str ? calculateRsRaw(priceMap, anchor7Str) : null;
       const rsRaw30 = anchor30Str ? calculateRsRaw(priceMap, anchor30Str) : null;
@@ -1304,6 +1320,7 @@ export async function syncTestBatch({ count = 10, onProgress = () => {}, signal 
         ibdRsPriceFetchedDate: todayStr,
         ibdRsUpdatedDate: todayStr,
         ibdRsSnapshotDate: todayStr,
+        priceMap,
         updatedAt: Date.now(),
       }, { merge: true });
       processed++;

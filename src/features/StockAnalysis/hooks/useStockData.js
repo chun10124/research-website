@@ -1,5 +1,5 @@
 /* src/features/StockAnalysis/hooks/useStockData.js */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 // 🟢 修正導入：改用 fetchWatchlist 與 updateAnalysisField
 import { fetchWatchlist, updateAnalysisField } from '../api/watchlist'; 
 import { db } from '../../../utils/firebaseConfig'; 
@@ -10,8 +10,8 @@ export const useStockData = () => {
     const [loading, setLoading] = useState(true);
     const [lastFetchedAt, setLastFetchedAt] = useState(null);
 
-    // 🟢 封裝刷新邏輯
-    const refresh = async () => {
+    // 🟢 封裝刷新邏輯（useCallback 確保 deps 穩定，避免 useEffect stale closure）
+    const refresh = useCallback(async () => {
         try {
             const data = await fetchWatchlist();
             setStocks([...data]);
@@ -22,7 +22,7 @@ export const useStockData = () => {
             console.error("刷新失敗:", error);
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
