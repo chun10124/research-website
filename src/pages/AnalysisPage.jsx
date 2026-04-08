@@ -40,6 +40,7 @@ const AnalysisPage = () => {
     const [testCode, setTestCode] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
     const [syncingAll, setSyncingAll] = useState(false);
+    const [syncingMode, setSyncingMode] = useState(null); // 'priceVolume' | 'holdingsRevenue' | null
     const [syncAllProgress, setSyncAllProgress] = useState({ current: 0, total: 0 });
     const [lastSyncAllAt, setLastSyncAllAt] = useState(null);
     const [mounted, setMounted] = useState(false);
@@ -166,11 +167,14 @@ const AnalysisPage = () => {
 
     const handleSyncAll = async (syncMode = 'all') => {
         if (syncingAll || stocks.length === 0) return;
+        setSyncingMode(syncMode);
         const list = [...stocks];
         try {
             await startAnalysisBackgroundSync({ stocks: list, syncMode });
         } catch (e) {
             console.error('[追蹤表同步] 啟動失敗:', e);
+        } finally {
+            setSyncingMode(null);
         }
     };
 
@@ -387,7 +391,7 @@ const AnalysisPage = () => {
                                     transition: 'opacity 0.2s',
                                 }}
                             >
-                                {syncingAll ? `同步中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新價量'}
+                                {syncingMode === 'priceVolume' ? `更新價量中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新價量'}
                             </button>
                             <button
                                 type="button"
@@ -404,7 +408,7 @@ const AnalysisPage = () => {
                                     transition: 'opacity 0.2s',
                                 }}
                             >
-                                {syncingAll ? `同步中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新外資/營收'}
+                                {syncingMode === 'holdingsRevenue' ? `更新外資/營收中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新外資/營收'}
                             </button>
                             {stocks.length > 0 && !syncingAll && (
                                 <span style={{ fontSize: '0.85em', color: '#888' }}>
