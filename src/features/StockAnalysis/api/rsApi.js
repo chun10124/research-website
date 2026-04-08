@@ -21,7 +21,7 @@
 
 import { doc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db, RS_RATINGS_COLLECTION } from '../../../utils/firebaseConfig';
-import { fetchYahooHistoricalPriceMap, fetchHistoricalPriceMap } from './stockApi';
+import { fetchYahooHistoricalPriceMap, fetchHistoricalPriceMap, fetchYahooHistoricalPriceVolumeMaps } from './stockApi';
 import { fetchTaiwanStockList } from './rsStockList';
 import {
   calculateRsRaw,
