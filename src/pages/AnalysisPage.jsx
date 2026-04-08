@@ -377,14 +377,14 @@ const AnalysisPage = () => {
                                 onClick={() => handleSyncAll('priceVolume')}
                                 disabled={loading || syncingAll || stocks.length === 0}
                                 style={{
-                                    padding: '6px 13px',
+                                    padding: '10px 20px',
                                     cursor: syncingAll ? 'wait' : 'pointer',
                                     backgroundColor: syncingAll ? '#ccc' : '#25c2a0',
                                     color: 'white',
                                     border: 'none',
-                                    borderRadius: '5px',
-                                    fontWeight: '600',
-                                    fontSize: '0.83em',
+                                    borderRadius: '6px',
+                                    fontWeight: 'bold',
+                                    transition: 'opacity 0.2s',
                                 }}
                             >
                                 {syncingAll ? `同步中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新價量'}
@@ -394,14 +394,14 @@ const AnalysisPage = () => {
                                 onClick={() => handleSyncAll('holdingsRevenue')}
                                 disabled={loading || syncingAll || stocks.length === 0}
                                 style={{
-                                    padding: '6px 13px',
+                                    padding: '10px 20px',
                                     cursor: syncingAll ? 'wait' : 'pointer',
                                     backgroundColor: syncingAll ? '#ccc' : '#3498db',
                                     color: 'white',
                                     border: 'none',
-                                    borderRadius: '5px',
-                                    fontWeight: '600',
-                                    fontSize: '0.83em',
+                                    borderRadius: '6px',
+                                    fontWeight: 'bold',
+                                    transition: 'opacity 0.2s',
                                 }}
                             >
                                 {syncingAll ? `同步中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新外資/營收'}
