@@ -1171,9 +1171,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     setOhlcSeries([]);
 
     const endStr = new Date().toISOString().slice(0, 10);
+    // startStr：取 RS history 最早日期 與 K 棒起始日（quoteStart）兩者較早者，
+    // 確保大盤資料能覆蓋整段 K 棒顯示範圍（例如 7822 RS history 較短時不會只顯示局部大盤線）
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - 6);
-    const startStr = earliestHistoryDate || startDate.toISOString().slice(0, 10);
+    const fallbackStart = startDate.toISOString().slice(0, 10);
 
     let cancelled = false;
     const quoteEnd = getTaiwanYmd();
@@ -1239,6 +1241,9 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           }
         });
     }
+
+    // 大盤起始日：取 RS history 最早日 與 K 棒起始日（quoteStart）較早者
+    const startStr = [earliestHistoryDate, quoteStart, fallbackStart].filter(Boolean).sort()[0];
 
     fetchIndexPriceMap(startStr, endStr)
       .then((im) => {
