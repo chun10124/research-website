@@ -621,6 +621,7 @@ function IbdRsComboChart({ data }) {
   const { w, h } = size;
   const innerW = Math.max(1, w - PAD_L - PAD_R);
   const innerH = Math.max(1, h - PAD_T - PAD_B);
+
   const n = data.length;
   const slot = n > 0 ? innerW / n : innerW;
   const xAt = (i) => PAD_L + (i + 0.5) * slot;
@@ -647,6 +648,13 @@ function IbdRsComboChart({ data }) {
   const hasIdx = Number.isFinite(iMin);
   if (hasIdx) { const ip = (iMax - iMin || iMax * 0.01 || 1) * 0.06; iMin -= ip; iMax += ip; }
   const yIdx = hasIdx ? (v) => PAD_T + innerH - ((v - iMin) / (iMax - iMin)) * innerH : () => PAD_T;
+
+  /* Volume: 疊在主圖底部，最高佔 innerH 的 20%（TradingView 風格） */
+  const hasVolData = data.some((d) => Number.isFinite(d.volume) && d.volume > 0);
+  const VOL_MAX_H = Math.round(innerH * 0.20);
+  let volMax = 0;
+  for (const d of data) { if (Number.isFinite(d.volume) && d.volume > volMax) volMax = d.volume; }
+  const volBarH = (vol) => (!volMax || !Number.isFinite(vol) || vol <= 0) ? 0 : Math.max(1, (vol / volMax) * VOL_MAX_H);
 
   /* Polyline segments（處理 null 斷點） */
   const buildSegs = (fn) => {
@@ -715,7 +723,7 @@ function IbdRsComboChart({ data }) {
   };
 
   const hd = hoverIdx != null ? data[hoverIdx] : null;
-  const tooltipHeightEstimate = 122;
+  const tooltipHeightEstimate = 140;
   const tooltipTop =
     hoverIdx == null
       ? 0
@@ -757,7 +765,11 @@ function IbdRsComboChart({ data }) {
         {hasOhlc && data.map((d, i) => {
           if (!Number.isFinite(d.open) || !Number.isFinite(d.high) || !Number.isFinite(d.low) || !Number.isFinite(d.close)) return null;
           const xc = xAt(i);
-          const up = d.close >= d.open;
+          const prevClose = i > 0 && Number.isFinite(data[i - 1]?.close) ? data[i - 1].close : null;
+          // 有真實 open（open ≠ close）用 close vs open；否則退回 close vs 昨收
+          const up = (d.open !== d.close)
+            ? d.close >= d.open
+            : prevClose != null ? d.close >= prevClose : true;
           const fill   = up ? '#e53935' : '#2e7d32';
           const stroke = up ? '#c62828' : '#1b5e20';
           const yH = yPrice(d.high); const yL = yPrice(d.low);
@@ -765,7 +777,7 @@ function IbdRsComboChart({ data }) {
           const bodyTop = Math.min(yO, yC);
           const bodyH   = Math.max(Math.abs(yC - yO), 1);
           return (
-            <g key={`k-${d.dateKey}`} opacity={0.4}>
+            <g key={`k-${d.dateKey}`} opacity={0.65}>
               <line x1={xc} y1={yH} x2={xc} y2={yL} stroke={stroke} strokeWidth={0.9} />
               <rect x={xc - barW / 2} y={bodyTop} width={barW} height={bodyH} fill={fill} stroke={stroke} strokeWidth={0.8} />
             </g>
@@ -781,6 +793,27 @@ function IbdRsComboChart({ data }) {
         {rsSegs.map((pts, i) => (
           <polyline key={`rs-${i}`} points={pts} fill="none" stroke="#c0392b" strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
         ))}
+
+        {/* 量能柱（疊在主圖底部，TradingView 風格） */}
+        {hasVolData && data.map((d, i) => {
+          if (!Number.isFinite(d.volume) || d.volume <= 0) return null;
+          const bh = volBarH(d.volume);
+          const xc = xAt(i);
+          const prevClose = i > 0 && Number.isFinite(data[i - 1]?.close) ? data[i - 1].close : null;
+          const up = (Number.isFinite(d.open) && d.open !== d.close)
+            ? d.close >= d.open
+            : prevClose != null ? d.close >= prevClose : true;
+          return (
+            <rect
+              key={`vb-${d.dateKey}`}
+              x={xc - barW / 2}
+              y={PAD_T + innerH - bh}
+              width={barW}
+              height={bh}
+              fill={up ? 'rgba(229,57,53,0.22)' : 'rgba(46,125,50,0.22)'}
+            />
+          );
+        })}
 
         {/* Hover 十字線 */}
         {hoverIdx != null && (
@@ -1147,35 +1180,65 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     const quoteStartBuf = new Date();
     quoteStartBuf.setDate(quoteStartBuf.getDate() - 120);
     const quoteStart = quoteStartBuf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-    void fetchYahooHistoricalPriceVolumeMaps(stock.id, quoteStart, quoteEnd, { market: stock.market })
-      .then(({ priceMap, highMap, lowMap, volumeMap, ohlcSeries: ohlc }) => {
-        if (cancelled) return;
-        setOhlcSeries(Array.isArray(ohlc) ? ohlc : []);
-        if (priceMap && typeof priceMap === 'object') {
-          const dates = Object.keys(priceMap).sort();
-          const lastD = dates[dates.length - 1];
-          const p = lastD != null ? priceMap[lastD] : null;
-          if (lastD && p != null && Number.isFinite(p)) {
-            setCloseQuote({ dateStr: lastD, price: p });
+
+    // 優先用 Firestore 已存的 highMap/lowMap，避免 Yahoo proxy 快取問題
+    const storedPM = stock.priceMap && typeof stock.priceMap === 'object' ? stock.priceMap : null;
+    const storedOM = stock.openMap && typeof stock.openMap === 'object' ? stock.openMap : null;
+    const storedHM = stock.highMap && typeof stock.highMap === 'object' ? stock.highMap : null;
+    const storedLM = stock.lowMap && typeof stock.lowMap === 'object' ? stock.lowMap : null;
+    const storedVM = stock.volumeMap && typeof stock.volumeMap === 'object' ? stock.volumeMap : null;
+    const hasStoredMaps = storedPM && storedHM && storedLM && Object.keys(storedHM).length >= 20;
+
+    if (hasStoredMaps) {
+      const dates = Object.keys(storedPM).filter((d) => d >= quoteStart && d <= quoteEnd).sort();
+      setOhlcSeries(dates.map((d) => {
+        const close = storedPM[d];
+        return {
+          dateStr: d,
+          open: storedOM?.[d] ?? close,
+          high: storedHM[d] ?? close,
+          low: storedLM[d] ?? close,
+          close,
+          volume: storedVM?.[d] ?? 0,
+        };
+      }));
+      const allDates = Object.keys(storedPM).filter((d) => d <= quoteEnd).sort();
+      const lastD = allDates[allDates.length - 1];
+      setCloseQuote(lastD && Number.isFinite(storedPM[lastD]) ? { dateStr: lastD, price: storedPM[lastD] } : null);
+      const pr = calcVcpPriceRatioFromHighLowMaps(storedHM, storedLM, quoteEnd);
+      const vr = calcVcpVolumeRatioFromVolumeMap(storedVM || {}, quoteEnd);
+      setVcpSnapshot({ composite: calcCompositeVcp(pr, vr), priceRatio: pr, volRatio: vr });
+    } else {
+      void fetchYahooHistoricalPriceVolumeMaps(stock.id, quoteStart, quoteEnd, { market: stock.market })
+        .then(({ priceMap, highMap, lowMap, volumeMap, ohlcSeries: ohlc }) => {
+          if (cancelled) return;
+          setOhlcSeries(Array.isArray(ohlc) ? ohlc : []);
+          if (priceMap && typeof priceMap === 'object') {
+            const dates = Object.keys(priceMap).sort();
+            const lastD = dates[dates.length - 1];
+            const p = lastD != null ? priceMap[lastD] : null;
+            if (lastD && p != null && Number.isFinite(p)) {
+              setCloseQuote({ dateStr: lastD, price: p });
+            } else {
+              setCloseQuote(null);
+            }
+            const pr = calcVcpPriceRatioFromHighLowMaps(highMap || {}, lowMap || {}, quoteEnd);
+            const vr = calcVcpVolumeRatioFromVolumeMap(volumeMap || {}, quoteEnd);
+            const comp = calcCompositeVcp(pr, vr);
+            setVcpSnapshot({ composite: comp, priceRatio: pr, volRatio: vr });
           } else {
             setCloseQuote(null);
+            setVcpSnapshot({ composite: null, priceRatio: null, volRatio: null });
           }
-          const pr = calcVcpPriceRatioFromHighLowMaps(highMap || {}, lowMap || {}, quoteEnd);
-          const vr = calcVcpVolumeRatioFromVolumeMap(volumeMap || {}, quoteEnd);
-          const comp = calcCompositeVcp(pr, vr);
-          setVcpSnapshot({ composite: comp, priceRatio: pr, volRatio: vr });
-        } else {
-          setCloseQuote(null);
-          setVcpSnapshot({ composite: null, priceRatio: null, volRatio: null });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCloseQuote(null);
-          setVcpSnapshot({ error: true });
-          setOhlcSeries([]);
-        }
-      });
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setCloseQuote(null);
+            setVcpSnapshot({ error: true });
+            setOhlcSeries([]);
+          }
+        });
+    }
 
     fetchIndexPriceMap(startStr, endStr)
       .then((im) => {
@@ -1217,6 +1280,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           high: Number.isFinite(o.high) ? o.high : null,
           low: Number.isFinite(o.low) ? o.low : null,
           close: Number.isFinite(o.close) ? o.close : null,
+          volume: Number.isFinite(o.volume) && o.volume > 0 ? o.volume : null,
         };
       });
     }
@@ -2800,7 +2864,6 @@ export default function IBDRsRankingPage() {
     }
 
     setVcpLoading(true);
-    setVcpById(new Map());
 
     const quoteEnd = getTaiwanYmd();
     const quoteStartBuf = new Date();
@@ -2813,6 +2876,26 @@ export default function IBDRsRankingPage() {
     const CONCURRENCY = 4;
     let cancelled = false;
 
+    // 先同步填入已有 vcpScore 的股票
+    const needsAsync = [];
+    for (const s of list) {
+      if (s.vcpScore != null && Number.isFinite(s.vcpScore)) {
+        map.set(s.id, s.vcpScore);
+      } else {
+        needsAsync.push(s);
+      }
+    }
+
+    // 全部都有 DB 資料，直接結束
+    if (needsAsync.length === 0) {
+      setVcpById(new Map(map));
+      setVcpLoading(false);
+      return;
+    }
+
+    // 先把已有的顯示出來，再繼續非同步補剩下的
+    setVcpById(new Map(map));
+
     const pumpUi = () => {
       if (cancelled || vcpFetchGenRef.current !== myGen) return;
       setVcpById(new Map(map));
@@ -2820,9 +2903,19 @@ export default function IBDRsRankingPage() {
 
     const runOne = async (s) => {
       try {
-        const { highMap, lowMap, volumeMap } = await fetchYahooHistoricalPriceVolumeMaps(s.id, quoteStart, quoteEnd, {
-          market: s.market,
-        });
+        const storedHM = s.highMap && typeof s.highMap === 'object' ? s.highMap : null;
+        const storedLM = s.lowMap && typeof s.lowMap === 'object' ? s.lowMap : null;
+        const storedVM = s.volumeMap && typeof s.volumeMap === 'object' ? s.volumeMap : null;
+        let highMap, lowMap, volumeMap;
+        if (storedHM && storedLM && Object.keys(storedHM).length >= 20) {
+          highMap = storedHM;
+          lowMap = storedLM;
+          volumeMap = storedVM || {};
+        } else {
+          ({ highMap, lowMap, volumeMap } = await fetchYahooHistoricalPriceVolumeMaps(s.id, quoteStart, quoteEnd, {
+            market: s.market,
+          }));
+        }
         const pr = calcVcpPriceRatioFromHighLowMaps(highMap || {}, lowMap || {}, quoteEnd);
         const vr = calcVcpVolumeRatioFromVolumeMap(volumeMap || {}, quoteEnd);
         return calcCompositeVcp(pr, vr);
@@ -2837,8 +2930,8 @@ export default function IBDRsRankingPage() {
         while (true) {
           if (cancelled || vcpFetchGenRef.current !== myGen) return;
           const i = index++;
-          if (i >= list.length) return;
-          const s = list[i];
+          if (i >= needsAsync.length) return;
+          const s = needsAsync[i];
           const comp = await runOne(s);
           if (cancelled || vcpFetchGenRef.current !== myGen) return;
           map.set(s.id, comp);
