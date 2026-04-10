@@ -126,7 +126,8 @@ async function fetchYahooChart(symbol, range = '5d', opts = {}) {
   const maxRetries = opts.maxRetries ?? 6;
   const baseDelayMs = opts.baseDelayMs ?? 900;
   const timeoutMs = Math.max(3000, Number(opts.timeoutMs) || YAHOO_FETCH_TIMEOUT_MS);
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`;
+  const cacheBust = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}&_cb=${cacheBust}`;
   const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

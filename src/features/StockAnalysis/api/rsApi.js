@@ -31,6 +31,9 @@ import {
   calcPricePosition6m,
   normalizeYmdToTaiwanTradingDay,
   getLatestCloseInPriceMap,
+  calcVcpPriceRatioFromHighLowMaps,
+  calcVcpVolumeRatioFromVolumeMap,
+  calcCompositeVcp,
 } from '../utils/rsCalculator';
 
 /**
@@ -286,7 +289,32 @@ export async function fetchRsPriceData(stockCode, market) {
     endDate.toISOString().slice(0, 10),
     { market },
   );
-  return { priceMap: result.priceMap, volumeMap: result.volumeMap };
+  // openMap 從 ohlcSeries 提取
+  const openMap = {};
+  for (const bar of (result.ohlcSeries || [])) {
+    if (bar.dateStr && Number.isFinite(bar.open) && bar.open > 0) {
+      openMap[bar.dateStr] = bar.open;
+    }
+  }
+  // openMap/highMap/lowMap/volumeMap 只存最近 120 天（K 線 + VCP 夠用）
+  // priceMap 維持完整（RS 計算需要 15 個月）
+  return {
+    priceMap: result.priceMap,
+    volumeMap: trimMapToLastN(result.volumeMap, 120),
+    openMap: trimMapToLastN(openMap, 120),
+    highMap: trimMapToLastN(result.highMap, 120),
+    lowMap: trimMapToLastN(result.lowMap, 120),
+  };
+}
+
+/** 只保留 map 中日期最新的 n 筆 */
+function trimMapToLastN(map, n) {
+  if (!map || typeof map !== 'object') return {};
+  const dates = Object.keys(map).sort();
+  const keep = dates.slice(-n);
+  const out = {};
+  for (const d of keep) out[d] = map[d];
+  return out;
 }
 
 /**
@@ -540,10 +568,16 @@ async function runMonolithicSync(
       let fetchOk = false;
       let priceMap = {};
       let volumeMap = {};
+      let highMap = {};
+      let lowMap = {};
+      let openMap = {};
       try {
         const fetched = await fetchRsPriceData(stock.id, stock.market);
         priceMap = fetched.priceMap;
         volumeMap = fetched.volumeMap;
+        highMap = fetched.highMap || {};
+        lowMap = fetched.lowMap || {};
+        openMap = fetched.openMap || {};
         rsRaw = calculateRsRaw(priceMap, todayStr);
         if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
         if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
@@ -559,6 +593,9 @@ async function runMonolithicSync(
       } catch (e) {
         console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
       }
+      const vcpPr = calcVcpPriceRatioFromHighLowMaps(highMap, lowMap, todayStr);
+      const vcpVr = calcVcpVolumeRatioFromVolumeMap(volumeMap, todayStr);
+      const vcpScore = calcCompositeVcp(vcpPr, vcpVr);
       const snap = {
         id: stock.id,
         name: stock.name,
@@ -574,6 +611,10 @@ async function runMonolithicSync(
         ibdRsLastCloseDate,
         priceMap,
         volumeMap,
+        openMap,
+        highMap,
+        lowMap,
+        vcpScore: vcpScore ?? null,
       };
       rawResults.push(snap);
       batchSnapshots.push({ ...snap, fetchOk });
@@ -610,6 +651,10 @@ async function runMonolithicSync(
               ibdRsPriceFetchedDate: todayStr,
               priceMap: s.priceMap,
               volumeMap: s.volumeMap,
+              openMap: s.openMap,
+              highMap: s.highMap,
+              lowMap: s.lowMap,
+              vcpScore: s.vcpScore,
               updatedAt: Date.now(),
             },
             { merge: true },
@@ -714,11 +759,17 @@ async function runPriceFetchSlice(
       let fetchOk = false;
       let priceMap = {};
       let volumeMap = {};
+      let openMap = {};
+      let highMap = {};
+      let lowMap = {};
 
       try {
         const fetched = await fetchRsPriceData(stock.id, stock.market);
         priceMap = fetched.priceMap;
         volumeMap = fetched.volumeMap;
+        openMap = fetched.openMap || {};
+        highMap = fetched.highMap || {};
+        lowMap = fetched.lowMap || {};
         rsRaw = calculateRsRaw(priceMap, todayStr);
         if (anchor7Str) rsRaw7 = calculateRsRaw(priceMap, anchor7Str);
         if (anchor30Str) rsRaw30 = calculateRsRaw(priceMap, anchor30Str);
@@ -733,6 +784,9 @@ async function runPriceFetchSlice(
       } catch (e) {
         console.warn(`[RS] ${stock.id} 抓取失敗:`, e.message);
       }
+      const vcpPr2 = calcVcpPriceRatioFromHighLowMaps(highMap, lowMap, todayStr);
+      const vcpVr2 = calcVcpVolumeRatioFromVolumeMap(volumeMap, todayStr);
+      const vcpScore2 = calcCompositeVcp(vcpPr2, vcpVr2) ?? null;
 
       if (fetchOk) {
         await setDoc(
@@ -745,6 +799,10 @@ async function runPriceFetchSlice(
             ibdRsPriceFetchedDate: todayStr,
             priceMap,
             volumeMap,
+            openMap,
+            highMap,
+            lowMap,
+            vcpScore: vcpScore2,
             updatedAt: Date.now(),
           },
           { merge: true }
@@ -1183,7 +1241,11 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
   const mkt = market || info?.market || 'TPEX';
 
   onProgress({ phase: 'fetch', done: 0, total: 1, msg: `抓取 ${stockId} ${name} 股價…` });
-  const { priceMap, volumeMap: _vm } = await fetchRsPriceData(stockId, mkt);
+  const { priceMap, volumeMap: _vm, openMap: _om, highMap: _hm, lowMap: _lm } = await fetchRsPriceData(stockId, mkt);
+  const openMap = _om || {};
+  const highMap = _hm || {};
+  const lowMap = _lm || {};
+  const volumeMap = _vm || {};
   const rsRaw = calculateRsRaw(priceMap, todayStr);
   const anchor7Str = taipeiYmdAddDays(todayStr, -7);
   const anchor30Str = taipeiYmdAddDays(todayStr, -30);
@@ -1245,6 +1307,13 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
       ibdRsLastClose,
       ibdRsLastCloseDate,
       priceMap,
+      openMap,
+      highMap,
+      lowMap,
+      vcpScore: calcCompositeVcp(
+        calcVcpPriceRatioFromHighLowMaps(highMap, lowMap, todayStr),
+        calcVcpVolumeRatioFromVolumeMap(volumeMap, todayStr),
+      ) ?? null,
       updatedAt: Date.now(),
     },
     { merge: true }
@@ -1295,7 +1364,11 @@ export async function syncTestBatch({ count = 10, onProgress = () => {}, signal 
     const stock = batch[i];
     onProgress({ phase: 'fetch', done: i, total, msg: `${stock.id} ${stock.name}`, ...listMeta });
     try {
-      const { priceMap, volumeMap: _vm2 } = await fetchRsPriceData(stock.id, stock.market);
+      const { priceMap, volumeMap: _vm2, openMap: _om2, highMap: _hm2, lowMap: _lm2 } = await fetchRsPriceData(stock.id, stock.market);
+      const openMap2 = _om2 || {};
+      const highMap2 = _hm2 || {};
+      const lowMap2 = _lm2 || {};
+      const volumeMap2 = _vm2 || {};
       const rsRaw = calculateRsRaw(priceMap, todayStr);
       const rsRaw7 = anchor7Str ? calculateRsRaw(priceMap, anchor7Str) : null;
       const rsRaw30 = anchor30Str ? calculateRsRaw(priceMap, anchor30Str) : null;
@@ -1321,6 +1394,13 @@ export async function syncTestBatch({ count = 10, onProgress = () => {}, signal 
         ibdRsUpdatedDate: todayStr,
         ibdRsSnapshotDate: todayStr,
         priceMap,
+        openMap: openMap2,
+        highMap: highMap2,
+        lowMap: lowMap2,
+        vcpScore: calcCompositeVcp(
+          calcVcpPriceRatioFromHighLowMaps(highMap2, lowMap2, todayStr),
+          calcVcpVolumeRatioFromVolumeMap(volumeMap2, todayStr),
+        ) ?? null,
         updatedAt: Date.now(),
       }, { merge: true });
       processed++;
