@@ -29,11 +29,16 @@
 .inputField {
   flex-grow: 1;
   padding: 8px; /* 從 10px 縮小 */
-  
+
   /* VVVV 保持原始風格 VVVV */
-  border: 1px solid var(--ifm-color-primary-lighter); 
-  border-radius: 4px; 
+  border: 1px solid var(--ifm-color-primary-lighter);
+  border-radius: 4px;
   font-size: 0.9rem; /* 縮小字體以視覺縮小 */
+}
+
+.inputField::placeholder {
+  color: #aaa;
+  opacity: 1;
 }
 
 /* 按鈕：減少 padding */
