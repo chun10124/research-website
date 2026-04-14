@@ -1334,6 +1334,25 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [stock, stock?.id, navigationList, onNavigate]);
 
+  useEffect(() => {
+    if (!stock) return;
+    const handleKey = (e) => {
+      if (isDomTypingTarget(e.target)) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose?.();
+      } else if (e.key === 's' || e.key === 'S') {
+        if (!watchlistBusy && typeof onToggleWatchlist === 'function') {
+          e.preventDefault();
+          setWatchlistBusy(true);
+          onToggleWatchlist(stock).catch((err) => console.error('[觀察列表]', err)).finally(() => setWatchlistBusy(false));
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => window.removeEventListener('keydown', handleKey, true);
+  }, [stock, onClose, onToggleWatchlist, watchlistBusy]);
+
   /** 手機橫滑切換個股：須「快滑」；慢慢拖著看 RS tooltip 不觸發（與 ←／→ 方向相同） */
   const handleSwipeTouchStart = useCallback(
     (e) => {
@@ -1547,6 +1566,15 @@ style={{
                       style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}
                     >
                       {vcpSnapshot.composite.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#9ca3af' }}>—</span>
+                  )}
+                  {'　'}
+                  <span style={{ fontWeight: 600, color: '#9ca3af' }}>HL</span>{' '}
+                  {stock?.pricePos6m != null && Number.isFinite(stock.pricePos6m) ? (
+                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
+                      {stock.pricePos6m.toFixed(2)}
                     </span>
                   ) : (
                     <span style={{ color: '#9ca3af' }}>—</span>
