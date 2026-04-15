@@ -1133,8 +1133,9 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
 
 
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal（觀察列表頁亦共用） */
-export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist }) {
+export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist, watchlistPriority, onSetPriority }) {
   const [watchlistBusy, setWatchlistBusy] = useState(false);
+  const [priorityBusy, setPriorityBusy] = useState(false);
   const [indexMap, setIndexMap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1341,17 +1342,32 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose?.();
-      } else if (e.key === 's' || e.key === 'S') {
-        if (!watchlistBusy && typeof onToggleWatchlist === 'function') {
-          e.preventDefault();
+      } else if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
+        if (priorityBusy || watchlistBusy) return;
+        if (typeof onToggleWatchlist !== 'function' && typeof onSetPriority !== 'function') return;
+        e.preventDefault();
+        const p = Number(e.code.replace('Digit', ''));
+        if (inWatchlist && watchlistPriority === p) {
+          // 同一個數字再按 → 移出觀察清單
           setWatchlistBusy(true);
           onToggleWatchlist(stock).catch((err) => console.error('[觀察列表]', err)).finally(() => setWatchlistBusy(false));
+        } else if (inWatchlist) {
+          // 已在清單，只改分類
+          setPriorityBusy(true);
+          onSetPriority(stock, p).catch((err) => console.error('[優先順序]', err)).finally(() => setPriorityBusy(false));
+        } else {
+          // 不在清單 → 加入並設分類
+          setWatchlistBusy(true);
+          onToggleWatchlist(stock)
+            .then(() => onSetPriority(stock, p))
+            .catch((err) => console.error('[觀察列表]', err))
+            .finally(() => setWatchlistBusy(false));
         }
       }
     };
     window.addEventListener('keydown', handleKey, true);
     return () => window.removeEventListener('keydown', handleKey, true);
-  }, [stock, onClose, onToggleWatchlist, watchlistBusy]);
+  }, [stock, onClose, onToggleWatchlist, watchlistBusy, inWatchlist, onSetPriority, watchlistPriority, priorityBusy]);
 
   /** 手機橫滑切換個股：須「快滑」；慢慢拖著看 RS tooltip 不觸發（與 ←／→ 方向相同） */
   const handleSwipeTouchStart = useCallback(
@@ -1814,37 +1830,75 @@ style={{
             RS 歷史隨每日 sync 累積；股價與 VCP 同源（Yahoo）
           </span>
           {typeof onToggleWatchlist === 'function' && (
-            <button
-              type="button"
-              onClick={async (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                if (!stock || watchlistBusy || typeof onToggleWatchlist !== 'function') return;
-                setWatchlistBusy(true);
-                try {
-                  await onToggleWatchlist(stock);
-                } catch (err) {
-                  console.error('[觀察列表]', err);
-                } finally {
-                  setWatchlistBusy(false);
-                }
-              }}
-              disabled={watchlistBusy}
-              aria-label={inWatchlist ? '自觀察列表移除' : '加入觀察列表'}
-              title={inWatchlist ? '自觀察列表移除' : '加入觀察列表'}
-              style={{
-                flex: '0 0 auto',
-                border: 'none',
-                background: 'transparent',
-                cursor: watchlistBusy ? 'wait' : 'pointer',
-                fontSize: 15,
-                lineHeight: 1,
-                padding: '2px 4px',
-                color: inWatchlist ? '#f59e0b' : '#cbd5e1',
-              }}
-            >
-              {inWatchlist ? '★' : '☆'}
-            </button>
+            <div style={{ position: 'relative', flex: '0 0 auto', display: 'inline-flex' }}>
+              <button
+                type="button"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  if (!stock || watchlistBusy || typeof onToggleWatchlist !== 'function') return;
+                  setWatchlistBusy(true);
+                  try {
+                    await onToggleWatchlist(stock);
+                  } catch (err) {
+                    console.error('[觀察列表]', err);
+                  } finally {
+                    setWatchlistBusy(false);
+                  }
+                }}
+                disabled={watchlistBusy}
+                aria-label={inWatchlist ? '自觀察列表移除' : '加入觀察列表'}
+                title={inWatchlist ? '自觀察列表移除' : '加入觀察列表（鍵盤 1/2/3）'}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: watchlistBusy ? 'wait' : 'pointer',
+                  fontSize: 15,
+                  lineHeight: 1,
+                  padding: '2px 4px',
+                  color: inWatchlist ? '#f59e0b' : '#cbd5e1',
+                }}
+              >
+                {inWatchlist ? '★' : '☆'}
+              </button>
+              {inWatchlist && watchlistPriority != null && typeof onSetPriority === 'function' && (
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (priorityBusy) return;
+                    setPriorityBusy(true);
+                    try {
+                      await onSetPriority(stock, null);
+                    } catch (err) {
+                      console.error('[優先順序]', err);
+                    } finally {
+                      setPriorityBusy(false);
+                    }
+                  }}
+                  disabled={priorityBusy}
+                  title={`分類 ${watchlistPriority}（點擊清除，鍵盤 1/2/3 更改）`}
+                  aria-label={`分類 ${watchlistPriority}，點擊清除`}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: priorityBusy ? 'wait' : 'pointer',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    padding: 0,
+                    color: '#1e293b',
+                    pointerEvents: 'auto',
+                  }}
+                >
+                  {watchlistPriority}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -2627,7 +2681,7 @@ function summarizeIbdRsFilters(filters, deltaShortResolved, deltaLongResolved) {
 
 export default function IBDRsRankingPage() {
   const { stocks, loading, syncing, syncProgress, syncRs, lastSyncAt, refresh } = useIbdRsData();
-  const { idSet: rsWatchlistIdSet, toggle: toggleRsWatchlist } = useIbdRsWatchlist();
+  const { idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } = useIbdRsWatchlist();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [activeView, setActiveView] = useState('home');
   const [page, setPage] = useState(0);
@@ -3031,8 +3085,14 @@ export default function IBDRsRankingPage() {
 
   const watchlistStocks = useMemo(() => {
     if (!rsWatchlistIdSet || rsWatchlistIdSet.size === 0) return [];
-    return globalSorted.filter((s) => rsWatchlistIdSet.has(s.id));
-  }, [globalSorted, rsWatchlistIdSet]);
+    return globalSorted
+      .filter((s) => rsWatchlistIdSet.has(s.id))
+      .sort((a, b) => {
+        const pa = rsWatchlistPriorities[String(a.id)] ?? 99;
+        const pb = rsWatchlistPriorities[String(b.id)] ?? 99;
+        return pa - pb;
+      });
+  }, [globalSorted, rsWatchlistIdSet, rsWatchlistPriorities]);
 
   const hasActiveFilter = Object.entries(filters).some(([k, v]) => v !== '' && v !== DEFAULT_FILTERS[k]);
 
@@ -4330,6 +4390,10 @@ export default function IBDRsRankingPage() {
           inWatchlist={selectedStock ? rsWatchlistIdSet.has(selectedStock.id) : false}
           onToggleWatchlist={async (st) => {
             await toggleRsWatchlist(st.id);
+          }}
+          watchlistPriority={selectedStock ? (rsWatchlistPriorities[selectedStock.id] ?? null) : null}
+          onSetPriority={async (st, p) => {
+            await setRsWatchlistPriority(st.id, p);
           }}
           onClose={() => {
             setSelectedStock(null);

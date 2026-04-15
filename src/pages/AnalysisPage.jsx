@@ -50,7 +50,7 @@ const AnalysisPage = () => {
 
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
     const { stocks: rsRatings, loading: rsLoading } = useIbdRsData();
-    const { idSet: rsWatchlistIdSet, toggle: toggleRsWatchlist } = useIbdRsWatchlist();
+    const { idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } = useIbdRsWatchlist();
 
     useEffect(() => {
         setMounted(true);
@@ -544,6 +544,8 @@ const AnalysisPage = () => {
                     onClose={() => setSelectedRsId(null)}
                     inWatchlist={rsWatchlistIdSet.has(selectedStock.id)}
                     onToggleWatchlist={async (st) => { await toggleRsWatchlist(st.id); }}
+                    watchlistPriority={rsWatchlistPriorities[selectedStock.id] ?? null}
+                    onSetPriority={async (st, p) => { await setRsWatchlistPriority(st.id, p); }}
                 />
             )}
         </Layout>

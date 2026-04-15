@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { subscribeIbdRsWatchlistIds, toggleIbdRsWatchlistStockId } from '../api/ibdRsWatchlistFirestore';
+import {
+  subscribeIbdRsWatchlistIds,
+  toggleIbdRsWatchlistStockId,
+  setIbdRsWatchlistStockPriority,
+} from '../api/ibdRsWatchlistFirestore';
 
 export function useIbdRsWatchlist() {
   const [stockIds, setStockIds] = useState([]);
+  const [priorities, setPriorities] = useState({});
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const unsub = subscribeIbdRsWatchlistIds((ids) => {
+    const unsub = subscribeIbdRsWatchlistIds(({ ids, priorities: p }) => {
       setStockIds(ids);
+      setPriorities(p);
       setReady(true);
     });
     return unsub;
@@ -19,5 +25,9 @@ export function useIbdRsWatchlist() {
     return toggleIbdRsWatchlistStockId(stockId);
   }, []);
 
-  return { stockIds, idSet, ready, toggle };
+  const setPriority = useCallback(async (stockId, priority) => {
+    return setIbdRsWatchlistStockPriority(stockId, priority);
+  }, []);
+
+  return { stockIds, idSet, priorities, ready, toggle, setPriority };
 }

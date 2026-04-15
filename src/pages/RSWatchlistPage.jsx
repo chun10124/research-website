@@ -18,15 +18,19 @@ const ENRICH_FILTERS = {
 export default function RSWatchlistPage() {
   const [selectedStock, setSelectedStock] = useState(null);
   const { stocks, loading } = useIbdRsData();
-  const { stockIds, idSet: rsWatchlistIdSet, ready: watchlistReady, toggle: toggleRsWatchlist } =
+  const { stockIds, idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, ready: watchlistReady, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } =
     useIbdRsWatchlist();
 
   const stockById = useMemo(() => Object.fromEntries((stocks || []).map((s) => [s.id, s])), [stocks]);
 
-  const orderedRaw = useMemo(
-    () => stockIds.map((id) => stockById[id]).filter(Boolean),
-    [stockIds, stockById]
-  );
+  const orderedRaw = useMemo(() => {
+    const items = stockIds.map((id) => stockById[id]).filter(Boolean);
+    return [...items].sort((a, b) => {
+      const pa = rsWatchlistPriorities[String(a.id)] ?? 99;
+      const pb = rsWatchlistPriorities[String(b.id)] ?? 99;
+      return pa - pb;
+    });
+  }, [stockIds, stockById, rsWatchlistPriorities]);
 
   const enriched = useMemo(
     () => orderedRaw.map((s) => enrichIbdRsRow(s, ENRICH_FILTERS)),
@@ -127,6 +131,10 @@ export default function RSWatchlistPage() {
           inWatchlist={rsWatchlistIdSet.has(selectedStock.id)}
           onToggleWatchlist={async (st) => {
             await toggleRsWatchlist(st.id);
+          }}
+          watchlistPriority={rsWatchlistPriorities[selectedStock.id] ?? null}
+          onSetPriority={async (st, p) => {
+            await setRsWatchlistPriority(st.id, p);
           }}
           onClose={() => setSelectedStock(null)}
         />
