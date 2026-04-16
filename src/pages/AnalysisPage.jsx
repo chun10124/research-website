@@ -341,7 +341,11 @@ const AnalysisPage = () => {
                                     <p style={{ margin: 0, color: '#888' }}>尚無股票，請先新增。</p>
                                 ) : (
                                     <ul style={{ margin: 0, paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                        {stocks.map(s => (
+                                        {[...stocks].sort((a, b) => {
+                                            if ((a.category || '') === '自選') return -1;
+                                            if ((b.category || '') === '自選') return 1;
+                                            return (a.category || '').localeCompare(b.category || '', 'zh-TW');
+                                        }).map(s => (
                                             <li key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', listStyle: 'none', marginLeft: '-12px' }}>
                                                 <span style={{ fontWeight: 'bold', minWidth: '42px' }}>{s.code || s.id}</span>
                                                 <span style={{ minWidth: '70px', color: '#666' }}>{s.name}</span>

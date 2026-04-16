@@ -137,7 +137,11 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
         return groups;
     }, {});
 
-    const categories = Object.keys(groupedData).sort();
+    const categories = Object.keys(groupedData).sort((a, b) => {
+        if (a === '自選') return -1;
+        if (b === '自選') return 1;
+        return a.localeCompare(b, 'zh-TW');
+    });
     const ROW_H = 25;
     const rowH = `${ROW_H}px`;
     const trStyle = { height: rowH, maxHeight: rowH };
