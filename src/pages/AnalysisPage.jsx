@@ -130,18 +130,46 @@ const AnalysisPage = () => {
     const rsById = useMemo(() => Object.fromEntries((rsRatings || []).map((s) => [s.id, s])), [rsRatings]);
     const navigationList = useMemo(() => {
         if (!Array.isArray(stocks) || stocks.length === 0) return [];
+
+        // 複製表格的排序邏輯：依 bigColumnConfig 欄位/順序排，確保方向鍵順序與畫面一致
+        const NUM_COLS = 8;
+        const grouped = {};
+        for (const s of stocks) {
+            const cat = s.category || '未分類';
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(s);
+        }
+        const categories = Object.keys(grouped).sort((a, b) => {
+            if (a === '自選') return -1;
+            if (b === '自選') return 1;
+            return a.localeCompare(b, 'zh-TW');
+        });
+        const byCol = {};
+        for (let c = 0; c < NUM_COLS; c++) byCol[c] = [];
+        categories.forEach(cat => {
+            const cfg = bigColumnConfig[cat] ?? { column: 0, order: 0 };
+            const col = Math.max(0, Math.min(NUM_COLS - 1, Number(cfg.column) || 0));
+            const order = Number(cfg.order) || 0;
+            byCol[col].push({ cat, order, stocks: grouped[cat] });
+        });
+
         const out = [];
         const seen = new Set();
-        for (const a of stocks) {
-            const key = a.code ?? a.id;
-            const rs = rsById[key];
-            if (rs && !seen.has(rs.id)) {
-                out.push(rs);
-                seen.add(rs.id);
+        for (let c = 0; c < NUM_COLS; c++) {
+            byCol[c].sort((a, b) => a.order - b.order);
+            for (const { stocks: catStocks } of byCol[c]) {
+                for (const a of catStocks) {
+                    const key = a.code ?? a.id;
+                    const rs = rsById[key];
+                    if (rs && !seen.has(rs.id)) {
+                        out.push(rs);
+                        seen.add(rs.id);
+                    }
+                }
             }
         }
         return out;
-    }, [stocks, rsById]);
+    }, [stocks, rsById, bigColumnConfig]);
 
     const selectedStock = selectedRsId ? rsById[selectedRsId] : null;
 
