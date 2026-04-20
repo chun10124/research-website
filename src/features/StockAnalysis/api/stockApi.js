@@ -3,8 +3,21 @@
 import { updateAnalysisField, deleteAnalysisDoc } from './watchlist';
 import { getTaiwanStockDisplayName } from './rsStockList';
 import { calculateSingleStockIndicators } from '../utils/analysisUtils';
+import { normalizeYmdToTaiwanTradingDay, taipeiYmdAddDays } from '../utils/rsCalculator';
 import { getDoc, doc } from 'firebase/firestore';
 import { RS_RATINGS_COLLECTION, STOCK_WATCHLIST_COLLECTION } from '../../../utils/firebaseConfig';
+
+// 與 rsApi.js 的 getTaiwanYmd() 相同邏輯：14:00 前取前一交易日，14:00 後取當日
+function getLatestTradingYmd() {
+  const now = new Date();
+  const calendarYmd = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const h = parseInt(now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Taipei', hour12: false }), 10);
+  if (Number.isFinite(h) && h >= 14) {
+    return normalizeYmdToTaiwanTradingDay(calendarYmd) ?? calendarYmd;
+  }
+  const prev = taipeiYmdAddDays(calendarYmd, -1);
+  return normalizeYmdToTaiwanTradingDay(prev) ?? prev;
+}
 const PROXY_BASE = "https://stock-proxy.tzuchun11232004.workers.dev/?url=";
 const FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data";
 const TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNCAxNzowNzo1MyIsInVzZXJfaWQiOiJjaHVuMTAxMjQiLCJpcCI6IjYxLjIyOC43Ni4yMDYifQ.mSi9H6Lrus7e_wkaNxlYd6OoFmh79NQoQ7pZajx166s";
@@ -783,14 +796,15 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
       opts.skipInfo = true;
       opts.existingInfo = { name: stock.name };
     }
-    // 若 RS 今日已同步且有 priceMap/volumeMap，直接沿用，跳過 Yahoo 請求
+    // 若 RS 已同步最新交易日且有 priceMap/volumeMap，直接沿用，跳過 Yahoo 請求
+    const latestTradingYmd = getLatestTradingYmd();
     if (!opts.skipPrice) {
       try {
         const rsSnap = await getDoc(doc(RS_RATINGS_COLLECTION, stock.code));
         if (rsSnap.exists()) {
           const rsData = rsSnap.data();
           if (
-            rsData?.ibdRsPriceFetchedDate === todayStr &&
+            rsData?.ibdRsPriceFetchedDate >= latestTradingYmd &&
             rsData?.priceMap && typeof rsData.priceMap === 'object' &&
             Object.keys(rsData.priceMap).length > 0
           ) {
@@ -798,10 +812,10 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
             const vm = (rsData.volumeMap && typeof rsData.volumeMap === 'object') ? rsData.volumeMap : {};
             const datesAsc = Object.keys(pm).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
             const rsLatestDate = datesAsc[datesAsc.length - 1];
-            // 只有 RS priceMap 確實含有今日資料時才沿用；
+            // 只有 RS priceMap 確實含有最新交易日資料時才沿用；
             // 若 RS 同步時 Yahoo 歷史 API 尚未更新當日 K 棒（最新仍為昨日），
             // 則不採用，繼續去 Yahoo 重抓，避免覆蓋已正確寫入的今日資料。
-            if (datesAsc.length > 0 && rsLatestDate >= todayStr) {
+            if (datesAsc.length > 0 && rsLatestDate >= latestTradingYmd) {
               const datesDesc = [...datesAsc].reverse();
               opts.skipPrice = true;
               opts.existingPrice = {
@@ -814,9 +828,9 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
                 yesterdayClose: datesAsc.length >= 2 ? pm[datesAsc[datesAsc.length - 2]] : 0,
                 latestPriceDate: rsLatestDate,
               };
-              console.log(`[${stock.code}] 沿用 RS 今日 priceMap，跳過 Yahoo`);
+              console.log(`[${stock.code}] 沿用 RS priceMap（最新交易日 ${latestTradingYmd}），跳過 Yahoo`);
             } else if (datesAsc.length > 0) {
-              console.log(`[${stock.code}] RS priceMap 最新日 ${rsLatestDate} < 今日 ${todayStr}，不沿用，重抓 Yahoo`);
+              console.log(`[${stock.code}] RS priceMap 最新日 ${rsLatestDate} < 最新交易日 ${latestTradingYmd}，不沿用，重抓 Yahoo`);
             }
           }
         }
