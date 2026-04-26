@@ -254,7 +254,7 @@ export async function fetchTaiwanStockList() {
       throw new Error(`[RS StockList] TWSE 清單不完整（${twseData?.length ?? 0} 筆）`);
     }
     if (!tpexData || tpexData.length < 100) {
-      throw new Error(`[RS StockList] TPEX 清單不完整（${tpexData?.length ?? 0} 筆）`);
+      console.warn(`[RS StockList] TPEX 清單不完整（${tpexData?.length ?? 0} 筆），僅使用 TWSE 上市股票`);
     }
 
     for (const item of twseData) {
