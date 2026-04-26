@@ -431,9 +431,9 @@ function PerformancePage() {
                 tick={{ fontSize: 11 }}
                 tickFormatter={(v) => (v || '').slice(0, 10)}
               />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v?.toLocaleString?.() ?? v} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => typeof v === 'number' ? v.toLocaleString('zh-TW', { maximumFractionDigits: 0 }) : v} />
               <Tooltip
-                formatter={(value) => (typeof value === 'number' ? value.toLocaleString() : value)}
+                formatter={(value) => (typeof value === 'number' ? value.toLocaleString('zh-TW', { maximumFractionDigits: 0 }) : value)}
                 labelFormatter={(label) => `日期：${label}`}
               />
               <Legend />
@@ -489,7 +489,7 @@ function PerformancePage() {
                 tickFormatter={(v) => (typeof v === 'number' ? v.toLocaleString('zh-TW', { maximumFractionDigits: 1 }) : v) ?? ''}
               />
               <Tooltip
-                formatter={(value) => (typeof value === 'number' ? value.toLocaleString('zh-TW', { maximumFractionDigits: 2 }) : value)}
+                formatter={(value) => (typeof value === 'number' ? value.toLocaleString('zh-TW', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : value)}
                 labelFormatter={(label) => `日期：${label}`}
               />
               <Legend />
