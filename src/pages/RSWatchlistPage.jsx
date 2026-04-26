@@ -8,12 +8,47 @@ import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatch
 import { RsChartModal } from './IBDRsRankingPage';
 import IbdRsQuadrantTable from '../features/StockAnalysis/components/IbdRsQuadrantTable';
 import { clampIbdDeltaDays, enrichIbdRsRow } from '../features/StockAnalysis/utils/ibdRsRankingEnrich';
+import { getEffectiveDisplayRs } from '../features/StockAnalysis/utils/ibdRsRankingTableUtils';
 
 /** 與首頁預設相同之 Δ 回溯（僅供 enrich 使用） */
 const ENRICH_FILTERS = {
   deltaShortDays: '5',
   deltaLongDays: '20',
 };
+
+function downloadWatchlistJson(rows) {
+  const now = new Date();
+  const taipeiLocale = { timeZone: 'Asia/Taipei' };
+  const dateStr = now.toLocaleDateString('en-CA', taipeiLocale);
+  const timeStr = now.toLocaleTimeString('zh-TW', { ...taipeiLocale, hour12: false });
+
+  const data = {
+    exportedAt: `${dateStr} ${timeStr}`,
+    total: rows.length,
+    description: 'RS 觀察清單匯出，供 AI 分析用。RS = 相對強度（0-99），Δ = 相對強度變化，HL = 近六個月高低位置（0=最低，1=最高）。',
+    stocks: rows.map((s) => ({
+      code: s.id,
+      name: s.name,
+      lastClose: s.ibdRsLastClose ?? null,
+      lastCloseDate: s.ibdRsLastCloseDate ?? null,
+      dayChangePct: s.pricePct1d ?? null,
+      rs: getEffectiveDisplayRs(s) ?? null,
+      rsDelta5: s.delta5d ?? null,
+      rsDelta20: s.delta20d ?? null,
+      pricePct5d: s.pricePct5d ?? null,
+      pricePct20d: s.pricePct20d ?? null,
+      pricePos6m: s.pricePos6m ?? null,
+    })),
+  };
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rs-watchlist-${dateStr}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function RSWatchlistPage() {
   const [selectedStock, setSelectedStock] = useState(null);
@@ -83,6 +118,29 @@ export default function RSWatchlistPage() {
             >
               ← 回 RS 排名
             </Link>
+            <div style={{ marginLeft: 'auto' }}>
+              <button
+                onClick={() => downloadWatchlistJson(enriched)}
+                disabled={enriched.length === 0}
+                title="下載觀察清單 JSON，供 AI 分析用"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: enriched.length === 0 ? '#aaa' : '#1d4ed8',
+                  background: enriched.length === 0 ? '#f5f5f5' : '#eff6ff',
+                  border: `1px solid ${enriched.length === 0 ? '#ddd' : '#bfdbfe'}`,
+                  borderRadius: 5,
+                  cursor: enriched.length === 0 ? 'not-allowed' : 'pointer',
+                  lineHeight: 1.4,
+                }}
+              >
+                ↓ 下載清單（{enriched.length} 檔）
+              </button>
+            </div>
           </div>
 
           {!watchlistReady || (loading && stocks.length === 0) ? (

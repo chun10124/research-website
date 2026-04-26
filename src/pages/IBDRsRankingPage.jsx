@@ -1907,7 +1907,35 @@ style={{
   );
 }
 
-function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, onMeasure, mobileLayout = false }) {
+function downloadWatchlistJson(items) {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const timeStr = now.toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+  const data = {
+    exportedAt: `${dateStr} ${timeStr}`,
+    total: items.length,
+    description: 'RS 觀察清單匯出，供 AI 分析用。RS = 相對強度（0-99），Δ = 相對強度變化，HL = 近六個月高低位置（0=最低，1=最高）。',
+    stocks: items.map((s) => ({
+      code: s.id,
+      name: s.name,
+      rs: getEffectiveDisplayRs(s) ?? null,
+      rsDelta5: s.delta5d ?? null,
+      rsDelta20: s.delta20d ?? null,
+      pricePct5d: s.pricePct5d ?? null,
+      pricePct20d: s.pricePct20d ?? null,
+      pricePos6m: s.pricePos6m ?? null,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rs-watchlist-${dateStr}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, onMeasure, mobileLayout = false, onDownload }) {
   const { key, title, subtitle, items, totalCount, emptyText } = section;
   const cardRef = useRef(null);
   const [cardPage, setCardPage] = useState(0);
@@ -1980,6 +2008,30 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
         <strong style={{ color: '#0f766e', fontSize: 13 }}>{title}</strong>
         <span style={{ fontSize: 11, color: '#64748b' }}>{totalCount} 檔</span>
         {subtitle ? <span style={{ fontSize: 11, color: '#94a3b8' }}>{subtitle}</span> : null}
+        {onDownload ? (
+          <button
+            type="button"
+            onClick={() => onDownload(items)}
+            disabled={items.length === 0}
+            title="下載觀察清單 JSON，供 AI 分析用"
+            style={{
+              padding: '1px 4px',
+              background: 'none',
+              border: 'none',
+              cursor: items.length === 0 ? 'not-allowed' : 'pointer',
+              lineHeight: 1,
+              opacity: items.length === 0 ? 0.3 : 0.55,
+              display: 'inline-flex',
+              alignItems: 'center',
+              alignSelf: 'center',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M7 1v7M4.5 5.5L7 8l2.5-2.5" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <line x1="2" y1="12" x2="12" y2="12" stroke="#555" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        ) : null}
         {cardPageCount > 1 ? (
           <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <button
@@ -4139,6 +4191,7 @@ export default function IBDRsRankingPage() {
                       });
                       setSelectedStock(s);
                     }}
+                    onDownload={sec.key === 'watchlist' ? downloadWatchlistJson : undefined}
                   />
                 ))}
               </div>
