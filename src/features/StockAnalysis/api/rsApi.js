@@ -1416,3 +1416,133 @@ export async function syncTestBatch({ count = 10, onProgress = () => {}, signal 
   const result = await finalizeIbdrsRankingFromFirestore({ onProgress });
   return { ...result, processed, needsWorkTotal };
 }
+
+/**
+ * 快速補點：從 Firestore 現有 priceMap 補算指定天數內缺漏的 RS 歷史點。
+ * 不打 Yahoo，只依賴今日同步後寫入 Firestore 的 priceMap。
+ * 只補缺漏日期（已存在的 ibdRsHistory 點不覆蓋）。
+ *
+ * @param {number} [daysBack=10]  回溯幾個曆日（預設 10，涵蓋兩週交易日）
+ */
+export async function quickPatchMissingRsDays({
+  onProgress = () => {},
+  daysBack = 10,
+  signal = null,
+} = {}) {
+  const checkAbort = () => { if (signal?.aborted) throw new Error('已取消'); };
+  const todayStr = getTaiwanYmd();
+  const startStr = taipeiYmdAddDays(todayStr, -daysBack) ?? todayStr;
+
+  onProgress({ phase: 'list', done: 0, total: 0, msg: 'Firestore priceMap 讀取中…' });
+  checkAbort();
+
+  const existingMap = await readExistingRsData();
+
+  // 從 Firestore 現有欄位建 priceMapByStock，完全跳過 Yahoo
+  const priceMapByStock = {};
+  for (const [id, data] of Object.entries(existingMap)) {
+    if (data.priceMap && typeof data.priceMap === 'object' && Object.keys(data.priceMap).length > 0) {
+      priceMapByStock[id] = data.priceMap;
+    }
+  }
+
+  const stockIds = Object.keys(priceMapByStock);
+  const N = stockIds.length;
+
+  if (N === 0) {
+    onProgress({ phase: 'done', done: 0, total: 0, msg: '無 Firestore priceMap（請先執行今日 RS 同步）' });
+    return { stockCount: 0, dateCount: 0, patchedCount: 0 };
+  }
+
+  // 收集範圍內的交易日（出現在 priceMap 裡的日期）
+  const tradingDates = new Set();
+  for (const pm of Object.values(priceMapByStock)) {
+    for (const d of Object.keys(pm)) {
+      if (d >= startStr && d < todayStr) tradingDates.add(d);
+    }
+  }
+
+  const sortedDates = [...tradingDates].sort();
+  const D = sortedDates.length;
+
+  if (D === 0) {
+    onProgress({ phase: 'done', done: N, total: N, msg: `無可補點的交易日（近 ${daysBack} 日）` });
+    return { stockCount: N, dateCount: 0, patchedCount: 0 };
+  }
+
+  onProgress({ phase: 'rank', done: 0, total: D, msg: `共 ${D} 個交易日，計算全市場 RS 排名…` });
+
+  // 對每個交易日做全市場百分位排名
+  const historyByStock = {};
+  for (let di = 0; di < D; di++) {
+    checkAbort();
+    const dateStr = sortedDates[di];
+    const anchorStr = historyAnchorYmd(dateStr);
+
+    const rawItems = stockIds
+      .filter((id) => priceMapByStock[id])
+      .map((id) => ({ id, rsRaw: calculateRsRaw(priceMapByStock[id], dateStr) }));
+
+    const ranked = assignRsRatings(rawItems);
+    for (const { id, ibdRsRating } of ranked) {
+      if (ibdRsRating == null) continue;
+      if (!historyByStock[id]) historyByStock[id] = [];
+      historyByStock[id].push({ d: anchorStr, r: ibdRsRating });
+    }
+
+    if (di % 5 === 0 || di === D - 1) {
+      onProgress({ phase: 'rank', done: di + 1, total: D, msg: `${dateStr}（${di + 1}/${D}）` });
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
+  checkAbort();
+
+  // 寫入 Firestore：只補缺漏點，不覆蓋已有日期
+  const writeIds = Object.keys(historyByStock);
+  const writeTotal = writeIds.length;
+  let writeDone = 0;
+  let patchedCount = 0;
+
+  onProgress({ phase: 'write', done: 0, total: writeTotal, msg: '補寫缺漏點（已有日期跳過）…' });
+
+  for (let i = 0; i < writeTotal; i += 10) {
+    checkAbort();
+    const chunk = writeIds.slice(i, i + 10);
+
+    await Promise.all(
+      chunk.map(async (id) => {
+        const newPoints = historyByStock[id] || [];
+        const prevHistory = Array.isArray(existingMap[id]?.ibdRsHistory)
+          ? existingMap[id].ibdRsHistory
+          : [];
+        const existingDates = new Set(prevHistory.map((h) => h.d));
+        const toAdd = newPoints.filter((p) => !existingDates.has(p.d));
+
+        if (toAdd.length > 0) {
+          const merged = [...prevHistory, ...toAdd]
+            .sort((a, b) => (a.d < b.d ? -1 : 1))
+            .slice(-RS_HISTORY_MAX);
+          await setDoc(doc(RS_RATINGS_COLLECTION, id), { ibdRsHistory: merged }, { merge: true });
+          patchedCount++;
+        }
+        writeDone++;
+      })
+    );
+
+    onProgress({ phase: 'write', done: writeDone, total: writeTotal, msg: `${writeDone}/${writeTotal}` });
+
+    if (i + 10 < writeTotal) {
+      await new Promise((r) => setTimeout(r, 150 + Math.floor(Math.random() * 100)));
+    }
+  }
+
+  onProgress({
+    phase: 'done',
+    done: writeTotal,
+    total: writeTotal,
+    msg: `快速補點完成：${patchedCount} 檔補寫，${D} 個交易日（跳過 Yahoo）`,
+  });
+
+  return { stockCount: N, dateCount: D, patchedCount };
+}

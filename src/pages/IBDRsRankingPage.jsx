@@ -10,6 +10,7 @@ import {
   IBDRS_LAST_SYNC_DATE_KEY,
   startIbdRsHistoryBackfill,
   startIbdRsPatchRatingFromHistory,
+  startIbdRsQuickPatch,
   stopIbdRsBackgroundTask,
 } from '../features/StockAnalysis/services/ibdRsSyncService';
 import {
@@ -3441,6 +3442,21 @@ export default function IBDRsRankingPage() {
     }
   }, []);
 
+  const handleQuickPatchClick = useCallback(() => {
+    if (
+      window.confirm(
+        '【快速補點（漏同步日）】\n\n' +
+          '· 用 Firestore 現有 priceMap 補算近 10 個交易日內的缺漏 RS 點。\n' +
+          '· 不打 Yahoo API，通常 1～3 分鐘內完成。\n' +
+          '· 已有的日期不覆蓋，只補缺漏。\n' +
+          '· 需先執行過今日 RS 同步（priceMap 才有資料）。\n\n' +
+          '確定執行？'
+      )
+    ) {
+      startIbdRsQuickPatch({ daysBack: 10 });
+    }
+  }, []);
+
   const handleRepairAllData = useCallback(async () => {
     setTestMsg('載入清單 + 檢查缺失…');
     try {
@@ -4272,6 +4288,15 @@ export default function IBDRsRankingPage() {
               </button>
               <button
                 type="button"
+                onClick={handleQuickPatchClick}
+                disabled={loading || syncing}
+                title="用 Firestore 現有 priceMap 補算近 10 個交易日缺漏的 RS 點；不打 Yahoo，1~3 分鐘完成"
+                style={{ ...btnBase, background: '#fff', color: '#2563eb', border: '1px solid #3b82f6', fontSize: 11, fontWeight: 800 }}
+              >
+                快速補點（漏同步日）
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleRepairAllData()}
                 disabled={loading || syncing}
                 title="拉上市櫃清單、新增上櫃檔，並批次填補缺失 RS"
@@ -4290,7 +4315,8 @@ export default function IBDRsRankingPage() {
               >
                 <strong>畫線流程</strong>：試跑滿意後按<strong>「全市場·回填歷史」</strong>跑正式（通常<strong>做一次</strong>）；之後每天「同步今日 RS」只<strong>追加／更新當日</strong>（歷史最多 180 點）。
                 <br />
-                每日例行：頁面下方「同步今日 RS」。若<strong>回填後表上 RS 仍「—」但圖表有線</strong>：按<strong>「補寫 RS 快照」</strong>（不重跑同步）。補齊＝新上櫃／缺檔；試跑＝10 檔×7 日僅測流程。
+                每日例行：頁面下方「同步今日 RS」。若<strong>回填後表上 RS 仍「—」但圖表有線</strong>：按<strong>「補寫 RS 快照」</strong>（不重跑同步）。補齊＝新上櫃／缺檔；試跑＝10 檔×7 日僅測流程。<br />
+                <strong>漏同步一兩天</strong>（RS 曲線有斷點）：先跑今日 RS 同步，再按<strong>「快速補點」</strong>即可（用 Firestore priceMap，不打 Yahoo，1～3 分鐘）。超過 10 個交易日缺漏請改用「全市場·回填歷史」。
               </p>
             </div>
           </details>

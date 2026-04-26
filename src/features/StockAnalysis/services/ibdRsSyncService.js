@@ -15,6 +15,7 @@ import {
   RS_SYNC_INTER_BATCH_REST_MS,
   runIbdRsHistoryBackfill,
   patchIbdrsRatingFromHistory,
+  quickPatchMissingRsDays,
   IBDRS_BACKFILL_DEFAULT_CONCURRENCY,
   IBDRS_BACKFILL_DEFAULT_DELAY_MS,
   IBDRS_BACKFILL_DEFAULT_DELAY_JITTER_MS,
@@ -233,6 +234,52 @@ export function startIbdRsPatchRatingFromHistory() {
         done: 0,
         total: 0,
         msg: cancelled ? '已取消' : (e?.message || '補寫失敗'),
+      };
+      emit();
+    } finally {
+      running = false;
+      currentAbortController = null;
+      emit();
+      setTimeout(() => {
+        lastProgress = null;
+        emit();
+      }, 5000);
+      runPromise = null;
+    }
+  })();
+
+  return runPromise;
+}
+
+/**
+ * 快速補點：從 Firestore 現有 priceMap 補算漏同步日的 RS 歷史。
+ * 不打 Yahoo，只需今日同步完成後執行即可。
+ */
+export function startIbdRsQuickPatch(opts = {}) {
+  if (running && runPromise != null) return runPromise;
+
+  running = true;
+  currentAbortController = new AbortController();
+  lastProgress = { phase: 'list', done: 0, total: 0, msg: '快速補點準備中…' };
+  emit();
+
+  runPromise = (async () => {
+    try {
+      await quickPatchMissingRsDays({
+        onProgress: (state) => {
+          lastProgress = { ...state };
+          emit();
+        },
+        daysBack: opts.daysBack ?? 10,
+        signal: currentAbortController.signal,
+      });
+    } catch (e) {
+      const cancelled = e?.message === '已取消';
+      lastProgress = {
+        phase: cancelled ? 'done' : 'error',
+        done: 0,
+        total: 0,
+        msg: cancelled ? '已取消' : (e?.message || '快速補點失敗'),
       };
       emit();
     } finally {
