@@ -1191,7 +1191,22 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     const storedHM = stock.highMap && typeof stock.highMap === 'object' ? stock.highMap : null;
     const storedLM = stock.lowMap && typeof stock.lowMap === 'object' ? stock.lowMap : null;
     const storedVM = stock.volumeMap && typeof stock.volumeMap === 'object' ? stock.volumeMap : null;
-    const hasStoredMaps = storedPM && storedHM && storedLM && Object.keys(storedHM).length >= 20;
+    // 預期最新交易日：14:00 後看今天，14:00 前看前一交易日（與 rsApi getTaiwanYmd 邏輯一致）
+    const _storedExpectedDay = (() => {
+      const _h = parseInt(new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Taipei', hour12: false }), 10);
+      const _today = quoteEnd; // quoteEnd = getTaiwanYmd() = 今日台北曆日
+      if (Number.isFinite(_h) && _h >= 14) return normalizeYmdToTaiwanTradingDay(_today) ?? _today;
+      const [_y, _m, _d] = _today.split('-').map(Number);
+      const _yest = new Date(Date.UTC(_y, _m - 1, _d) - 86400000).toISOString().slice(0, 10);
+      return normalizeYmdToTaiwanTradingDay(_yest) ?? _yest;
+    })();
+    const _storedPMLatest = storedPM
+      ? (Object.keys(storedPM).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().at(-1) ?? '')
+      : '';
+    // Firestore 資料過期（未覆蓋預期最新交易日）→ 退回 Yahoo 即時抓，避免忘記按同步時 K 線卡舊資料
+    const hasStoredMaps = storedPM && storedHM && storedLM
+      && Object.keys(storedHM).length >= 20
+      && _storedPMLatest >= _storedExpectedDay;
 
     if (hasStoredMaps) {
       const dates = Object.keys(storedPM).filter((d) => d >= quoteStart && d <= quoteEnd).sort();
@@ -1261,7 +1276,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     return () => {
       cancelled = true;
     };
-  }, [stock?.id, earliestHistoryDate]);
+  }, [stock?.id, earliestHistoryDate, stock?.ibdRsPriceFetchedDate]);
 
   /** 有日 K 時以 Yahoo 交易日為 X（與疊加 K 線逐根對齊）；否則退回 RS 歷史日序 */
   const chartData = useMemo(() => {

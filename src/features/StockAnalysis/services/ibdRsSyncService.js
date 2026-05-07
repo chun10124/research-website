@@ -121,6 +121,22 @@ export function startIbdRsBackgroundSync(opts = {}) {
         } catch (e) {
           console.warn('[ibdRsSyncService] 寫入共享同步日期失敗:', e?.message || e);
         }
+        // 主同步完成後自動補算近 10 個交易日內缺漏的 RS 歷史點
+        lastProgress = { phase: 'fetch', done: 0, total: 0, msg: '補算漏同步日 RS…' };
+        emit();
+        const patchSignal = currentAbortController?.signal;
+        try {
+          await quickPatchMissingRsDays({
+            onProgress: (state) => {
+              lastProgress = { ...state, msg: `[補點] ${state.msg}` };
+              emit();
+            },
+            daysBack: 10,
+            signal: patchSignal,
+          });
+        } catch (e) {
+          if (e?.message !== '已取消') console.warn('[ibdRsSyncService] 自動補點失敗:', e?.message || e);
+        }
       }
     } catch (e) {
       const cancelled = e?.message === '已取消';
