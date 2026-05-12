@@ -1470,6 +1470,22 @@ export async function quickPatchMissingRsDays({
     return { stockCount: N, dateCount: 0, patchedCount: 0 };
   }
 
+  // 先確認是否真的有缺口，沒有則跳過排名計算
+  const anchorDates = new Set(sortedDates.map((d) => historyAnchorYmd(d)));
+  const hasGap = stockIds.some((id) => {
+    const existingDates = new Set(
+      (Array.isArray(existingMap[id]?.ibdRsHistory) ? existingMap[id].ibdRsHistory : []).map(
+        (h) => h.d
+      )
+    );
+    return [...anchorDates].some((ad) => !existingDates.has(ad));
+  });
+
+  if (!hasGap) {
+    onProgress({ phase: 'done', done: N, total: N, msg: `無缺漏（${D} 個交易日均已存在）` });
+    return { stockCount: N, dateCount: D, patchedCount: 0 };
+  }
+
   onProgress({ phase: 'rank', done: 0, total: D, msg: `共 ${D} 個交易日，計算全市場 RS 排名…` });
 
   // 對每個交易日做全市場百分位排名
