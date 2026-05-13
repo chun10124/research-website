@@ -418,6 +418,34 @@ export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr, 
   return {};
 };
 
+// --- 個股 K 線預取快取（session 層級，TTL 5 分鐘）---
+const _klineCache = new Map();
+const _KLINE_TTL = 5 * 60 * 1000;
+
+/** 若快取不存在或已過期，靜默發起預取並存入快取。 */
+export function prefetchYahooKlineIfAbsent(stockCode, startStr, endStr, opts = {}) {
+  const key = `${stockCode}|${startStr}|${endStr}`;
+  const cached = _klineCache.get(key);
+  if (cached && Date.now() - cached.ts < _KLINE_TTL) return;
+  const promise = fetchYahooHistoricalPriceVolumeMaps(stockCode, startStr, endStr, opts);
+  _klineCache.set(key, { promise, ts: Date.now() });
+  promise.then((result) => {
+    const entry = _klineCache.get(key);
+    if (entry?.promise === promise) _klineCache.set(key, { result, ts: entry.ts });
+  }).catch(() => {
+    const entry = _klineCache.get(key);
+    if (entry?.promise === promise) _klineCache.delete(key);
+  });
+}
+
+/** 若快取存在且未過期，回傳 Promise<result>；否則回傳 null。 */
+export function getYahooKlineFromCache(stockCode, startStr, endStr) {
+  const key = `${stockCode}|${startStr}|${endStr}`;
+  const cached = _klineCache.get(key);
+  if (!cached || Date.now() - cached.ts > _KLINE_TTL) { _klineCache.delete(key); return null; }
+  return cached.result ? Promise.resolve(cached.result) : (cached.promise ?? null);
+}
+
 /**
  * 從 Yahoo Finance 抓歷史收盤價與成交量（同一請求），回傳兩個 map。
  */

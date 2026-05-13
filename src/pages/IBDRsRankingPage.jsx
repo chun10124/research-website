@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import Layout from '@theme/Layout';
-import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps } from '../features/StockAnalysis/api/stockApi';
+import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache } from '../features/StockAnalysis/api/stockApi';
 import { syncSingleStock, syncTestBatch } from '../features/StockAnalysis/api/rsApi';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
 import {
@@ -1228,7 +1228,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       const vr = calcVcpVolumeRatioFromVolumeMap(storedVM || {}, quoteEnd);
       setVcpSnapshot({ composite: calcCompositeVcp(pr, vr), priceRatio: pr, volRatio: vr });
     } else {
-      void fetchYahooHistoricalPriceVolumeMaps(stock.id, quoteStart, quoteEnd, { market: stock.market })
+      void (getYahooKlineFromCache(stock.id, quoteStart, quoteEnd) ?? fetchYahooHistoricalPriceVolumeMaps(stock.id, quoteStart, quoteEnd, { market: stock.market }))
         .then(({ priceMap, highMap, lowMap, volumeMap, ohlcSeries: ohlc }) => {
           if (cancelled) return;
           setOhlcSeries(Array.isArray(ohlc) ? ohlc : []);
@@ -1350,6 +1350,28 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     window.addEventListener('keydown', handleKey, true);
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [stock, stock?.id, navigationList, onNavigate]);
+
+  // 預取前後各一檔的 K 線，避免切換時等待
+  useEffect(() => {
+    if (!stock || !Array.isArray(navigationList) || navigationList.length < 2) return;
+    const idx = navigationList.findIndex((s) => s.id === stock.id);
+    if (idx < 0) return;
+    const quoteEnd = getTaiwanYmd();
+    const buf = new Date();
+    buf.setDate(buf.getDate() - 120);
+    const quoteStart = buf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    const neighbours = [
+      idx > 0 ? navigationList[idx - 1] : null,
+      idx < navigationList.length - 1 ? navigationList[idx + 1] : null,
+    ].filter(Boolean);
+    for (const s of neighbours) {
+      const storedPM = s.priceMap && typeof s.priceMap === 'object' ? s.priceMap : null;
+      const storedHM = s.highMap && typeof s.highMap === 'object' ? s.highMap : null;
+      const storedLM = s.lowMap && typeof s.lowMap === 'object' ? s.lowMap : null;
+      if (storedPM && storedHM && storedLM && Object.keys(storedHM).length >= 20) continue;
+      prefetchYahooKlineIfAbsent(s.id, quoteStart, quoteEnd, { market: s.market });
+    }
+  }, [stock?.id, navigationList]);
 
   useEffect(() => {
     if (!stock) return;
