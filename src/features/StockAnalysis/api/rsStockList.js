@@ -13,7 +13,7 @@ import { getDoc, setDoc } from 'firebase/firestore';
 import { STOCK_LIST_DOC_REF } from '../../../utils/firebaseConfig';
 import TPEX_FALLBACK from './tpexStockListFallback.json';
 
-const PROXY_BASE = 'https://stock-proxy.tzuchun11232004.workers.dev/?url=';
+const PROXY_BASE = 'https://stock-proxy-zeta.vercel.app/api/proxy?url=';
 
 const TWSE_LIST_URL = 'https://openapi.twse.com.tw/v1/opendata/t187ap03_L';
 const TPEX_LIST_URL = 'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O';
