@@ -1,0 +1,4437 @@
+[
+  {
+    "id": "1240",
+    "name": "茂生農經",
+    "market": "TPEX"
+  },
+  {
+    "id": "1259",
+    "name": "安心",
+    "market": "TPEX"
+  },
+  {
+    "id": "1264",
+    "name": "德麥",
+    "market": "TPEX"
+  },
+  {
+    "id": "1268",
+    "name": "漢來美食",
+    "market": "TPEX"
+  },
+  {
+    "id": "1294",
+    "name": "漢田生技",
+    "market": "TPEX"
+  },
+  {
+    "id": "1295",
+    "name": "生合",
+    "market": "TPEX"
+  },
+  {
+    "id": "1336",
+    "name": "台翰",
+    "market": "TPEX"
+  },
+  {
+    "id": "1565",
+    "name": "精華",
+    "market": "TPEX"
+  },
+  {
+    "id": "1569",
+    "name": "濱川",
+    "market": "TPEX"
+  },
+  {
+    "id": "1570",
+    "name": "力肯",
+    "market": "TPEX"
+  },
+  {
+    "id": "1580",
+    "name": "新麥",
+    "market": "TPEX"
+  },
+  {
+    "id": "1584",
+    "name": "精剛",
+    "market": "TPEX"
+  },
+  {
+    "id": "1586",
+    "name": "和勤",
+    "market": "TPEX"
+  },
+  {
+    "id": "1591",
+    "name": "駿吉-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "1593",
+    "name": "祺驊",
+    "market": "TPEX"
+  },
+  {
+    "id": "1595",
+    "name": "川寶",
+    "market": "TPEX"
+  },
+  {
+    "id": "1599",
+    "name": "宏佳騰",
+    "market": "TPEX"
+  },
+  {
+    "id": "1742",
+    "name": "台蠟",
+    "market": "TPEX"
+  },
+  {
+    "id": "1777",
+    "name": "生泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "1781",
+    "name": "合世",
+    "market": "TPEX"
+  },
+  {
+    "id": "1784",
+    "name": "訊聯",
+    "market": "TPEX"
+  },
+  {
+    "id": "1785",
+    "name": "光洋科",
+    "market": "TPEX"
+  },
+  {
+    "id": "1788",
+    "name": "杏昌",
+    "market": "TPEX"
+  },
+  {
+    "id": "1796",
+    "name": "金穎生技",
+    "market": "TPEX"
+  },
+  {
+    "id": "1799",
+    "name": "易威",
+    "market": "TPEX"
+  },
+  {
+    "id": "1813",
+    "name": "寶利徠",
+    "market": "TPEX"
+  },
+  {
+    "id": "1815",
+    "name": "富喬",
+    "market": "TPEX"
+  },
+  {
+    "id": "2035",
+    "name": "唐榮公司",
+    "market": "TPEX"
+  },
+  {
+    "id": "2061",
+    "name": "風青",
+    "market": "TPEX"
+  },
+  {
+    "id": "2063",
+    "name": "世鎧精密",
+    "market": "TPEX"
+  },
+  {
+    "id": "2064",
+    "name": "晉椿",
+    "market": "TPEX"
+  },
+  {
+    "id": "2065",
+    "name": "世豐",
+    "market": "TPEX"
+  },
+  {
+    "id": "2066",
+    "name": "世德",
+    "market": "TPEX"
+  },
+  {
+    "id": "2067",
+    "name": "嘉鋼",
+    "market": "TPEX"
+  },
+  {
+    "id": "2070",
+    "name": "精湛",
+    "market": "TPEX"
+  },
+  {
+    "id": "2073",
+    "name": "雄順",
+    "market": "TPEX"
+  },
+  {
+    "id": "2221",
+    "name": "大甲",
+    "market": "TPEX"
+  },
+  {
+    "id": "2230",
+    "name": "泰茂",
+    "market": "TPEX"
+  },
+  {
+    "id": "2235",
+    "name": "謚源",
+    "market": "TPEX"
+  },
+  {
+    "id": "2596",
+    "name": "綠意",
+    "market": "TPEX"
+  },
+  {
+    "id": "2640",
+    "name": "大車隊",
+    "market": "TPEX"
+  },
+  {
+    "id": "2641",
+    "name": "正德",
+    "market": "TPEX"
+  },
+  {
+    "id": "2643",
+    "name": "捷迅",
+    "market": "TPEX"
+  },
+  {
+    "id": "2718",
+    "name": "全心投控",
+    "market": "TPEX"
+  },
+  {
+    "id": "2719",
+    "name": "燦星旅",
+    "market": "TPEX"
+  },
+  {
+    "id": "2724",
+    "name": "藝舍-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "2726",
+    "name": "雅茗-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "2729",
+    "name": "瓦城",
+    "market": "TPEX"
+  },
+  {
+    "id": "2732",
+    "name": "六角",
+    "market": "TPEX"
+  },
+  {
+    "id": "2734",
+    "name": "易飛網",
+    "market": "TPEX"
+  },
+  {
+    "id": "2736",
+    "name": "富野",
+    "market": "TPEX"
+  },
+  {
+    "id": "2740",
+    "name": "華軒",
+    "market": "TPEX"
+  },
+  {
+    "id": "2743",
+    "name": "山富",
+    "market": "TPEX"
+  },
+  {
+    "id": "2745",
+    "name": "五福",
+    "market": "TPEX"
+  },
+  {
+    "id": "2751",
+    "name": "王座",
+    "market": "TPEX"
+  },
+  {
+    "id": "2752",
+    "name": "豆府",
+    "market": "TPEX"
+  },
+  {
+    "id": "2754",
+    "name": "亞洲藏壽司",
+    "market": "TPEX"
+  },
+  {
+    "id": "2755",
+    "name": "揚秦",
+    "market": "TPEX"
+  },
+  {
+    "id": "2756",
+    "name": "聯發國際",
+    "market": "TPEX"
+  },
+  {
+    "id": "2916",
+    "name": "滿心",
+    "market": "TPEX"
+  },
+  {
+    "id": "2924",
+    "name": "宏太-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "2926",
+    "name": "誠品生活",
+    "market": "TPEX"
+  },
+  {
+    "id": "2937",
+    "name": "集雅社",
+    "market": "TPEX"
+  },
+  {
+    "id": "2941",
+    "name": "米斯特",
+    "market": "TPEX"
+  },
+  {
+    "id": "2947",
+    "name": "振宇五金",
+    "market": "TPEX"
+  },
+  {
+    "id": "2948",
+    "name": "寶陞",
+    "market": "TPEX"
+  },
+  {
+    "id": "2949",
+    "name": "欣新網",
+    "market": "TPEX"
+  },
+  {
+    "id": "3064",
+    "name": "泰偉",
+    "market": "TPEX"
+  },
+  {
+    "id": "3066",
+    "name": "李洲",
+    "market": "TPEX"
+  },
+  {
+    "id": "3067",
+    "name": "全域",
+    "market": "TPEX"
+  },
+  {
+    "id": "3071",
+    "name": "協禧",
+    "market": "TPEX"
+  },
+  {
+    "id": "3073",
+    "name": "天方能源",
+    "market": "TPEX"
+  },
+  {
+    "id": "3078",
+    "name": "僑威",
+    "market": "TPEX"
+  },
+  {
+    "id": "3081",
+    "name": "聯亞",
+    "market": "TPEX"
+  },
+  {
+    "id": "3083",
+    "name": "網龍",
+    "market": "TPEX"
+  },
+  {
+    "id": "3085",
+    "name": "新零售",
+    "market": "TPEX"
+  },
+  {
+    "id": "3086",
+    "name": "華義*",
+    "market": "TPEX"
+  },
+  {
+    "id": "3088",
+    "name": "艾訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "3093",
+    "name": "港建*",
+    "market": "TPEX"
+  },
+  {
+    "id": "3095",
+    "name": "及成",
+    "market": "TPEX"
+  },
+  {
+    "id": "3105",
+    "name": "穩懋",
+    "market": "TPEX"
+  },
+  {
+    "id": "3114",
+    "name": "好德",
+    "market": "TPEX"
+  },
+  {
+    "id": "3115",
+    "name": "富榮綱",
+    "market": "TPEX"
+  },
+  {
+    "id": "3118",
+    "name": "進階",
+    "market": "TPEX"
+  },
+  {
+    "id": "3122",
+    "name": "笙泉",
+    "market": "TPEX"
+  },
+  {
+    "id": "3128",
+    "name": "昇銳",
+    "market": "TPEX"
+  },
+  {
+    "id": "3131",
+    "name": "弘塑",
+    "market": "TPEX"
+  },
+  {
+    "id": "3141",
+    "name": "晶宏",
+    "market": "TPEX"
+  },
+  {
+    "id": "3147",
+    "name": "大綜",
+    "market": "TPEX"
+  },
+  {
+    "id": "3152",
+    "name": "璟德",
+    "market": "TPEX"
+  },
+  {
+    "id": "3158",
+    "name": "嘉實",
+    "market": "TPEX"
+  },
+  {
+    "id": "3162",
+    "name": "精確",
+    "market": "TPEX"
+  },
+  {
+    "id": "3163",
+    "name": "波若威",
+    "market": "TPEX"
+  },
+  {
+    "id": "3169",
+    "name": "亞信",
+    "market": "TPEX"
+  },
+  {
+    "id": "3171",
+    "name": "炎洲流通",
+    "market": "TPEX"
+  },
+  {
+    "id": "3176",
+    "name": "基亞",
+    "market": "TPEX"
+  },
+  {
+    "id": "3178",
+    "name": "公準",
+    "market": "TPEX"
+  },
+  {
+    "id": "3188",
+    "name": "鑫龍騰",
+    "market": "TPEX"
+  },
+  {
+    "id": "3191",
+    "name": "雲嘉南",
+    "market": "TPEX"
+  },
+  {
+    "id": "3205",
+    "name": "佰研",
+    "market": "TPEX"
+  },
+  {
+    "id": "3206",
+    "name": "志豐",
+    "market": "TPEX"
+  },
+  {
+    "id": "3207",
+    "name": "耀勝",
+    "market": "TPEX"
+  },
+  {
+    "id": "3211",
+    "name": "順達",
+    "market": "TPEX"
+  },
+  {
+    "id": "3213",
+    "name": "茂訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "3217",
+    "name": "優群",
+    "market": "TPEX"
+  },
+  {
+    "id": "3218",
+    "name": "大學光",
+    "market": "TPEX"
+  },
+  {
+    "id": "3219",
+    "name": "倚強科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3221",
+    "name": "台嘉碩",
+    "market": "TPEX"
+  },
+  {
+    "id": "3224",
+    "name": "三顧",
+    "market": "TPEX"
+  },
+  {
+    "id": "3226",
+    "name": "龍鋒",
+    "market": "TPEX"
+  },
+  {
+    "id": "3227",
+    "name": "原相",
+    "market": "TPEX"
+  },
+  {
+    "id": "3228",
+    "name": "金麗科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3230",
+    "name": "錦明",
+    "market": "TPEX"
+  },
+  {
+    "id": "3232",
+    "name": "昱捷",
+    "market": "TPEX"
+  },
+  {
+    "id": "3234",
+    "name": "光環",
+    "market": "TPEX"
+  },
+  {
+    "id": "3236",
+    "name": "千如",
+    "market": "TPEX"
+  },
+  {
+    "id": "3252",
+    "name": "海灣",
+    "market": "TPEX"
+  },
+  {
+    "id": "3259",
+    "name": "鑫創",
+    "market": "TPEX"
+  },
+  {
+    "id": "3260",
+    "name": "威剛",
+    "market": "TPEX"
+  },
+  {
+    "id": "3264",
+    "name": "欣銓",
+    "market": "TPEX"
+  },
+  {
+    "id": "3265",
+    "name": "台星科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3268",
+    "name": "海德威",
+    "market": "TPEX"
+  },
+  {
+    "id": "3272",
+    "name": "東碩",
+    "market": "TPEX"
+  },
+  {
+    "id": "3276",
+    "name": "宇環",
+    "market": "TPEX"
+  },
+  {
+    "id": "3284",
+    "name": "太普高",
+    "market": "TPEX"
+  },
+  {
+    "id": "3285",
+    "name": "微端",
+    "market": "TPEX"
+  },
+  {
+    "id": "3287",
+    "name": "廣寰科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3288",
+    "name": "點晶",
+    "market": "TPEX"
+  },
+  {
+    "id": "3289",
+    "name": "宜特",
+    "market": "TPEX"
+  },
+  {
+    "id": "3290",
+    "name": "東浦",
+    "market": "TPEX"
+  },
+  {
+    "id": "3293",
+    "name": "鈊象",
+    "market": "TPEX"
+  },
+  {
+    "id": "3294",
+    "name": "英濟",
+    "market": "TPEX"
+  },
+  {
+    "id": "3297",
+    "name": "杭特",
+    "market": "TPEX"
+  },
+  {
+    "id": "3303",
+    "name": "岱稜",
+    "market": "TPEX"
+  },
+  {
+    "id": "3306",
+    "name": "鼎天",
+    "market": "TPEX"
+  },
+  {
+    "id": "3310",
+    "name": "佳穎",
+    "market": "TPEX"
+  },
+  {
+    "id": "3313",
+    "name": "斐成",
+    "market": "TPEX"
+  },
+  {
+    "id": "3317",
+    "name": "尼克森",
+    "market": "TPEX"
+  },
+  {
+    "id": "3322",
+    "name": "建舜電",
+    "market": "TPEX"
+  },
+  {
+    "id": "3323",
+    "name": "加百裕",
+    "market": "TPEX"
+  },
+  {
+    "id": "3324",
+    "name": "雙鴻",
+    "market": "TPEX"
+  },
+  {
+    "id": "3325",
+    "name": "旭品",
+    "market": "TPEX"
+  },
+  {
+    "id": "3332",
+    "name": "幸康",
+    "market": "TPEX"
+  },
+  {
+    "id": "3339",
+    "name": "泰谷",
+    "market": "TPEX"
+  },
+  {
+    "id": "3349",
+    "name": "寶德",
+    "market": "TPEX"
+  },
+  {
+    "id": "3354",
+    "name": "律勝",
+    "market": "TPEX"
+  },
+  {
+    "id": "3357",
+    "name": "臺慶科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3360",
+    "name": "尚立",
+    "market": "TPEX"
+  },
+  {
+    "id": "3362",
+    "name": "先進光",
+    "market": "TPEX"
+  },
+  {
+    "id": "3363",
+    "name": "上詮",
+    "market": "TPEX"
+  },
+  {
+    "id": "3372",
+    "name": "典範",
+    "market": "TPEX"
+  },
+  {
+    "id": "3373",
+    "name": "熱映",
+    "market": "TPEX"
+  },
+  {
+    "id": "3374",
+    "name": "精材",
+    "market": "TPEX"
+  },
+  {
+    "id": "3379",
+    "name": "彬台",
+    "market": "TPEX"
+  },
+  {
+    "id": "3388",
+    "name": "崇越電",
+    "market": "TPEX"
+  },
+  {
+    "id": "3390",
+    "name": "旭軟",
+    "market": "TPEX"
+  },
+  {
+    "id": "3402",
+    "name": "漢科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3426",
+    "name": "台興",
+    "market": "TPEX"
+  },
+  {
+    "id": "3430",
+    "name": "奇鈦科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3434",
+    "name": "哲固",
+    "market": "TPEX"
+  },
+  {
+    "id": "3438",
+    "name": "類比科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3441",
+    "name": "聯一光電",
+    "market": "TPEX"
+  },
+  {
+    "id": "3444",
+    "name": "利機",
+    "market": "TPEX"
+  },
+  {
+    "id": "3455",
+    "name": "由田",
+    "market": "TPEX"
+  },
+  {
+    "id": "3465",
+    "name": "進泰電子",
+    "market": "TPEX"
+  },
+  {
+    "id": "3466",
+    "name": "德晉",
+    "market": "TPEX"
+  },
+  {
+    "id": "3467",
+    "name": "台灣精材",
+    "market": "TPEX"
+  },
+  {
+    "id": "3479",
+    "name": "安勤",
+    "market": "TPEX"
+  },
+  {
+    "id": "3483",
+    "name": "力致",
+    "market": "TPEX"
+  },
+  {
+    "id": "3484",
+    "name": "崧騰",
+    "market": "TPEX"
+  },
+  {
+    "id": "3485",
+    "name": "敘豐",
+    "market": "TPEX"
+  },
+  {
+    "id": "3489",
+    "name": "森寶",
+    "market": "TPEX"
+  },
+  {
+    "id": "3490",
+    "name": "單井",
+    "market": "TPEX"
+  },
+  {
+    "id": "3491",
+    "name": "昇達科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3492",
+    "name": "長盛",
+    "market": "TPEX"
+  },
+  {
+    "id": "3498",
+    "name": "陽程",
+    "market": "TPEX"
+  },
+  {
+    "id": "3499",
+    "name": "環天科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3508",
+    "name": "位速",
+    "market": "TPEX"
+  },
+  {
+    "id": "3511",
+    "name": "矽瑪",
+    "market": "TPEX"
+  },
+  {
+    "id": "3512",
+    "name": "皇龍",
+    "market": "TPEX"
+  },
+  {
+    "id": "3516",
+    "name": "亞帝歐",
+    "market": "TPEX"
+  },
+  {
+    "id": "3520",
+    "name": "華盈",
+    "market": "TPEX"
+  },
+  {
+    "id": "3521",
+    "name": "台鋼建設",
+    "market": "TPEX"
+  },
+  {
+    "id": "3522",
+    "name": "御嵿",
+    "market": "TPEX"
+  },
+  {
+    "id": "3523",
+    "name": "迎輝",
+    "market": "TPEX"
+  },
+  {
+    "id": "3526",
+    "name": "凡甲",
+    "market": "TPEX"
+  },
+  {
+    "id": "3527",
+    "name": "聚積",
+    "market": "TPEX"
+  },
+  {
+    "id": "3529",
+    "name": "力旺",
+    "market": "TPEX"
+  },
+  {
+    "id": "3531",
+    "name": "先益",
+    "market": "TPEX"
+  },
+  {
+    "id": "3537",
+    "name": "堡達",
+    "market": "TPEX"
+  },
+  {
+    "id": "3540",
+    "name": "曜越",
+    "market": "TPEX"
+  },
+  {
+    "id": "3541",
+    "name": "西柏",
+    "market": "TPEX"
+  },
+  {
+    "id": "3546",
+    "name": "宇峻",
+    "market": "TPEX"
+  },
+  {
+    "id": "3548",
+    "name": "兆利",
+    "market": "TPEX"
+  },
+  {
+    "id": "3551",
+    "name": "世禾",
+    "market": "TPEX"
+  },
+  {
+    "id": "3552",
+    "name": "同致",
+    "market": "TPEX"
+  },
+  {
+    "id": "3555",
+    "name": "博士旺",
+    "market": "TPEX"
+  },
+  {
+    "id": "3556",
+    "name": "禾瑞亞",
+    "market": "TPEX"
+  },
+  {
+    "id": "3558",
+    "name": "神準",
+    "market": "TPEX"
+  },
+  {
+    "id": "3564",
+    "name": "其陽",
+    "market": "TPEX"
+  },
+  {
+    "id": "3567",
+    "name": "逸昌",
+    "market": "TPEX"
+  },
+  {
+    "id": "3570",
+    "name": "大塚",
+    "market": "TPEX"
+  },
+  {
+    "id": "3577",
+    "name": "泓格",
+    "market": "TPEX"
+  },
+  {
+    "id": "3580",
+    "name": "友威科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3581",
+    "name": "博磊",
+    "market": "TPEX"
+  },
+  {
+    "id": "3587",
+    "name": "閎康",
+    "market": "TPEX"
+  },
+  {
+    "id": "3594",
+    "name": "磐儀",
+    "market": "TPEX"
+  },
+  {
+    "id": "3597",
+    "name": "映興",
+    "market": "TPEX"
+  },
+  {
+    "id": "3609",
+    "name": "三一東林",
+    "market": "TPEX"
+  },
+  {
+    "id": "3611",
+    "name": "鼎翰",
+    "market": "TPEX"
+  },
+  {
+    "id": "3615",
+    "name": "安可",
+    "market": "TPEX"
+  },
+  {
+    "id": "3623",
+    "name": "富晶通",
+    "market": "TPEX"
+  },
+  {
+    "id": "3624",
+    "name": "光頡",
+    "market": "TPEX"
+  },
+  {
+    "id": "3625",
+    "name": "西勝",
+    "market": "TPEX"
+  },
+  {
+    "id": "3628",
+    "name": "盈正",
+    "market": "TPEX"
+  },
+  {
+    "id": "3629",
+    "name": "地心引力",
+    "market": "TPEX"
+  },
+  {
+    "id": "3630",
+    "name": "新鉅科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3631",
+    "name": "晟楠",
+    "market": "TPEX"
+  },
+  {
+    "id": "3632",
+    "name": "研勤",
+    "market": "TPEX"
+  },
+  {
+    "id": "3646",
+    "name": "艾恩特",
+    "market": "TPEX"
+  },
+  {
+    "id": "3663",
+    "name": "鑫科",
+    "market": "TPEX"
+  },
+  {
+    "id": "3664",
+    "name": "安瑞-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "3666",
+    "name": "光耀",
+    "market": "TPEX"
+  },
+  {
+    "id": "3672",
+    "name": "康聯訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "3675",
+    "name": "德微",
+    "market": "TPEX"
+  },
+  {
+    "id": "3680",
+    "name": "家登",
+    "market": "TPEX"
+  },
+  {
+    "id": "3684",
+    "name": "榮昌",
+    "market": "TPEX"
+  },
+  {
+    "id": "3685",
+    "name": "元創精密",
+    "market": "TPEX"
+  },
+  {
+    "id": "3687",
+    "name": "歐買尬",
+    "market": "TPEX"
+  },
+  {
+    "id": "3689",
+    "name": "湧德",
+    "market": "TPEX"
+  },
+  {
+    "id": "3691",
+    "name": "碩禾",
+    "market": "TPEX"
+  },
+  {
+    "id": "3693",
+    "name": "營邦",
+    "market": "TPEX"
+  },
+  {
+    "id": "3707",
+    "name": "漢磊",
+    "market": "TPEX"
+  },
+  {
+    "id": "3709",
+    "name": "鑫聯大投控",
+    "market": "TPEX"
+  },
+  {
+    "id": "3710",
+    "name": "連展投控",
+    "market": "TPEX"
+  },
+  {
+    "id": "3713",
+    "name": "新晶投控",
+    "market": "TPEX"
+  },
+  {
+    "id": "4102",
+    "name": "永日",
+    "market": "TPEX"
+  },
+  {
+    "id": "4105",
+    "name": "東洋",
+    "market": "TPEX"
+  },
+  {
+    "id": "4107",
+    "name": "邦特",
+    "market": "TPEX"
+  },
+  {
+    "id": "4109",
+    "name": "加捷生醫",
+    "market": "TPEX"
+  },
+  {
+    "id": "4111",
+    "name": "濟生",
+    "market": "TPEX"
+  },
+  {
+    "id": "4113",
+    "name": "聯上",
+    "market": "TPEX"
+  },
+  {
+    "id": "4114",
+    "name": "健喬",
+    "market": "TPEX"
+  },
+  {
+    "id": "4116",
+    "name": "明基醫",
+    "market": "TPEX"
+  },
+  {
+    "id": "4120",
+    "name": "友華",
+    "market": "TPEX"
+  },
+  {
+    "id": "4121",
+    "name": "優盛",
+    "market": "TPEX"
+  },
+  {
+    "id": "4123",
+    "name": "晟德",
+    "market": "TPEX"
+  },
+  {
+    "id": "4126",
+    "name": "太醫",
+    "market": "TPEX"
+  },
+  {
+    "id": "4127",
+    "name": "天良",
+    "market": "TPEX"
+  },
+  {
+    "id": "4128",
+    "name": "中天",
+    "market": "TPEX"
+  },
+  {
+    "id": "4129",
+    "name": "聯合",
+    "market": "TPEX"
+  },
+  {
+    "id": "4130",
+    "name": "健亞",
+    "market": "TPEX"
+  },
+  {
+    "id": "4131",
+    "name": "浩泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "4138",
+    "name": "曜亞",
+    "market": "TPEX"
+  },
+  {
+    "id": "4139",
+    "name": "馬光-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4147",
+    "name": "中裕",
+    "market": "TPEX"
+  },
+  {
+    "id": "4153",
+    "name": "鈺緯",
+    "market": "TPEX"
+  },
+  {
+    "id": "4154",
+    "name": "樂威科-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4157",
+    "name": "太景*-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4160",
+    "name": "訊聯基因",
+    "market": "TPEX"
+  },
+  {
+    "id": "4161",
+    "name": "聿新科",
+    "market": "TPEX"
+  },
+  {
+    "id": "4162",
+    "name": "智擎",
+    "market": "TPEX"
+  },
+  {
+    "id": "4163",
+    "name": "鐿鈦",
+    "market": "TPEX"
+  },
+  {
+    "id": "4166",
+    "name": "友霖",
+    "market": "TPEX"
+  },
+  {
+    "id": "4167",
+    "name": "松瑞藥",
+    "market": "TPEX"
+  },
+  {
+    "id": "4168",
+    "name": "醣聯",
+    "market": "TPEX"
+  },
+  {
+    "id": "4171",
+    "name": "瑞基",
+    "market": "TPEX"
+  },
+  {
+    "id": "4173",
+    "name": "久裕",
+    "market": "TPEX"
+  },
+  {
+    "id": "4174",
+    "name": "浩鼎",
+    "market": "TPEX"
+  },
+  {
+    "id": "4175",
+    "name": "杏一",
+    "market": "TPEX"
+  },
+  {
+    "id": "4183",
+    "name": "福永生技",
+    "market": "TPEX"
+  },
+  {
+    "id": "4188",
+    "name": "安克",
+    "market": "TPEX"
+  },
+  {
+    "id": "4192",
+    "name": "杏國",
+    "market": "TPEX"
+  },
+  {
+    "id": "4198",
+    "name": "欣大健康",
+    "market": "TPEX"
+  },
+  {
+    "id": "4205",
+    "name": "中華食",
+    "market": "TPEX"
+  },
+  {
+    "id": "4207",
+    "name": "環泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "4303",
+    "name": "信立",
+    "market": "TPEX"
+  },
+  {
+    "id": "4304",
+    "name": "勝昱",
+    "market": "TPEX"
+  },
+  {
+    "id": "4305",
+    "name": "世坤",
+    "market": "TPEX"
+  },
+  {
+    "id": "4401",
+    "name": "東隆興",
+    "market": "TPEX"
+  },
+  {
+    "id": "4402",
+    "name": "郡都開發",
+    "market": "TPEX"
+  },
+  {
+    "id": "4406",
+    "name": "新昕纖",
+    "market": "TPEX"
+  },
+  {
+    "id": "4413",
+    "name": "飛寶企業",
+    "market": "TPEX"
+  },
+  {
+    "id": "4416",
+    "name": "三圓",
+    "market": "TPEX"
+  },
+  {
+    "id": "4417",
+    "name": "金洲",
+    "market": "TPEX"
+  },
+  {
+    "id": "4419",
+    "name": "皇家美食",
+    "market": "TPEX"
+  },
+  {
+    "id": "4420",
+    "name": "光明",
+    "market": "TPEX"
+  },
+  {
+    "id": "4430",
+    "name": "耀億",
+    "market": "TPEX"
+  },
+  {
+    "id": "4432",
+    "name": "銘旺實",
+    "market": "TPEX"
+  },
+  {
+    "id": "4433",
+    "name": "興采",
+    "market": "TPEX"
+  },
+  {
+    "id": "4442",
+    "name": "竣邦-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4502",
+    "name": "健信",
+    "market": "TPEX"
+  },
+  {
+    "id": "4503",
+    "name": "金雨",
+    "market": "TPEX"
+  },
+  {
+    "id": "4506",
+    "name": "崇友",
+    "market": "TPEX"
+  },
+  {
+    "id": "4510",
+    "name": "高鋒",
+    "market": "TPEX"
+  },
+  {
+    "id": "4513",
+    "name": "福裕",
+    "market": "TPEX"
+  },
+  {
+    "id": "4523",
+    "name": "永彰",
+    "market": "TPEX"
+  },
+  {
+    "id": "4527",
+    "name": "方方土霖",
+    "market": "TPEX"
+  },
+  {
+    "id": "4528",
+    "name": "江興鍛",
+    "market": "TPEX"
+  },
+  {
+    "id": "4529",
+    "name": "淳紳",
+    "market": "TPEX"
+  },
+  {
+    "id": "4530",
+    "name": "宏易",
+    "market": "TPEX"
+  },
+  {
+    "id": "4533",
+    "name": "協易機",
+    "market": "TPEX"
+  },
+  {
+    "id": "4534",
+    "name": "慶騰",
+    "market": "TPEX"
+  },
+  {
+    "id": "4535",
+    "name": "至興",
+    "market": "TPEX"
+  },
+  {
+    "id": "4538",
+    "name": "大詠城",
+    "market": "TPEX"
+  },
+  {
+    "id": "4541",
+    "name": "晟田",
+    "market": "TPEX"
+  },
+  {
+    "id": "4542",
+    "name": "科嶠",
+    "market": "TPEX"
+  },
+  {
+    "id": "4543",
+    "name": "萬在",
+    "market": "TPEX"
+  },
+  {
+    "id": "4549",
+    "name": "桓達",
+    "market": "TPEX"
+  },
+  {
+    "id": "4550",
+    "name": "長佳",
+    "market": "TPEX"
+  },
+  {
+    "id": "4554",
+    "name": "橙的",
+    "market": "TPEX"
+  },
+  {
+    "id": "4556",
+    "name": "旭然",
+    "market": "TPEX"
+  },
+  {
+    "id": "4558",
+    "name": "寶緯",
+    "market": "TPEX"
+  },
+  {
+    "id": "4561",
+    "name": "健椿",
+    "market": "TPEX"
+  },
+  {
+    "id": "4563",
+    "name": "百德",
+    "market": "TPEX"
+  },
+  {
+    "id": "4568",
+    "name": "科際精密",
+    "market": "TPEX"
+  },
+  {
+    "id": "4577",
+    "name": "達航科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "4580",
+    "name": "捷流閥業",
+    "market": "TPEX"
+  },
+  {
+    "id": "4584",
+    "name": "君帆",
+    "market": "TPEX"
+  },
+  {
+    "id": "4609",
+    "name": "唐鋒",
+    "market": "TPEX"
+  },
+  {
+    "id": "4702",
+    "name": "中美實",
+    "market": "TPEX"
+  },
+  {
+    "id": "4706",
+    "name": "大恭",
+    "market": "TPEX"
+  },
+  {
+    "id": "4707",
+    "name": "磐亞",
+    "market": "TPEX"
+  },
+  {
+    "id": "4711",
+    "name": "永純",
+    "market": "TPEX"
+  },
+  {
+    "id": "4714",
+    "name": "永捷",
+    "market": "TPEX"
+  },
+  {
+    "id": "4716",
+    "name": "大立",
+    "market": "TPEX"
+  },
+  {
+    "id": "4721",
+    "name": "美琪瑪",
+    "market": "TPEX"
+  },
+  {
+    "id": "4726",
+    "name": "永昕",
+    "market": "TPEX"
+  },
+  {
+    "id": "4728",
+    "name": "雙美",
+    "market": "TPEX"
+  },
+  {
+    "id": "4729",
+    "name": "熒茂",
+    "market": "TPEX"
+  },
+  {
+    "id": "4735",
+    "name": "豪展",
+    "market": "TPEX"
+  },
+  {
+    "id": "4741",
+    "name": "泓瀚",
+    "market": "TPEX"
+  },
+  {
+    "id": "4743",
+    "name": "合一",
+    "market": "TPEX"
+  },
+  {
+    "id": "4744",
+    "name": "皇將",
+    "market": "TPEX"
+  },
+  {
+    "id": "4745",
+    "name": "合富-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4747",
+    "name": "強生製藥",
+    "market": "TPEX"
+  },
+  {
+    "id": "4749",
+    "name": "新應材",
+    "market": "TPEX"
+  },
+  {
+    "id": "4754",
+    "name": "國碳科",
+    "market": "TPEX"
+  },
+  {
+    "id": "4760",
+    "name": "勤凱科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "4767",
+    "name": "誠泰科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "4768",
+    "name": "晶呈科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "4772",
+    "name": "台特化",
+    "market": "TPEX"
+  },
+  {
+    "id": "4804",
+    "name": "大略-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4806",
+    "name": "桂田文創",
+    "market": "TPEX"
+  },
+  {
+    "id": "4903",
+    "name": "聯光通",
+    "market": "TPEX"
+  },
+  {
+    "id": "4905",
+    "name": "台聯電",
+    "market": "TPEX"
+  },
+  {
+    "id": "4907",
+    "name": "富宇",
+    "market": "TPEX"
+  },
+  {
+    "id": "4908",
+    "name": "前鼎",
+    "market": "TPEX"
+  },
+  {
+    "id": "4909",
+    "name": "新復興",
+    "market": "TPEX"
+  },
+  {
+    "id": "4911",
+    "name": "德英",
+    "market": "TPEX"
+  },
+  {
+    "id": "4923",
+    "name": "力士",
+    "market": "TPEX"
+  },
+  {
+    "id": "4924",
+    "name": "欣厚-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4931",
+    "name": "新盛力",
+    "market": "TPEX"
+  },
+  {
+    "id": "4933",
+    "name": "友輝",
+    "market": "TPEX"
+  },
+  {
+    "id": "4939",
+    "name": "亞電",
+    "market": "TPEX"
+  },
+  {
+    "id": "4946",
+    "name": "辣椒",
+    "market": "TPEX"
+  },
+  {
+    "id": "4950",
+    "name": "金耘國際",
+    "market": "TPEX"
+  },
+  {
+    "id": "4951",
+    "name": "精拓科",
+    "market": "TPEX"
+  },
+  {
+    "id": "4953",
+    "name": "緯軟",
+    "market": "TPEX"
+  },
+  {
+    "id": "4966",
+    "name": "譜瑞-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4971",
+    "name": "IET-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4972",
+    "name": "湯石照明",
+    "market": "TPEX"
+  },
+  {
+    "id": "4973",
+    "name": "廣穎電通",
+    "market": "TPEX"
+  },
+  {
+    "id": "4974",
+    "name": "亞泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "4979",
+    "name": "華星光",
+    "market": "TPEX"
+  },
+  {
+    "id": "4987",
+    "name": "科誠",
+    "market": "TPEX"
+  },
+  {
+    "id": "4991",
+    "name": "環宇-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "4995",
+    "name": "晶達",
+    "market": "TPEX"
+  },
+  {
+    "id": "5009",
+    "name": "榮剛",
+    "market": "TPEX"
+  },
+  {
+    "id": "5011",
+    "name": "久陽",
+    "market": "TPEX"
+  },
+  {
+    "id": "5013",
+    "name": "強新",
+    "market": "TPEX"
+  },
+  {
+    "id": "5014",
+    "name": "建錩",
+    "market": "TPEX"
+  },
+  {
+    "id": "5015",
+    "name": "華祺",
+    "market": "TPEX"
+  },
+  {
+    "id": "5016",
+    "name": "松和",
+    "market": "TPEX"
+  },
+  {
+    "id": "5201",
+    "name": "凱衛",
+    "market": "TPEX"
+  },
+  {
+    "id": "5202",
+    "name": "力新",
+    "market": "TPEX"
+  },
+  {
+    "id": "5205",
+    "name": "中茂",
+    "market": "TPEX"
+  },
+  {
+    "id": "5206",
+    "name": "坤悅",
+    "market": "TPEX"
+  },
+  {
+    "id": "5209",
+    "name": "新鼎",
+    "market": "TPEX"
+  },
+  {
+    "id": "5210",
+    "name": "寶碩",
+    "market": "TPEX"
+  },
+  {
+    "id": "5211",
+    "name": "蒙恬",
+    "market": "TPEX"
+  },
+  {
+    "id": "5212",
+    "name": "凌網",
+    "market": "TPEX"
+  },
+  {
+    "id": "5213",
+    "name": "亞昕",
+    "market": "TPEX"
+  },
+  {
+    "id": "5220",
+    "name": "萬達光電",
+    "market": "TPEX"
+  },
+  {
+    "id": "5223",
+    "name": "安力-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "5227",
+    "name": "立凱-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "5228",
+    "name": "鈺鎧",
+    "market": "TPEX"
+  },
+  {
+    "id": "5230",
+    "name": "雷笛克光學",
+    "market": "TPEX"
+  },
+  {
+    "id": "5236",
+    "name": "凌陽創新",
+    "market": "TPEX"
+  },
+  {
+    "id": "5245",
+    "name": "智晶",
+    "market": "TPEX"
+  },
+  {
+    "id": "5251",
+    "name": "天鉞電",
+    "market": "TPEX"
+  },
+  {
+    "id": "5263",
+    "name": "智崴",
+    "market": "TPEX"
+  },
+  {
+    "id": "5272",
+    "name": "笙科",
+    "market": "TPEX"
+  },
+  {
+    "id": "5274",
+    "name": "信驊",
+    "market": "TPEX"
+  },
+  {
+    "id": "5276",
+    "name": "達輝-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "5278",
+    "name": "尚凡*",
+    "market": "TPEX"
+  },
+  {
+    "id": "5287",
+    "name": "數字",
+    "market": "TPEX"
+  },
+  {
+    "id": "5289",
+    "name": "宜鼎",
+    "market": "TPEX"
+  },
+  {
+    "id": "5291",
+    "name": "邑昇",
+    "market": "TPEX"
+  },
+  {
+    "id": "5299",
+    "name": "杰力",
+    "market": "TPEX"
+  },
+  {
+    "id": "5301",
+    "name": "寶得利",
+    "market": "TPEX"
+  },
+  {
+    "id": "5302",
+    "name": "太欣",
+    "market": "TPEX"
+  },
+  {
+    "id": "5309",
+    "name": "系統電",
+    "market": "TPEX"
+  },
+  {
+    "id": "5310",
+    "name": "天剛",
+    "market": "TPEX"
+  },
+  {
+    "id": "5312",
+    "name": "寶島科",
+    "market": "TPEX"
+  },
+  {
+    "id": "5314",
+    "name": "世紀*",
+    "market": "TPEX"
+  },
+  {
+    "id": "5315",
+    "name": "光聯",
+    "market": "TPEX"
+  },
+  {
+    "id": "5321",
+    "name": "美而快",
+    "market": "TPEX"
+  },
+  {
+    "id": "5324",
+    "name": "士開",
+    "market": "TPEX"
+  },
+  {
+    "id": "5328",
+    "name": "華容",
+    "market": "TPEX"
+  },
+  {
+    "id": "5340",
+    "name": "建榮",
+    "market": "TPEX"
+  },
+  {
+    "id": "5344",
+    "name": "立衛",
+    "market": "TPEX"
+  },
+  {
+    "id": "5345",
+    "name": "馥鴻",
+    "market": "TPEX"
+  },
+  {
+    "id": "5347",
+    "name": "世界",
+    "market": "TPEX"
+  },
+  {
+    "id": "5348",
+    "name": "正能量智能",
+    "market": "TPEX"
+  },
+  {
+    "id": "5351",
+    "name": "鈺創",
+    "market": "TPEX"
+  },
+  {
+    "id": "5353",
+    "name": "台林",
+    "market": "TPEX"
+  },
+  {
+    "id": "5355",
+    "name": "佳總",
+    "market": "TPEX"
+  },
+  {
+    "id": "5356",
+    "name": "協益",
+    "market": "TPEX"
+  },
+  {
+    "id": "5364",
+    "name": "力麗店",
+    "market": "TPEX"
+  },
+  {
+    "id": "5371",
+    "name": "中光電",
+    "market": "TPEX"
+  },
+  {
+    "id": "5381",
+    "name": "光譜",
+    "market": "TPEX"
+  },
+  {
+    "id": "5386",
+    "name": "青雲",
+    "market": "TPEX"
+  },
+  {
+    "id": "5392",
+    "name": "能率",
+    "market": "TPEX"
+  },
+  {
+    "id": "5398",
+    "name": "慕康生醫",
+    "market": "TPEX"
+  },
+  {
+    "id": "5403",
+    "name": "中菲",
+    "market": "TPEX"
+  },
+  {
+    "id": "5410",
+    "name": "國眾",
+    "market": "TPEX"
+  },
+  {
+    "id": "5425",
+    "name": "台半",
+    "market": "TPEX"
+  },
+  {
+    "id": "5426",
+    "name": "振發",
+    "market": "TPEX"
+  },
+  {
+    "id": "5432",
+    "name": "新門",
+    "market": "TPEX"
+  },
+  {
+    "id": "5438",
+    "name": "東友",
+    "market": "TPEX"
+  },
+  {
+    "id": "5439",
+    "name": "高技",
+    "market": "TPEX"
+  },
+  {
+    "id": "5443",
+    "name": "均豪",
+    "market": "TPEX"
+  },
+  {
+    "id": "5450",
+    "name": "南良",
+    "market": "TPEX"
+  },
+  {
+    "id": "5452",
+    "name": "佶優",
+    "market": "TPEX"
+  },
+  {
+    "id": "5455",
+    "name": "昇益",
+    "market": "TPEX"
+  },
+  {
+    "id": "5457",
+    "name": "宣德",
+    "market": "TPEX"
+  },
+  {
+    "id": "5460",
+    "name": "同協",
+    "market": "TPEX"
+  },
+  {
+    "id": "5464",
+    "name": "霖宏",
+    "market": "TPEX"
+  },
+  {
+    "id": "5465",
+    "name": "富驊",
+    "market": "TPEX"
+  },
+  {
+    "id": "5468",
+    "name": "凱鈺",
+    "market": "TPEX"
+  },
+  {
+    "id": "5474",
+    "name": "聰泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "5475",
+    "name": "德宏",
+    "market": "TPEX"
+  },
+  {
+    "id": "5478",
+    "name": "智冠",
+    "market": "TPEX"
+  },
+  {
+    "id": "5481",
+    "name": "新華",
+    "market": "TPEX"
+  },
+  {
+    "id": "5483",
+    "name": "中美晶",
+    "market": "TPEX"
+  },
+  {
+    "id": "5487",
+    "name": "通泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "5488",
+    "name": "松普",
+    "market": "TPEX"
+  },
+  {
+    "id": "5489",
+    "name": "彩富",
+    "market": "TPEX"
+  },
+  {
+    "id": "5490",
+    "name": "同亨",
+    "market": "TPEX"
+  },
+  {
+    "id": "5493",
+    "name": "三聯",
+    "market": "TPEX"
+  },
+  {
+    "id": "5498",
+    "name": "凱崴",
+    "market": "TPEX"
+  },
+  {
+    "id": "5508",
+    "name": "永信建",
+    "market": "TPEX"
+  },
+  {
+    "id": "5511",
+    "name": "德昌",
+    "market": "TPEX"
+  },
+  {
+    "id": "5512",
+    "name": "力麒",
+    "market": "TPEX"
+  },
+  {
+    "id": "5514",
+    "name": "三豐",
+    "market": "TPEX"
+  },
+  {
+    "id": "5516",
+    "name": "雙喜",
+    "market": "TPEX"
+  },
+  {
+    "id": "5520",
+    "name": "力泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "5523",
+    "name": "豐謙",
+    "market": "TPEX"
+  },
+  {
+    "id": "5529",
+    "name": "鉅陞",
+    "market": "TPEX"
+  },
+  {
+    "id": "5530",
+    "name": "龍巖",
+    "market": "TPEX"
+  },
+  {
+    "id": "5536",
+    "name": "聖暉*",
+    "market": "TPEX"
+  },
+  {
+    "id": "5543",
+    "name": "桓鼎-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "5547",
+    "name": "久舜",
+    "market": "TPEX"
+  },
+  {
+    "id": "5548",
+    "name": "安倉",
+    "market": "TPEX"
+  },
+  {
+    "id": "5601",
+    "name": "台聯櫃",
+    "market": "TPEX"
+  },
+  {
+    "id": "5603",
+    "name": "陸海",
+    "market": "TPEX"
+  },
+  {
+    "id": "5604",
+    "name": "中連",
+    "market": "TPEX"
+  },
+  {
+    "id": "5609",
+    "name": "中菲行",
+    "market": "TPEX"
+  },
+  {
+    "id": "5701",
+    "name": "劍湖山",
+    "market": "TPEX"
+  },
+  {
+    "id": "5703",
+    "name": "亞都麗緻",
+    "market": "TPEX"
+  },
+  {
+    "id": "5704",
+    "name": "老爺知",
+    "market": "TPEX"
+  },
+  {
+    "id": "5864",
+    "name": "致和證",
+    "market": "TPEX"
+  },
+  {
+    "id": "5878",
+    "name": "台名",
+    "market": "TPEX"
+  },
+  {
+    "id": "5902",
+    "name": "德記",
+    "market": "TPEX"
+  },
+  {
+    "id": "5903",
+    "name": "全家",
+    "market": "TPEX"
+  },
+  {
+    "id": "5904",
+    "name": "寶雅",
+    "market": "TPEX"
+  },
+  {
+    "id": "5905",
+    "name": "南仁湖",
+    "market": "TPEX"
+  },
+  {
+    "id": "6015",
+    "name": "宏遠證",
+    "market": "TPEX"
+  },
+  {
+    "id": "6016",
+    "name": "康和證",
+    "market": "TPEX"
+  },
+  {
+    "id": "6020",
+    "name": "大展證",
+    "market": "TPEX"
+  },
+  {
+    "id": "6021",
+    "name": "美好證",
+    "market": "TPEX"
+  },
+  {
+    "id": "6023",
+    "name": "元大期貨",
+    "market": "TPEX"
+  },
+  {
+    "id": "6026",
+    "name": "福邦證",
+    "market": "TPEX"
+  },
+  {
+    "id": "6028",
+    "name": "公勝保經",
+    "market": "TPEX"
+  },
+  {
+    "id": "6101",
+    "name": "寬魚國際",
+    "market": "TPEX"
+  },
+  {
+    "id": "6103",
+    "name": "合邦",
+    "market": "TPEX"
+  },
+  {
+    "id": "6104",
+    "name": "創惟",
+    "market": "TPEX"
+  },
+  {
+    "id": "6109",
+    "name": "亞元",
+    "market": "TPEX"
+  },
+  {
+    "id": "6111",
+    "name": "光聚晶電",
+    "market": "TPEX"
+  },
+  {
+    "id": "6113",
+    "name": "亞矽",
+    "market": "TPEX"
+  },
+  {
+    "id": "6114",
+    "name": "久威",
+    "market": "TPEX"
+  },
+  {
+    "id": "6118",
+    "name": "建達",
+    "market": "TPEX"
+  },
+  {
+    "id": "6121",
+    "name": "新普",
+    "market": "TPEX"
+  },
+  {
+    "id": "6122",
+    "name": "擎邦",
+    "market": "TPEX"
+  },
+  {
+    "id": "6123",
+    "name": "上奇",
+    "market": "TPEX"
+  },
+  {
+    "id": "6124",
+    "name": "業強",
+    "market": "TPEX"
+  },
+  {
+    "id": "6125",
+    "name": "廣運",
+    "market": "TPEX"
+  },
+  {
+    "id": "6126",
+    "name": "信音",
+    "market": "TPEX"
+  },
+  {
+    "id": "6127",
+    "name": "九豪",
+    "market": "TPEX"
+  },
+  {
+    "id": "6129",
+    "name": "普誠",
+    "market": "TPEX"
+  },
+  {
+    "id": "6130",
+    "name": "上亞科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "6134",
+    "name": "萬旭",
+    "market": "TPEX"
+  },
+  {
+    "id": "6138",
+    "name": "茂達",
+    "market": "TPEX"
+  },
+  {
+    "id": "6140",
+    "name": "訊達電腦",
+    "market": "TPEX"
+  },
+  {
+    "id": "6143",
+    "name": "振曜",
+    "market": "TPEX"
+  },
+  {
+    "id": "6144",
+    "name": "得利影",
+    "market": "TPEX"
+  },
+  {
+    "id": "6146",
+    "name": "耕興",
+    "market": "TPEX"
+  },
+  {
+    "id": "6147",
+    "name": "頎邦",
+    "market": "TPEX"
+  },
+  {
+    "id": "6148",
+    "name": "驊宏資",
+    "market": "TPEX"
+  },
+  {
+    "id": "6150",
+    "name": "撼訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "6151",
+    "name": "晉倫",
+    "market": "TPEX"
+  },
+  {
+    "id": "6154",
+    "name": "順發",
+    "market": "TPEX"
+  },
+  {
+    "id": "6156",
+    "name": "松上",
+    "market": "TPEX"
+  },
+  {
+    "id": "6158",
+    "name": "禾昌",
+    "market": "TPEX"
+  },
+  {
+    "id": "6160",
+    "name": "欣技",
+    "market": "TPEX"
+  },
+  {
+    "id": "6161",
+    "name": "捷波",
+    "market": "TPEX"
+  },
+  {
+    "id": "6163",
+    "name": "華電網",
+    "market": "TPEX"
+  },
+  {
+    "id": "6167",
+    "name": "久正",
+    "market": "TPEX"
+  },
+  {
+    "id": "6169",
+    "name": "昱泉",
+    "market": "TPEX"
+  },
+  {
+    "id": "6170",
+    "name": "統振",
+    "market": "TPEX"
+  },
+  {
+    "id": "6171",
+    "name": "大城地產",
+    "market": "TPEX"
+  },
+  {
+    "id": "6173",
+    "name": "信昌電",
+    "market": "TPEX"
+  },
+  {
+    "id": "6174",
+    "name": "安碁",
+    "market": "TPEX"
+  },
+  {
+    "id": "6175",
+    "name": "立敦",
+    "market": "TPEX"
+  },
+  {
+    "id": "6179",
+    "name": "亞通",
+    "market": "TPEX"
+  },
+  {
+    "id": "6180",
+    "name": "橘子",
+    "market": "TPEX"
+  },
+  {
+    "id": "6182",
+    "name": "合晶",
+    "market": "TPEX"
+  },
+  {
+    "id": "6185",
+    "name": "幃翔",
+    "market": "TPEX"
+  },
+  {
+    "id": "6186",
+    "name": "新潤",
+    "market": "TPEX"
+  },
+  {
+    "id": "6187",
+    "name": "萬潤",
+    "market": "TPEX"
+  },
+  {
+    "id": "6188",
+    "name": "廣明",
+    "market": "TPEX"
+  },
+  {
+    "id": "6190",
+    "name": "萬泰科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6194",
+    "name": "育富",
+    "market": "TPEX"
+  },
+  {
+    "id": "6195",
+    "name": "詩肯",
+    "market": "TPEX"
+  },
+  {
+    "id": "6198",
+    "name": "瑞築",
+    "market": "TPEX"
+  },
+  {
+    "id": "6199",
+    "name": "天品",
+    "market": "TPEX"
+  },
+  {
+    "id": "6203",
+    "name": "海韻電",
+    "market": "TPEX"
+  },
+  {
+    "id": "6204",
+    "name": "艾華",
+    "market": "TPEX"
+  },
+  {
+    "id": "6207",
+    "name": "雷科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6208",
+    "name": "日揚",
+    "market": "TPEX"
+  },
+  {
+    "id": "6210",
+    "name": "慶生",
+    "market": "TPEX"
+  },
+  {
+    "id": "6212",
+    "name": "理銘",
+    "market": "TPEX"
+  },
+  {
+    "id": "6217",
+    "name": "中探針",
+    "market": "TPEX"
+  },
+  {
+    "id": "6218",
+    "name": "豪勉",
+    "market": "TPEX"
+  },
+  {
+    "id": "6219",
+    "name": "富旺",
+    "market": "TPEX"
+  },
+  {
+    "id": "6220",
+    "name": "岳豐",
+    "market": "TPEX"
+  },
+  {
+    "id": "6221",
+    "name": "晉泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "6222",
+    "name": "立軒",
+    "market": "TPEX"
+  },
+  {
+    "id": "6223",
+    "name": "旺矽",
+    "market": "TPEX"
+  },
+  {
+    "id": "6227",
+    "name": "茂綸",
+    "market": "TPEX"
+  },
+  {
+    "id": "6228",
+    "name": "全譜",
+    "market": "TPEX"
+  },
+  {
+    "id": "6229",
+    "name": "研通",
+    "market": "TPEX"
+  },
+  {
+    "id": "6231",
+    "name": "系微",
+    "market": "TPEX"
+  },
+  {
+    "id": "6233",
+    "name": "旺玖",
+    "market": "TPEX"
+  },
+  {
+    "id": "6234",
+    "name": "高僑",
+    "market": "TPEX"
+  },
+  {
+    "id": "6236",
+    "name": "中湛",
+    "market": "TPEX"
+  },
+  {
+    "id": "6237",
+    "name": "驊訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "6240",
+    "name": "松崗",
+    "market": "TPEX"
+  },
+  {
+    "id": "6241",
+    "name": "鑫永洋",
+    "market": "TPEX"
+  },
+  {
+    "id": "6242",
+    "name": "立康",
+    "market": "TPEX"
+  },
+  {
+    "id": "6244",
+    "name": "茂迪",
+    "market": "TPEX"
+  },
+  {
+    "id": "6245",
+    "name": "立端",
+    "market": "TPEX"
+  },
+  {
+    "id": "6246",
+    "name": "臺龍",
+    "market": "TPEX"
+  },
+  {
+    "id": "6248",
+    "name": "沛波",
+    "market": "TPEX"
+  },
+  {
+    "id": "6259",
+    "name": "百徽",
+    "market": "TPEX"
+  },
+  {
+    "id": "6261",
+    "name": "久元",
+    "market": "TPEX"
+  },
+  {
+    "id": "6263",
+    "name": "普萊德",
+    "market": "TPEX"
+  },
+  {
+    "id": "6264",
+    "name": "富裔",
+    "market": "TPEX"
+  },
+  {
+    "id": "6265",
+    "name": "方土昶",
+    "market": "TPEX"
+  },
+  {
+    "id": "6266",
+    "name": "泰詠",
+    "market": "TPEX"
+  },
+  {
+    "id": "6270",
+    "name": "倍微",
+    "market": "TPEX"
+  },
+  {
+    "id": "6274",
+    "name": "台燿",
+    "market": "TPEX"
+  },
+  {
+    "id": "6275",
+    "name": "元山",
+    "market": "TPEX"
+  },
+  {
+    "id": "6276",
+    "name": "安鈦克",
+    "market": "TPEX"
+  },
+  {
+    "id": "6279",
+    "name": "胡連",
+    "market": "TPEX"
+  },
+  {
+    "id": "6284",
+    "name": "佳邦",
+    "market": "TPEX"
+  },
+  {
+    "id": "6290",
+    "name": "良維",
+    "market": "TPEX"
+  },
+  {
+    "id": "6291",
+    "name": "沛亨",
+    "market": "TPEX"
+  },
+  {
+    "id": "6292",
+    "name": "迅德",
+    "market": "TPEX"
+  },
+  {
+    "id": "6294",
+    "name": "智基",
+    "market": "TPEX"
+  },
+  {
+    "id": "6411",
+    "name": "晶焱",
+    "market": "TPEX"
+  },
+  {
+    "id": "6417",
+    "name": "韋僑",
+    "market": "TPEX"
+  },
+  {
+    "id": "6418",
+    "name": "詠昇",
+    "market": "TPEX"
+  },
+  {
+    "id": "6419",
+    "name": "京晨科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6423",
+    "name": "億而得",
+    "market": "TPEX"
+  },
+  {
+    "id": "6425",
+    "name": "易發",
+    "market": "TPEX"
+  },
+  {
+    "id": "6432",
+    "name": "今展科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6435",
+    "name": "大中",
+    "market": "TPEX"
+  },
+  {
+    "id": "6441",
+    "name": "廣錠",
+    "market": "TPEX"
+  },
+  {
+    "id": "6461",
+    "name": "益得",
+    "market": "TPEX"
+  },
+  {
+    "id": "6462",
+    "name": "神盾",
+    "market": "TPEX"
+  },
+  {
+    "id": "6465",
+    "name": "威潤",
+    "market": "TPEX"
+  },
+  {
+    "id": "6469",
+    "name": "大樹",
+    "market": "TPEX"
+  },
+  {
+    "id": "6470",
+    "name": "宇智",
+    "market": "TPEX"
+  },
+  {
+    "id": "6474",
+    "name": "華豫寧",
+    "market": "TPEX"
+  },
+  {
+    "id": "6482",
+    "name": "弘煜科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6485",
+    "name": "點序",
+    "market": "TPEX"
+  },
+  {
+    "id": "6486",
+    "name": "互動",
+    "market": "TPEX"
+  },
+  {
+    "id": "6488",
+    "name": "環球晶",
+    "market": "TPEX"
+  },
+  {
+    "id": "6492",
+    "name": "生華科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6494",
+    "name": "九齊",
+    "market": "TPEX"
+  },
+  {
+    "id": "6496",
+    "name": "科懋",
+    "market": "TPEX"
+  },
+  {
+    "id": "6498",
+    "name": "久禾光",
+    "market": "TPEX"
+  },
+  {
+    "id": "6499",
+    "name": "益安",
+    "market": "TPEX"
+  },
+  {
+    "id": "6506",
+    "name": "雙邦",
+    "market": "TPEX"
+  },
+  {
+    "id": "6508",
+    "name": "惠光",
+    "market": "TPEX"
+  },
+  {
+    "id": "6509",
+    "name": "聚和",
+    "market": "TPEX"
+  },
+  {
+    "id": "6510",
+    "name": "精測",
+    "market": "TPEX"
+  },
+  {
+    "id": "6512",
+    "name": "啟發電",
+    "market": "TPEX"
+  },
+  {
+    "id": "6516",
+    "name": "勤崴國際",
+    "market": "TPEX"
+  },
+  {
+    "id": "6517",
+    "name": "保勝光學",
+    "market": "TPEX"
+  },
+  {
+    "id": "6523",
+    "name": "達爾膚",
+    "market": "TPEX"
+  },
+  {
+    "id": "6527",
+    "name": "明達醫",
+    "market": "TPEX"
+  },
+  {
+    "id": "6530",
+    "name": "創威",
+    "market": "TPEX"
+  },
+  {
+    "id": "6532",
+    "name": "瑞耘",
+    "market": "TPEX"
+  },
+  {
+    "id": "6535",
+    "name": "順藥",
+    "market": "TPEX"
+  },
+  {
+    "id": "6538",
+    "name": "倉和",
+    "market": "TPEX"
+  },
+  {
+    "id": "6542",
+    "name": "隆中",
+    "market": "TPEX"
+  },
+  {
+    "id": "6546",
+    "name": "正基",
+    "market": "TPEX"
+  },
+  {
+    "id": "6547",
+    "name": "高端疫苗",
+    "market": "TPEX"
+  },
+  {
+    "id": "6548",
+    "name": "長科*",
+    "market": "TPEX"
+  },
+  {
+    "id": "6556",
+    "name": "勝品",
+    "market": "TPEX"
+  },
+  {
+    "id": "6560",
+    "name": "欣普羅",
+    "market": "TPEX"
+  },
+  {
+    "id": "6561",
+    "name": "是方",
+    "market": "TPEX"
+  },
+  {
+    "id": "6568",
+    "name": "宏觀",
+    "market": "TPEX"
+  },
+  {
+    "id": "6569",
+    "name": "醫揚",
+    "market": "TPEX"
+  },
+  {
+    "id": "6570",
+    "name": "維田",
+    "market": "TPEX"
+  },
+  {
+    "id": "6574",
+    "name": "霈方",
+    "market": "TPEX"
+  },
+  {
+    "id": "6576",
+    "name": "逸達",
+    "market": "TPEX"
+  },
+  {
+    "id": "6577",
+    "name": "勁豐",
+    "market": "TPEX"
+  },
+  {
+    "id": "6578",
+    "name": "達邦蛋白",
+    "market": "TPEX"
+  },
+  {
+    "id": "6584",
+    "name": "南俊國際",
+    "market": "TPEX"
+  },
+  {
+    "id": "6588",
+    "name": "東典光電",
+    "market": "TPEX"
+  },
+  {
+    "id": "6590",
+    "name": "普鴻",
+    "market": "TPEX"
+  },
+  {
+    "id": "6593",
+    "name": "台灣銘板",
+    "market": "TPEX"
+  },
+  {
+    "id": "6596",
+    "name": "寬宏藝術",
+    "market": "TPEX"
+  },
+  {
+    "id": "6597",
+    "name": "立誠",
+    "market": "TPEX"
+  },
+  {
+    "id": "6603",
+    "name": "富強鑫",
+    "market": "TPEX"
+  },
+  {
+    "id": "6609",
+    "name": "瀧澤科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6612",
+    "name": "奈米醫材",
+    "market": "TPEX"
+  },
+  {
+    "id": "6613",
+    "name": "朋億*",
+    "market": "TPEX"
+  },
+  {
+    "id": "6615",
+    "name": "慧智",
+    "market": "TPEX"
+  },
+  {
+    "id": "6616",
+    "name": "特昇-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "6617",
+    "name": "共信-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "6620",
+    "name": "漢達",
+    "market": "TPEX"
+  },
+  {
+    "id": "6624",
+    "name": "萬年清",
+    "market": "TPEX"
+  },
+  {
+    "id": "6629",
+    "name": "泰金-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "6637",
+    "name": "醫影",
+    "market": "TPEX"
+  },
+  {
+    "id": "6640",
+    "name": "均華",
+    "market": "TPEX"
+  },
+  {
+    "id": "6642",
+    "name": "富致",
+    "market": "TPEX"
+  },
+  {
+    "id": "6643",
+    "name": "M31",
+    "market": "TPEX"
+  },
+  {
+    "id": "6649",
+    "name": "台生材",
+    "market": "TPEX"
+  },
+  {
+    "id": "6651",
+    "name": "全宇昕",
+    "market": "TPEX"
+  },
+  {
+    "id": "6654",
+    "name": "天正國際",
+    "market": "TPEX"
+  },
+  {
+    "id": "6661",
+    "name": "威健生技",
+    "market": "TPEX"
+  },
+  {
+    "id": "6662",
+    "name": "樂斯科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6664",
+    "name": "群翊",
+    "market": "TPEX"
+  },
+  {
+    "id": "6667",
+    "name": "信紘科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6679",
+    "name": "鈺太",
+    "market": "TPEX"
+  },
+  {
+    "id": "6680",
+    "name": "鑫創電子",
+    "market": "TPEX"
+  },
+  {
+    "id": "6683",
+    "name": "雍智科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "6684",
+    "name": "安格",
+    "market": "TPEX"
+  },
+  {
+    "id": "6690",
+    "name": "安碁資訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "6692",
+    "name": "進能服",
+    "market": "TPEX"
+  },
+  {
+    "id": "6693",
+    "name": "廣閎科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6697",
+    "name": "東捷資訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "6703",
+    "name": "軒郁",
+    "market": "TPEX"
+  },
+  {
+    "id": "6708",
+    "name": "天擎",
+    "market": "TPEX"
+  },
+  {
+    "id": "6712",
+    "name": "長聖",
+    "market": "TPEX"
+  },
+  {
+    "id": "6716",
+    "name": "應廣",
+    "market": "TPEX"
+  },
+  {
+    "id": "6720",
+    "name": "久昌",
+    "market": "TPEX"
+  },
+  {
+    "id": "6721",
+    "name": "信實",
+    "market": "TPEX"
+  },
+  {
+    "id": "6725",
+    "name": "矽科宏晟",
+    "market": "TPEX"
+  },
+  {
+    "id": "6727",
+    "name": "亞泰金屬",
+    "market": "TPEX"
+  },
+  {
+    "id": "6728",
+    "name": "上洋",
+    "market": "TPEX"
+  },
+  {
+    "id": "6730",
+    "name": "常廣",
+    "market": "TPEX"
+  },
+  {
+    "id": "6732",
+    "name": "昇佳電子",
+    "market": "TPEX"
+  },
+  {
+    "id": "6733",
+    "name": "博晟生醫",
+    "market": "TPEX"
+  },
+  {
+    "id": "6735",
+    "name": "美達科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "6739",
+    "name": "竹陞科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "6741",
+    "name": "91APP*-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "6751",
+    "name": "智聯服務",
+    "market": "TPEX"
+  },
+  {
+    "id": "6752",
+    "name": "叡揚",
+    "market": "TPEX"
+  },
+  {
+    "id": "6761",
+    "name": "穩得",
+    "market": "TPEX"
+  },
+  {
+    "id": "6762",
+    "name": "達亞",
+    "market": "TPEX"
+  },
+  {
+    "id": "6763",
+    "name": "綠界科技*",
+    "market": "TPEX"
+  },
+  {
+    "id": "6767",
+    "name": "台微醫",
+    "market": "TPEX"
+  },
+  {
+    "id": "6785",
+    "name": "昱展新藥",
+    "market": "TPEX"
+  },
+  {
+    "id": "6788",
+    "name": "華景電",
+    "market": "TPEX"
+  },
+  {
+    "id": "6791",
+    "name": "虎門科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "6803",
+    "name": "崑鼎",
+    "market": "TPEX"
+  },
+  {
+    "id": "6804",
+    "name": "明係",
+    "market": "TPEX"
+  },
+  {
+    "id": "6811",
+    "name": "宏碁資訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "6821",
+    "name": "聯寶",
+    "market": "TPEX"
+  },
+  {
+    "id": "6823",
+    "name": "濾能",
+    "market": "TPEX"
+  },
+  {
+    "id": "6829",
+    "name": "千附精密",
+    "market": "TPEX"
+  },
+  {
+    "id": "6840",
+    "name": "東研信超",
+    "market": "TPEX"
+  },
+  {
+    "id": "6841",
+    "name": "長佳智能",
+    "market": "TPEX"
+  },
+  {
+    "id": "6843",
+    "name": "進典",
+    "market": "TPEX"
+  },
+  {
+    "id": "6844",
+    "name": "諾貝兒",
+    "market": "TPEX"
+  },
+  {
+    "id": "6846",
+    "name": "綠茵",
+    "market": "TPEX"
+  },
+  {
+    "id": "6855",
+    "name": "數泓科",
+    "market": "TPEX"
+  },
+  {
+    "id": "6856",
+    "name": "鑫傳",
+    "market": "TPEX"
+  },
+  {
+    "id": "6859",
+    "name": "伯特光",
+    "market": "TPEX"
+  },
+  {
+    "id": "6865",
+    "name": "偉康科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "6870",
+    "name": "騰雲",
+    "market": "TPEX"
+  },
+  {
+    "id": "6872",
+    "name": "浩宇生醫",
+    "market": "TPEX"
+  },
+  {
+    "id": "6874",
+    "name": "倍力",
+    "market": "TPEX"
+  },
+  {
+    "id": "6875",
+    "name": "國邑*",
+    "market": "TPEX"
+  },
+  {
+    "id": "6877",
+    "name": "鏵友益",
+    "market": "TPEX"
+  },
+  {
+    "id": "6881",
+    "name": "潤德",
+    "market": "TPEX"
+  },
+  {
+    "id": "6884",
+    "name": "海柏特",
+    "market": "TPEX"
+  },
+  {
+    "id": "6894",
+    "name": "衛司特",
+    "market": "TPEX"
+  },
+  {
+    "id": "6895",
+    "name": "宏碩系統",
+    "market": "TPEX"
+  },
+  {
+    "id": "6899",
+    "name": "創為精密",
+    "market": "TPEX"
+  },
+  {
+    "id": "6903",
+    "name": "巨漢",
+    "market": "TPEX"
+  },
+  {
+    "id": "6904",
+    "name": "伯鑫",
+    "market": "TPEX"
+  },
+  {
+    "id": "6907",
+    "name": "雅特力-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "6910",
+    "name": "德鴻",
+    "market": "TPEX"
+  },
+  {
+    "id": "6913",
+    "name": "鴻呈",
+    "market": "TPEX"
+  },
+  {
+    "id": "6922",
+    "name": "宸曜",
+    "market": "TPEX"
+  },
+  {
+    "id": "6925",
+    "name": "意藍",
+    "market": "TPEX"
+  },
+  {
+    "id": "6929",
+    "name": "佑全",
+    "market": "TPEX"
+  },
+  {
+    "id": "6953",
+    "name": "家碩",
+    "market": "TPEX"
+  },
+  {
+    "id": "6961",
+    "name": "旅天下",
+    "market": "TPEX"
+  },
+  {
+    "id": "6967",
+    "name": "汎瑋材料",
+    "market": "TPEX"
+  },
+  {
+    "id": "6968",
+    "name": "萬達寵物",
+    "market": "TPEX"
+  },
+  {
+    "id": "6971",
+    "name": "惠民實業",
+    "market": "TPEX"
+  },
+  {
+    "id": "6982",
+    "name": "大井泵浦",
+    "market": "TPEX"
+  },
+  {
+    "id": "6996",
+    "name": "力領科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "6997",
+    "name": "博弘",
+    "market": "TPEX"
+  },
+  {
+    "id": "7402",
+    "name": "邑錡",
+    "market": "TPEX"
+  },
+  {
+    "id": "7547",
+    "name": "碩網",
+    "market": "TPEX"
+  },
+  {
+    "id": "7556",
+    "name": "意德士科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "7584",
+    "name": "樂意",
+    "market": "TPEX"
+  },
+  {
+    "id": "7642",
+    "name": "昶瑞機電",
+    "market": "TPEX"
+  },
+  {
+    "id": "7703",
+    "name": "銳澤",
+    "market": "TPEX"
+  },
+  {
+    "id": "7704",
+    "name": "明遠精密",
+    "market": "TPEX"
+  },
+  {
+    "id": "7708",
+    "name": "全家餐飲",
+    "market": "TPEX"
+  },
+  {
+    "id": "7709",
+    "name": "榮田",
+    "market": "TPEX"
+  },
+  {
+    "id": "7712",
+    "name": "博盛半導體",
+    "market": "TPEX"
+  },
+  {
+    "id": "7713",
+    "name": "威力德生醫",
+    "market": "TPEX"
+  },
+  {
+    "id": "7714",
+    "name": "創泓科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "7715",
+    "name": "裕山",
+    "market": "TPEX"
+  },
+  {
+    "id": "7716",
+    "name": "昱臺國際",
+    "market": "TPEX"
+  },
+  {
+    "id": "7717",
+    "name": "萊德光電-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "7718",
+    "name": "友鋮",
+    "market": "TPEX"
+  },
+  {
+    "id": "7723",
+    "name": "築間",
+    "market": "TPEX"
+  },
+  {
+    "id": "7728",
+    "name": "光焱科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "7734",
+    "name": "印能科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "7738",
+    "name": "東聯互動",
+    "market": "TPEX"
+  },
+  {
+    "id": "7743",
+    "name": "金利食安",
+    "market": "TPEX"
+  },
+  {
+    "id": "7744",
+    "name": "崴寶",
+    "market": "TPEX"
+  },
+  {
+    "id": "7747",
+    "name": "昕奇雲端",
+    "market": "TPEX"
+  },
+  {
+    "id": "7751",
+    "name": "竑騰",
+    "market": "TPEX"
+  },
+  {
+    "id": "7753",
+    "name": "星亞",
+    "market": "TPEX"
+  },
+  {
+    "id": "7757",
+    "name": "金色三麥",
+    "market": "TPEX"
+  },
+  {
+    "id": "7767",
+    "name": "仁大資訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "7770",
+    "name": "君曜",
+    "market": "TPEX"
+  },
+  {
+    "id": "7772",
+    "name": "耀穎",
+    "market": "TPEX"
+  },
+  {
+    "id": "7777",
+    "name": "能率亞洲",
+    "market": "TPEX"
+  },
+  {
+    "id": "7782",
+    "name": "光速火箭",
+    "market": "TPEX"
+  },
+  {
+    "id": "7792",
+    "name": "安葆",
+    "market": "TPEX"
+  },
+  {
+    "id": "7794",
+    "name": "宏碁智新",
+    "market": "TPEX"
+  },
+  {
+    "id": "7805",
+    "name": "威聯通",
+    "market": "TPEX"
+  },
+  {
+    "id": "7810",
+    "name": "捷創科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "7811",
+    "name": "民盛",
+    "market": "TPEX"
+  },
+  {
+    "id": "7820",
+    "name": "立盈",
+    "market": "TPEX"
+  },
+  {
+    "id": "7828",
+    "name": "創新服務",
+    "market": "TPEX"
+  },
+  {
+    "id": "7842",
+    "name": "天能綠電",
+    "market": "TPEX"
+  },
+  {
+    "id": "8024",
+    "name": "佑華",
+    "market": "TPEX"
+  },
+  {
+    "id": "8027",
+    "name": "鈦昇",
+    "market": "TPEX"
+  },
+  {
+    "id": "8032",
+    "name": "光菱",
+    "market": "TPEX"
+  },
+  {
+    "id": "8034",
+    "name": "榮群",
+    "market": "TPEX"
+  },
+  {
+    "id": "8038",
+    "name": "長園科",
+    "market": "TPEX"
+  },
+  {
+    "id": "8040",
+    "name": "九暘",
+    "market": "TPEX"
+  },
+  {
+    "id": "8042",
+    "name": "金山電",
+    "market": "TPEX"
+  },
+  {
+    "id": "8043",
+    "name": "蜜望實",
+    "market": "TPEX"
+  },
+  {
+    "id": "8044",
+    "name": "網家",
+    "market": "TPEX"
+  },
+  {
+    "id": "8047",
+    "name": "星雲",
+    "market": "TPEX"
+  },
+  {
+    "id": "8048",
+    "name": "德勝",
+    "market": "TPEX"
+  },
+  {
+    "id": "8049",
+    "name": "晶采",
+    "market": "TPEX"
+  },
+  {
+    "id": "8050",
+    "name": "廣積",
+    "market": "TPEX"
+  },
+  {
+    "id": "8054",
+    "name": "安國",
+    "market": "TPEX"
+  },
+  {
+    "id": "8059",
+    "name": "凱碩",
+    "market": "TPEX"
+  },
+  {
+    "id": "8064",
+    "name": "東捷",
+    "market": "TPEX"
+  },
+  {
+    "id": "8066",
+    "name": "來思達",
+    "market": "TPEX"
+  },
+  {
+    "id": "8067",
+    "name": "志旭",
+    "market": "TPEX"
+  },
+  {
+    "id": "8068",
+    "name": "全達",
+    "market": "TPEX"
+  },
+  {
+    "id": "8069",
+    "name": "元太",
+    "market": "TPEX"
+  },
+  {
+    "id": "8071",
+    "name": "能率網通",
+    "market": "TPEX"
+  },
+  {
+    "id": "8074",
+    "name": "鉅橡",
+    "market": "TPEX"
+  },
+  {
+    "id": "8076",
+    "name": "伍豐",
+    "market": "TPEX"
+  },
+  {
+    "id": "8077",
+    "name": "洛碁",
+    "market": "TPEX"
+  },
+  {
+    "id": "8080",
+    "name": "泰霖",
+    "market": "TPEX"
+  },
+  {
+    "id": "8083",
+    "name": "瑞穎",
+    "market": "TPEX"
+  },
+  {
+    "id": "8084",
+    "name": "巨虹",
+    "market": "TPEX"
+  },
+  {
+    "id": "8085",
+    "name": "福華",
+    "market": "TPEX"
+  },
+  {
+    "id": "8086",
+    "name": "宏捷科",
+    "market": "TPEX"
+  },
+  {
+    "id": "8087",
+    "name": "麗升能源",
+    "market": "TPEX"
+  },
+  {
+    "id": "8088",
+    "name": "品安",
+    "market": "TPEX"
+  },
+  {
+    "id": "8089",
+    "name": "康全電訊",
+    "market": "TPEX"
+  },
+  {
+    "id": "8091",
+    "name": "翔名",
+    "market": "TPEX"
+  },
+  {
+    "id": "8092",
+    "name": "建暐",
+    "market": "TPEX"
+  },
+  {
+    "id": "8093",
+    "name": "保銳",
+    "market": "TPEX"
+  },
+  {
+    "id": "8096",
+    "name": "擎亞",
+    "market": "TPEX"
+  },
+  {
+    "id": "8097",
+    "name": "常珵",
+    "market": "TPEX"
+  },
+  {
+    "id": "8099",
+    "name": "大世科",
+    "market": "TPEX"
+  },
+  {
+    "id": "8102",
+    "name": "傑霖科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "8107",
+    "name": "大億金茂",
+    "market": "TPEX"
+  },
+  {
+    "id": "8109",
+    "name": "博大",
+    "market": "TPEX"
+  },
+  {
+    "id": "8111",
+    "name": "立碁",
+    "market": "TPEX"
+  },
+  {
+    "id": "8121",
+    "name": "越峰",
+    "market": "TPEX"
+  },
+  {
+    "id": "8147",
+    "name": "正淩",
+    "market": "TPEX"
+  },
+  {
+    "id": "8155",
+    "name": "博智",
+    "market": "TPEX"
+  },
+  {
+    "id": "8171",
+    "name": "天宇",
+    "market": "TPEX"
+  },
+  {
+    "id": "8176",
+    "name": "智捷",
+    "market": "TPEX"
+  },
+  {
+    "id": "8182",
+    "name": "加高",
+    "market": "TPEX"
+  },
+  {
+    "id": "8183",
+    "name": "精星",
+    "market": "TPEX"
+  },
+  {
+    "id": "8227",
+    "name": "巨有科技",
+    "market": "TPEX"
+  },
+  {
+    "id": "8234",
+    "name": "新漢",
+    "market": "TPEX"
+  },
+  {
+    "id": "8240",
+    "name": "華宏",
+    "market": "TPEX"
+  },
+  {
+    "id": "8255",
+    "name": "朋程",
+    "market": "TPEX"
+  },
+  {
+    "id": "8272",
+    "name": "全景軟體",
+    "market": "TPEX"
+  },
+  {
+    "id": "8277",
+    "name": "商丞",
+    "market": "TPEX"
+  },
+  {
+    "id": "8279",
+    "name": "生展",
+    "market": "TPEX"
+  },
+  {
+    "id": "8284",
+    "name": "三竹",
+    "market": "TPEX"
+  },
+  {
+    "id": "8289",
+    "name": "泰藝",
+    "market": "TPEX"
+  },
+  {
+    "id": "8291",
+    "name": "尚茂",
+    "market": "TPEX"
+  },
+  {
+    "id": "8299",
+    "name": "群聯",
+    "market": "TPEX"
+  },
+  {
+    "id": "8342",
+    "name": "益張",
+    "market": "TPEX"
+  },
+  {
+    "id": "8349",
+    "name": "恒耀國際",
+    "market": "TPEX"
+  },
+  {
+    "id": "8354",
+    "name": "冠好",
+    "market": "TPEX"
+  },
+  {
+    "id": "8358",
+    "name": "金居",
+    "market": "TPEX"
+  },
+  {
+    "id": "8383",
+    "name": "千附",
+    "market": "TPEX"
+  },
+  {
+    "id": "8390",
+    "name": "金益鼎",
+    "market": "TPEX"
+  },
+  {
+    "id": "8401",
+    "name": "白紗科",
+    "market": "TPEX"
+  },
+  {
+    "id": "8403",
+    "name": "盛弘",
+    "market": "TPEX"
+  },
+  {
+    "id": "8409",
+    "name": "商之器",
+    "market": "TPEX"
+  },
+  {
+    "id": "8410",
+    "name": "森田",
+    "market": "TPEX"
+  },
+  {
+    "id": "8415",
+    "name": "大國鋼",
+    "market": "TPEX"
+  },
+  {
+    "id": "8416",
+    "name": "實威",
+    "market": "TPEX"
+  },
+  {
+    "id": "8421",
+    "name": "旭源",
+    "market": "TPEX"
+  },
+  {
+    "id": "8423",
+    "name": "保綠-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "8424",
+    "name": "惠普",
+    "market": "TPEX"
+  },
+  {
+    "id": "8426",
+    "name": "紅木-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "8431",
+    "name": "匯鑽科",
+    "market": "TPEX"
+  },
+  {
+    "id": "8432",
+    "name": "東生華",
+    "market": "TPEX"
+  },
+  {
+    "id": "8433",
+    "name": "弘帆",
+    "market": "TPEX"
+  },
+  {
+    "id": "8435",
+    "name": "鉅邁",
+    "market": "TPEX"
+  },
+  {
+    "id": "8436",
+    "name": "大江",
+    "market": "TPEX"
+  },
+  {
+    "id": "8437",
+    "name": "大地-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "8440",
+    "name": "綠電",
+    "market": "TPEX"
+  },
+  {
+    "id": "8444",
+    "name": "綠河-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "8446",
+    "name": "華研",
+    "market": "TPEX"
+  },
+  {
+    "id": "8450",
+    "name": "霹靂",
+    "market": "TPEX"
+  },
+  {
+    "id": "8455",
+    "name": "大拓-KY",
+    "market": "TPEX"
+  },
+  {
+    "id": "8472",
+    "name": "夠麻吉",
+    "market": "TPEX"
+  },
+  {
+    "id": "8477",
+    "name": "創業家",
+    "market": "TPEX"
+  },
+  {
+    "id": "8489",
+    "name": "三貝德",
+    "market": "TPEX"
+  },
+  {
+    "id": "8905",
+    "name": "裕國",
+    "market": "TPEX"
+  },
+  {
+    "id": "8906",
+    "name": "花王",
+    "market": "TPEX"
+  },
+  {
+    "id": "8908",
+    "name": "欣雄",
+    "market": "TPEX"
+  },
+  {
+    "id": "8916",
+    "name": "光隆",
+    "market": "TPEX"
+  },
+  {
+    "id": "8917",
+    "name": "欣泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "8921",
+    "name": "沈氏",
+    "market": "TPEX"
+  },
+  {
+    "id": "8923",
+    "name": "時報",
+    "market": "TPEX"
+  },
+  {
+    "id": "8924",
+    "name": "大田",
+    "market": "TPEX"
+  },
+  {
+    "id": "8927",
+    "name": "北基",
+    "market": "TPEX"
+  },
+  {
+    "id": "8928",
+    "name": "鉅明",
+    "market": "TPEX"
+  },
+  {
+    "id": "8929",
+    "name": "富堡",
+    "market": "TPEX"
+  },
+  {
+    "id": "8930",
+    "name": "青鋼",
+    "market": "TPEX"
+  },
+  {
+    "id": "8931",
+    "name": "大汽電",
+    "market": "TPEX"
+  },
+  {
+    "id": "8932",
+    "name": "智通*",
+    "market": "TPEX"
+  },
+  {
+    "id": "8933",
+    "name": "愛地雅",
+    "market": "TPEX"
+  },
+  {
+    "id": "8935",
+    "name": "邦泰",
+    "market": "TPEX"
+  },
+  {
+    "id": "8936",
+    "name": "國統",
+    "market": "TPEX"
+  },
+  {
+    "id": "8937",
+    "name": "合騏*",
+    "market": "TPEX"
+  },
+  {
+    "id": "8938",
+    "name": "明安",
+    "market": "TPEX"
+  },
+  {
+    "id": "8941",
+    "name": "關中",
+    "market": "TPEX"
+  },
+  {
+    "id": "8942",
+    "name": "森鉅",
+    "market": "TPEX"
+  },
+  {
+    "id": "9949",
+    "name": "琉園",
+    "market": "TPEX"
+  },
+  {
+    "id": "9950",
+    "name": "萬國通",
+    "market": "TPEX"
+  },
+  {
+    "id": "9951",
+    "name": "皇田",
+    "market": "TPEX"
+  },
+  {
+    "id": "9960",
+    "name": "邁達康",
+    "market": "TPEX"
+  },
+  {
+    "id": "9962",
+    "name": "有益",
+    "market": "TPEX"
+  }
+]

@@ -11,6 +11,7 @@
 
 import { getDoc, setDoc } from 'firebase/firestore';
 import { STOCK_LIST_DOC_REF } from '../../../utils/firebaseConfig';
+import TPEX_FALLBACK from './tpexStockListFallback.json';
 
 const PROXY_BASE = 'https://stock-proxy.tzuchun11232004.workers.dev/?url=';
 
@@ -245,16 +246,16 @@ export async function fetchTaiwanStockList() {
 
   try {
     // ── 3. 線上抓取（先 proxy，失敗自動改直連）────────────────────────────
-    const [twseData, tpexData] = await Promise.all([
-      fetchArrayWithFallback(TWSE_LIST_URL),
-      fetchArrayWithFallback(TPEX_LIST_URL),
-    ]);
-
+    const twseData = await fetchArrayWithFallback(TWSE_LIST_URL);
     if (!twseData || twseData.length < 100) {
       throw new Error(`[RS StockList] TWSE 清單不完整（${twseData?.length ?? 0} 筆）`);
     }
-    if (!tpexData || tpexData.length < 100) {
-      console.warn(`[RS StockList] TPEX 清單不完整（${tpexData?.length ?? 0} 筆），僅使用 TWSE 上市股票`);
+
+    let tpexData = [];
+    try {
+      tpexData = await fetchArrayWithFallback(TPEX_LIST_URL);
+    } catch (tpexErr) {
+      console.warn('[RS StockList] TPEX 線上抓取失敗：', tpexErr.message);
     }
 
     for (const item of twseData) {
@@ -263,15 +264,23 @@ export async function fetchTaiwanStockList() {
     }
     console.log(`[RS StockList] TWSE 上市：${all.length} 檔`);
 
-    let added = 0;
-    for (const item of tpexData) {
-      const { code, name } = extractFields(item);
-      if (!isRegularCode(code) || seen.has(code)) continue;
-      seen.add(code);
-      all.push({ id: code, name: name || code, market: 'TPEX' });
-      added++;
+    if (tpexData.length >= 100) {
+      let added = 0;
+      for (const item of tpexData) {
+        const { code, name } = extractFields(item);
+        if (!isRegularCode(code) || seen.has(code)) continue;
+        seen.add(code);
+        all.push({ id: code, name: name || code, market: 'TPEX' });
+        added++;
+      }
+      console.log(`[RS StockList] TPEX 上櫃：+${added} 檔，合計 ${all.length} 檔`);
+    } else {
+      console.warn(`[RS StockList] TPEX 清單不完整（${tpexData.length} 筆），改用內建備援清單（${TPEX_FALLBACK.length} 檔）`);
+      for (const s of TPEX_FALLBACK) {
+        addStock(s.id, s.name, 'TPEX');
+      }
+      console.log(`[RS StockList] 備援上櫃清單已載入，合計 ${all.length} 檔`);
     }
-    console.log(`[RS StockList] TPEX 上櫃：+${added} 檔，合計 ${all.length} 檔`);
   } catch (networkErr) {
     // 最後保底：使用「非當日」舊快取，至少讓流程可繼續，不因外部 API 一時故障而中斷
     console.warn('[RS StockList] 線上抓取失敗，嘗試使用舊快取：', networkErr.message);
