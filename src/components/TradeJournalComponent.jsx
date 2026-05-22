@@ -682,7 +682,7 @@ function TradeJournal() {
   const renderStockTableCard = () => (
     <div
       style={{
-        flex: 1,
+        marginTop: '15px',
         border: `1px solid ${GOLDEN_BORDER_COLOR}`,
         borderRadius: '5px',
         padding: '12px 15px',
@@ -1040,19 +1040,17 @@ function TradeJournal() {
       {/* II. 追蹤表/摘要區塊 */}
       {renderPnlSummary()}
 
-      {/* 個股損益 + 名稱比對 — 並排等高 */}
-      <div style={{ display: 'flex', gap: '15px', marginTop: '15px', alignItems: 'stretch' }}>
-        {renderStockTableCard()}
+      {renderStockTableCard()}
 
-        {/* 歷史紀錄名稱 vs Firestore 股票清單（折疊） */}
-        <div
-          style={{
-            flex: 1,
-            border: `1px solid ${GOLDEN_BORDER_COLOR}`,
-            borderRadius: '5px',
-            padding: '12px 15px',
-          }}
-        >
+      {/* 歷史紀錄名稱 vs Firestore 股票清單（折疊） */}
+      <div
+        style={{
+          marginTop: '15px',
+          border: `1px solid ${GOLDEN_BORDER_COLOR}`,
+          borderRadius: '5px',
+          padding: '12px 15px',
+        }}
+      >
         <div
           style={{
             display: 'flex',
@@ -1190,8 +1188,7 @@ function TradeJournal() {
         )}
           </>
         )}
-        </div>
-      </div>{/* end 並排等高 wrapper */}
+      </div>
 
       {/* III. 歷史記錄列表區塊 */}
       {renderHistory()}
