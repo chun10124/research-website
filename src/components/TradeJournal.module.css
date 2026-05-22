@@ -299,6 +299,11 @@ input[type="number"] {
         padding: 10px !important; 
     }
     
+    /* 損益摘要卡片：手機版改為自適應高度，不使用 flex-basis 撐高 */
+    .pnlSummaryCard {
+        flex: 0 1 auto !important;
+    }
+
     /* P&L 摘要的標題與下拉選單 */
     .pnlHeaderRow {
         flex-direction: column !important; 

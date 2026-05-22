@@ -66,6 +66,13 @@ function TradeJournal() {
   const [positionLevelDetailOpen, setPositionLevelDetailOpen] = useState(false);
   const [stockTableOpen, setStockTableOpen] = useState(false);
   const [historyPage, setHistoryPage] = useState(0);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // 1. 數據加載與即時同步 (useEffect 區塊)
   useEffect(() => {
@@ -477,14 +484,16 @@ function TradeJournal() {
     const pieTotalValue = portfolioPieData.reduce((s, d) => s + d.value, 0);
     const renderPieLabel = ({ cx, cy, midAngle, outerRadius, percent, name, index }) => {
       if (percent < 0.04) return null; // 太小的切片不顯示標籤
-      const radius = outerRadius + 28;
+      const labelOffset = isMobile ? 20 : 28;
+      const radius = outerRadius + labelOffset;
       const x = cx + radius * Math.cos(-midAngle * RADIAN);
       const y = cy + radius * Math.sin(-midAngle * RADIAN);
-      const shortName = name.replace(/\(.*\)$/, '').trim();
+      const fullName = name.replace(/\(.*\)$/, '').trim();
+      const shortName = isMobile && fullName.length > 4 ? fullName.slice(0, 4) : fullName;
       const color = portfolioPieData[index]?.isCash ? '#64748b' : PIE_STOCK_COLORS[index % PIE_STOCK_COLORS.length];
       return (
         <text x={x} y={y} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"
-          fontSize={12} fill={color} fontWeight="600">
+          fontSize={isMobile ? 10 : 12} fill={color} fontWeight="600">
           {shortName} {(percent * 100).toFixed(1)}%
         </text>
       );
@@ -639,15 +648,15 @@ function TradeJournal() {
             <h4 style={{ marginBottom: '4px' }}>持倉分佈</h4>
             <div style={{ overflowX: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <div style={{ flex: '0 0 440px', height: 230 }}>
+                <div style={isMobile ? { width: '100%', height: 200 } : { flex: '0 0 440px', height: 230 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={portfolioPieData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={52}
-                        outerRadius={82}
+                        innerRadius={isMobile ? 40 : 52}
+                        outerRadius={isMobile ? 65 : 82}
                         paddingAngle={2}
                         dataKey="value"
                         isAnimationActive={false}
