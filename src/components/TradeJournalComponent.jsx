@@ -369,6 +369,19 @@ function TradeJournal() {
     return items;
   }, [pnlSummary.byStock, positionPrices, totalTradingAssets, totalHoldingMarketValue]);
 
+  const sortedByStock = useMemo(() => {
+    const { byStock } = pnlSummary;
+    const filtered = byStock.filter(item =>
+      item.code.toLowerCase().includes(pnlFilterStock.toLowerCase()) ||
+      item.name.toLowerCase().includes(pnlFilterStock.toLowerCase())
+    );
+    return [...filtered].sort((a, b) => {
+      const tA = Math.abs(a.netQuantity * a.avgCost);
+      const tB = Math.abs(b.netQuantity * b.avgCost);
+      return tB !== tA ? tB - tA : a.code.localeCompare(b.code);
+    });
+  }, [pnlSummary, pnlFilterStock]);
+
   // 5. 表單處理 (保持不變)
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -475,20 +488,6 @@ function TradeJournal() {
         </text>
       );
     };
-
-    //  1. 新增過濾邏輯：根據代號或名稱篩選
-    const filteredByStock = byStock.filter(item =>
-        item.code.toLowerCase().includes(pnlFilterStock.toLowerCase()) ||
-        item.name.toLowerCase().includes(pnlFilterStock.toLowerCase())
-    );
-
-    //  2. 排序邏輯：按持倉金額大小排序 (使用過濾後的結果)
-    const sortedByStock = [...filteredByStock].sort((a, b) => {
-        const totalCostA = Math.abs(a.netQuantity * a.avgCost);
-        const totalCostB = Math.abs(b.netQuantity * b.avgCost);
-        if (totalCostB !== totalCostA) return totalCostB - totalCostA;
-        return a.code.localeCompare(b.code);
-    });
 
     const pnlColorStyle = { color: PNL_COLOR(totalRealizedPnl), fontWeight: 'bold' };
     const unrealizedColorStyle = { color: PNL_COLOR(totalUnrealizedPnl), fontWeight: 'bold' };
