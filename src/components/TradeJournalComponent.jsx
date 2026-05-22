@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { setDoc, onSnapshot } from 'firebase/firestore'; // 只需要 setDoc 和 onSnapshot
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 
 // 1. 引入 Firebase 配置
 import { JOURNAL_DOC_REF } from '../utils/firebaseConfig'; 
@@ -25,6 +26,8 @@ import styles from './TradeJournal.module.css';
 // Local Storage Key (已不再使用，但保留定義)
 // const LOCAL_STORAGE_KEY = 'tradeJournalData';
 
+
+const PIE_STOCK_COLORS = ['#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#6366f1', '#84cc16', '#14b8a6'];
 
 // ========== III. 主組件 (TradeJournal) ==========
 function TradeJournal() {
@@ -61,6 +64,7 @@ function TradeJournal() {
   });
   const [nameDbCheckOpen, setNameDbCheckOpen] = useState(false);
   const [positionLevelDetailOpen, setPositionLevelDetailOpen] = useState(false);
+  const [stockTableOpen, setStockTableOpen] = useState(false);
 
   // 1. 數據加載與即時同步 (useEffect 區塊)
   useEffect(() => {
@@ -349,6 +353,22 @@ function TradeJournal() {
       ? (totalHoldingMarketValue / totalTradingAssets) * 100
       : null;
 
+  /** 圓餅圖資料：各持倉市值 + 現金 */
+  const portfolioPieData = useMemo(() => {
+    const items = pnlSummary.byStock
+      .filter(s => s.netQuantity > 0)
+      .map(s => {
+        const px = positionPrices[s.code];
+        const usePx = px != null && px > 0 ? px : s.avgCost;
+        return { name: `${s.name}(${s.code})`, value: Math.round(s.netQuantity * usePx) };
+      })
+      .filter(d => d.value > 0)
+      .sort((a, b) => b.value - a.value);
+    const cashValue = Math.round(totalTradingAssets - totalHoldingMarketValue);
+    if (cashValue > 0) items.push({ name: '現金', value: cashValue, isCash: true });
+    return items;
+  }, [pnlSummary.byStock, positionPrices, totalTradingAssets, totalHoldingMarketValue]);
+
   // 5. 表單處理 (保持不變)
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -438,8 +458,26 @@ function TradeJournal() {
  const renderPnlSummary = () => {
     const { byStock, totalRealizedPnl } = pnlSummary;
 
+    // 圓餅圖標籤渲染（定義在 render 函數內，避免 recharts 時序問題）
+    const RADIAN = Math.PI / 180;
+    const pieTotalValue = portfolioPieData.reduce((s, d) => s + d.value, 0);
+    const renderPieLabel = ({ cx, cy, midAngle, outerRadius, percent, name, index }) => {
+      if (percent < 0.04) return null; // 太小的切片不顯示標籤
+      const radius = outerRadius + 28;
+      const x = cx + radius * Math.cos(-midAngle * RADIAN);
+      const y = cy + radius * Math.sin(-midAngle * RADIAN);
+      const shortName = name.replace(/\(.*\)$/, '').trim();
+      const color = portfolioPieData[index]?.isCash ? '#64748b' : PIE_STOCK_COLORS[index % PIE_STOCK_COLORS.length];
+      return (
+        <text x={x} y={y} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"
+          fontSize={12} fill={color} fontWeight="600">
+          {shortName} {(percent * 100).toFixed(1)}%
+        </text>
+      );
+    };
+
     //  1. 新增過濾邏輯：根據代號或名稱篩選
-    const filteredByStock = byStock.filter(item => 
+    const filteredByStock = byStock.filter(item =>
         item.code.toLowerCase().includes(pnlFilterStock.toLowerCase()) ||
         item.name.toLowerCase().includes(pnlFilterStock.toLowerCase())
     );
@@ -457,7 +495,7 @@ function TradeJournal() {
     const period = pnlFilterRange === 'ALL' ? '全部記錄' : '篩選期間';
 
     return (
-      <div style={{ marginTop: '30px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, borderRadius: '5px', padding: '15px' }}>
+      <><div style={{ marginTop: '30px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, borderRadius: '5px', padding: '15px' }}>
         <div className={styles.pnlHeaderRow} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ marginRight: '20px' }}>追蹤表與損益摘要 ({period})</h3>
             
@@ -595,8 +633,76 @@ function TradeJournal() {
             </div>
         </div>
 
-        <h4 style={{ marginTop: '20px' }}>個股損益與持倉 (按持倉金額排序)</h4>
-        <div style={{ overflowX: 'auto' }}>
+        {/* 持倉圓餅圖 */}
+        {portfolioPieData.length > 0 && (
+          <div style={{ marginTop: '20px', marginBottom: '10px' }}>
+            <h4 style={{ marginBottom: '4px' }}>持倉分佈</h4>
+            <div style={{ overflowX: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <div style={{ flex: '0 0 440px', height: 230 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={portfolioPieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={52}
+                        outerRadius={82}
+                        paddingAngle={2}
+                        dataKey="value"
+                        isAnimationActive={false}
+                        label={renderPieLabel}
+                        labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
+                      >
+                        {portfolioPieData.map((entry, index) => (
+                          <Cell
+                            key={entry.name}
+                            fill={entry.isCash ? '#64748b' : PIE_STOCK_COLORS[index % PIE_STOCK_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip
+                        formatter={(value, name) => {
+                          const pct = pieTotalValue > 0 ? ((value / pieTotalValue) * 100).toFixed(1) : '0.0';
+                          return [`${value.toLocaleString()} (${pct}%)`, name];
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* 個股損益與持倉 — 獨立折疊卡片 */}
+      <div
+        style={{
+          marginTop: '15px',
+          border: `1px solid ${GOLDEN_BORDER_COLOR}`,
+          borderRadius: '5px',
+          padding: '12px 15px',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setStockTableOpen(o => !o)}
+          aria-expanded={stockTableOpen}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            width: '100%', padding: 0, border: 'none', background: 'none',
+            cursor: 'pointer', color: 'inherit', textAlign: 'left',
+          }}
+        >
+          <span style={{ fontSize: '0.7rem', color: '#64748b', width: '1em', flexShrink: 0 }}>
+            {stockTableOpen ? '▼' : '▶'}
+          </span>
+          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>個股損益與持倉 (按持倉金額排序)</h3>
+        </button>
+        {stockTableOpen && (
+          <div style={{ overflowX: 'auto', marginTop: '12px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', minWidth: '400px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #333' }}>
@@ -612,9 +718,7 @@ function TradeJournal() {
                 ) : (
                     sortedByStock.map(data => {
                         const avgCostDisplay = data.netQuantity !== 0 ? data.avgCost : 0;
-                        //  4. 計算持倉金額 (股數 * 平均成本)
                         const positionAmount = Math.round(data.netQuantity * data.avgCost);
-
                         return (
                             <tr key={data.code} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '8px', fontWeight: 'bold' }}>{data.name} ({data.code})</td>
@@ -622,7 +726,6 @@ function TradeJournal() {
                                 <td className={styles.pnlAmountCell} style={{ padding: '8px', fontWeight: 'bold' }}>
                                     {positionAmount !== 0 ? `${Math.abs(positionAmount).toLocaleString()}` : '--'}
                                 </td>
-                                
                                 <td style={{ padding: '8px', color: PNL_COLOR(data.realizedPnl) }}>
                                     {formatPnl(data.realizedPnl)}
                                 </td>
@@ -632,9 +735,10 @@ function TradeJournal() {
                 )}
               </tbody>
             </table>
-        </div>
+          </div>
+        )}
       </div>
-    );
+    </>);
   };
 
   // 8. 渲染歷史記錄列表 (保持不變)
