@@ -65,6 +65,7 @@ function TradeJournal() {
   const [nameDbCheckOpen, setNameDbCheckOpen] = useState(false);
   const [positionLevelDetailOpen, setPositionLevelDetailOpen] = useState(false);
   const [stockTableOpen, setStockTableOpen] = useState(false);
+  const [historyPage, setHistoryPage] = useState(0);
 
   // 1. 數據加載與即時同步 (useEffect 區塊)
   useEffect(() => {
@@ -494,7 +495,7 @@ function TradeJournal() {
     const period = pnlFilterRange === 'ALL' ? '全部記錄' : '篩選期間';
 
     return (
-      <div style={{ marginTop: '30px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, borderRadius: '5px', padding: '15px' }}>
+      <div style={{ marginTop: '15px', marginBottom: '15px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, borderRadius: '5px', padding: '15px' }}>
         <div className={styles.pnlHeaderRow} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ marginRight: '20px' }}>追蹤表與損益摘要 ({period})</h3>
             
@@ -683,6 +684,7 @@ function TradeJournal() {
     <div
       style={{
         marginTop: '15px',
+        marginBottom: '15px',
         border: `1px solid ${GOLDEN_BORDER_COLOR}`,
         borderRadius: '5px',
         padding: '12px 15px',
@@ -744,7 +746,11 @@ function TradeJournal() {
 
   // 8. 渲染歷史記錄列表 (保持不變)
   const renderHistory = () => {
-    const entriesToRender = historyFilteredEntries; 
+    const entriesToRender = historyFilteredEntries;
+    const PAGE_SIZE = 15;
+    const totalPages = Math.max(1, Math.ceil(entriesToRender.length / PAGE_SIZE));
+    const safePage = Math.min(historyPage, totalPages - 1);
+    const pageEntries = entriesToRender.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
     const BUTTON_STYLE = {
         padding: '5px 10px', 
@@ -767,10 +773,11 @@ function TradeJournal() {
     
     return (
     <div style={{ 
-        marginTop: '30px', 
-        border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
+        marginTop: '15px',
+        marginBottom: '15px',
+        border: `1px solid ${GOLDEN_BORDER_COLOR}`,
         borderRadius: '5px',
-        padding: '15px', 
+        padding: '15px',
         /* 核心組合拳：強制撐開且不准收縮 */
         width: '100%',
         minWidth: '100%', 
@@ -787,14 +794,14 @@ function TradeJournal() {
                         type="text"
                         placeholder="搜尋股票代號/名稱"
                         value={historyFilterStock}
-                        onChange={(e) => setHistoryFilterStock(e.target.value)}
+                        onChange={(e) => { setHistoryFilterStock(e.target.value); setHistoryPage(0); }}
                         className={styles.pnlSearchInput}
                     />
 
                     {/* 時間篩選器 */}
                     <select 
                         value={historyFilterRange} 
-                        onChange={(e) => setHistoryFilterRange(e.target.value)}
+                        onChange={(e) => { setHistoryFilterRange(e.target.value); setHistoryPage(0); }}
                         style={{ padding: '8px', border: '1px solid #ccc' }}
                     >
                         <option value="ALL">全部時間</option>
@@ -821,36 +828,37 @@ function TradeJournal() {
                     </p>
                 </div>
             ) : (
+            <>
             <ul style={{ listStyleType: 'none', padding: 0 }}>
-    {entriesToRender.map(entry => (
+    {pageEntries.map(entry => (
         // VVVV 修正點：將 li 設為主要的容器，並應用類名 VVVV
         <li key={entry.id} className={styles.historyListItem} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', borderRadius: '5px' }}>
-            
+
             {/* 左側內容：包含第一行、第二行資訊 */}
         <div className={styles.historyDetailsContainer}>
             <div className={styles.historyInfoRow}>
                 <strong>[{entry.date}] {entry.name} ({entry.code})</strong>
             </div>
-            
+
             <div className={styles.historyTradeRow}>
                 <span className={styles.tradeAction}>
-                    <span style={{ color: entry.direction === 'BUY' ? 'red' : 'green', fontWeight: 'bold' }}>{entry.direction}</span>: 
+                    <span style={{ color: entry.direction === 'BUY' ? 'red' : 'green', fontWeight: 'bold' }}>{entry.direction}</span>:
                     {formatQuantity(entry.quantity)} 股 @ {formatAvgCost(entry.price)}
                 </span>
             </div>
         </div>
-            
+
             {/* 3. 交易理由區塊 (第三行) */}
-            <p className={styles.tradeReason} style={{ 
-                paddingLeft: '10px', 
-                borderLeft: '3px solid #ccc', 
+            <p className={styles.tradeReason} style={{
+                paddingLeft: '10px',
+                borderLeft: '3px solid #ccc',
                 fontSize: '0.9em',
             }}>
                 交易理由: {entry.reason || '無備註'}
             </p>
-            
+
             {/* 4. 按鈕區塊 (右側) */}
-            <div className={styles.historyActions}> 
+            <div className={styles.historyActions}>
                 <button onClick={() => handleEdit(entry)} style={EDIT_STYLE}>
                     編輯
                 </button>
@@ -858,10 +866,32 @@ function TradeJournal() {
                     刪除
                 </button>
             </div>
-            
+
         </li>
     ))}
 </ul>
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                <button
+                  onClick={() => setHistoryPage(p => Math.max(0, p - 1))}
+                  disabled={safePage === 0}
+                  style={{ ...BUTTON_STYLE, opacity: safePage === 0 ? 0.4 : 1 }}
+                >
+                  ‹ 上一頁
+                </button>
+                <span style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                  第 {safePage + 1} / {totalPages} 頁
+                </span>
+                <button
+                  onClick={() => setHistoryPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={safePage === totalPages - 1}
+                  style={{ ...BUTTON_STYLE, opacity: safePage === totalPages - 1 ? 0.4 : 1 }}
+                >
+                  下一頁 ›
+                </button>
+              </div>
+            )}
+            </>
             )}
         </div>
     );
@@ -877,7 +907,7 @@ function TradeJournal() {
       <form onSubmit={handleFormSubmit} 
         className={styles.tradeFormContainer}
       
-        style={{ marginBottom: '30px',border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
+        style={{ marginBottom: '15px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, 
           borderRadius: '5px',
           padding: '15px', }}>
          <div className={styles.formInputRow} style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1042,10 +1072,14 @@ function TradeJournal() {
 
       {renderStockTableCard()}
 
+      {/* III. 歷史記錄列表區塊 */}
+      {renderHistory()}
+
       {/* 歷史紀錄名稱 vs Firestore 股票清單（折疊） */}
       <div
         style={{
           marginTop: '15px',
+          marginBottom: '15px',
           border: `1px solid ${GOLDEN_BORDER_COLOR}`,
           borderRadius: '5px',
           padding: '12px 15px',
@@ -1189,9 +1223,6 @@ function TradeJournal() {
           </>
         )}
       </div>
-
-      {/* III. 歷史記錄列表區塊 */}
-      {renderHistory()}
     </div>
   );
 }
