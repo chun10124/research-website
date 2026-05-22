@@ -495,7 +495,7 @@ function TradeJournal() {
     const period = pnlFilterRange === 'ALL' ? '全部記錄' : '篩選期間';
 
     return (
-      <><div style={{ marginTop: '30px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, borderRadius: '5px', padding: '15px' }}>
+      <div style={{ marginTop: '30px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, borderRadius: '5px', padding: '15px' }}>
         <div className={styles.pnlHeaderRow} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ marginRight: '20px' }}>追蹤表與損益摘要 ({period})</h3>
             
@@ -677,69 +677,71 @@ function TradeJournal() {
 
       </div>
 
-      {/* 個股損益與持倉 — 獨立折疊卡片 */}
-      <div
+    );
+  };
+
+  const renderStockTableCard = () => (
+    <div
+      style={{
+        flex: 1,
+        border: `1px solid ${GOLDEN_BORDER_COLOR}`,
+        borderRadius: '5px',
+        padding: '12px 15px',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setStockTableOpen(o => !o)}
+        aria-expanded={stockTableOpen}
         style={{
-          marginTop: '15px',
-          border: `1px solid ${GOLDEN_BORDER_COLOR}`,
-          borderRadius: '5px',
-          padding: '12px 15px',
+          display: 'flex', alignItems: 'center', gap: '6px',
+          width: '100%', padding: 0, border: 'none', background: 'none',
+          cursor: 'pointer', color: 'inherit', textAlign: 'left',
         }}
       >
-        <button
-          type="button"
-          onClick={() => setStockTableOpen(o => !o)}
-          aria-expanded={stockTableOpen}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            width: '100%', padding: 0, border: 'none', background: 'none',
-            cursor: 'pointer', color: 'inherit', textAlign: 'left',
-          }}
-        >
-          <span style={{ fontSize: '0.7rem', color: '#64748b', width: '1em', flexShrink: 0 }}>
-            {stockTableOpen ? '▼' : '▶'}
-          </span>
-          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>個股損益與持倉 (按持倉金額排序)</h3>
-        </button>
-        {stockTableOpen && (
-          <div style={{ overflowX: 'auto', marginTop: '12px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', minWidth: '400px' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #333' }}>
-                  <th style={{ padding: '8px' }}>股票名稱/代號</th>
-                  <th style={{ padding: '8px' }}>平均成本</th>
-                  <th style={{ padding: '8px' }}>持倉金額</th>
-                  <th style={{ padding: '8px' }}>已實現損益</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedByStock.length === 0 ? (
-                    <tr><td colSpan="4" style={{ padding: '10px', textAlign: 'center' }}>無匹配數據</td></tr>
-                ) : (
-                    sortedByStock.map(data => {
-                        const avgCostDisplay = data.netQuantity !== 0 ? data.avgCost : 0;
-                        const positionAmount = Math.round(data.netQuantity * data.avgCost);
-                        return (
-                            <tr key={data.code} style={{ borderBottom: '1px solid #eee' }}>
-                                <td style={{ padding: '8px', fontWeight: 'bold' }}>{data.name} ({data.code})</td>
-                                <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
-                                <td className={styles.pnlAmountCell} style={{ padding: '8px', fontWeight: 'bold' }}>
-                                    {positionAmount !== 0 ? `${Math.abs(positionAmount).toLocaleString()}` : '--'}
-                                </td>
-                                <td style={{ padding: '8px', color: PNL_COLOR(data.realizedPnl) }}>
-                                    {formatPnl(data.realizedPnl)}
-                                </td>
-                            </tr>
-                        );
-                    })
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </>);
-  };
+        <span style={{ fontSize: '0.7rem', color: '#64748b', width: '1em', flexShrink: 0 }}>
+          {stockTableOpen ? '▼' : '▶'}
+        </span>
+        <h3 style={{ margin: 0, fontSize: '1.1rem' }}>個股損益與持倉 (按持倉金額排序)</h3>
+      </button>
+      {stockTableOpen && (
+        <div style={{ overflowX: 'auto', marginTop: '12px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', minWidth: '400px' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #333' }}>
+                <th style={{ padding: '8px' }}>股票名稱/代號</th>
+                <th style={{ padding: '8px' }}>平均成本</th>
+                <th style={{ padding: '8px' }}>持倉金額</th>
+                <th style={{ padding: '8px' }}>已實現損益</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedByStock.length === 0 ? (
+                <tr><td colSpan="4" style={{ padding: '10px', textAlign: 'center' }}>無匹配數據</td></tr>
+              ) : (
+                sortedByStock.map(data => {
+                  const avgCostDisplay = data.netQuantity !== 0 ? data.avgCost : 0;
+                  const positionAmount = Math.round(data.netQuantity * data.avgCost);
+                  return (
+                    <tr key={data.code} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '8px', fontWeight: 'bold' }}>{data.name} ({data.code})</td>
+                      <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
+                      <td className={styles.pnlAmountCell} style={{ padding: '8px', fontWeight: 'bold' }}>
+                        {positionAmount !== 0 ? `${Math.abs(positionAmount).toLocaleString()}` : '--'}
+                      </td>
+                      <td style={{ padding: '8px', color: PNL_COLOR(data.realizedPnl) }}>
+                        {formatPnl(data.realizedPnl)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 
   // 8. 渲染歷史記錄列表 (保持不變)
   const renderHistory = () => {
@@ -1039,15 +1041,19 @@ function TradeJournal() {
       {/* II. 追蹤表/摘要區塊 */}
       {renderPnlSummary()}
 
-      {/* 歷史紀錄名稱 vs Firestore 股票清單（折疊） */}
-      <div
-        style={{
-          marginTop: '30px',
-          border: `1px solid ${GOLDEN_BORDER_COLOR}`,
-          borderRadius: '5px',
-          padding: '12px 15px',
-        }}
-      >
+      {/* 個股損益 + 名稱比對 — 並排等高 */}
+      <div style={{ display: 'flex', gap: '15px', marginTop: '15px', alignItems: 'stretch' }}>
+        {renderStockTableCard()}
+
+        {/* 歷史紀錄名稱 vs Firestore 股票清單（折疊） */}
+        <div
+          style={{
+            flex: 1,
+            border: `1px solid ${GOLDEN_BORDER_COLOR}`,
+            borderRadius: '5px',
+            padding: '12px 15px',
+          }}
+        >
         <div
           style={{
             display: 'flex',
@@ -1185,8 +1191,9 @@ function TradeJournal() {
         )}
           </>
         )}
-      </div>
-      
+        </div>
+      </div>{/* end 並排等高 wrapper */}
+
       {/* III. 歷史記錄列表區塊 */}
       {renderHistory()}
     </div>
