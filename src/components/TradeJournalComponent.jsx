@@ -64,6 +64,8 @@ function TradeJournal() {
   });
   const [nameDbCheckOpen, setNameDbCheckOpen] = useState(false);
   const [positionLevelDetailOpen, setPositionLevelDetailOpen] = useState(false);
+  const [timeIdFixOpen, setTimeIdFixOpen] = useState(false);
+  const [timeIdFixGroups, setTimeIdFixGroups] = useState(null); // null = 未初始化
   const [stockTableOpen, setStockTableOpen] = useState(false);
   const [historyPage, setHistoryPage] = useState(0);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
@@ -689,6 +691,114 @@ function TradeJournal() {
     );
   };
 
+  // 同日同股排序修正工具
+  const initTimeIdFixGroups = () => {
+    const grouped = {};
+    journalEntries.forEach((e) => {
+      const key = `${e.date}__${e.code}`;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push({ ...e });
+    });
+    const conflicts = Object.entries(grouped)
+      .filter(([, arr]) => arr.length >= 2)
+      .map(([key, arr]) => ({
+        key,
+        date: key.split('__')[0],
+        code: arr[0].code,
+        name: arr[0].name,
+        entries: [...arr].sort((a, b) => (a.timeId || 0) - (b.timeId || 0)),
+      }));
+    setTimeIdFixGroups(conflicts);
+  };
+
+  const moveEntry = (groupKey, idx, dir) => {
+    setTimeIdFixGroups((prev) =>
+      prev.map((g) => {
+        if (g.key !== groupKey) return g;
+        const arr = [...g.entries];
+        const swapIdx = idx + dir;
+        if (swapIdx < 0 || swapIdx >= arr.length) return g;
+        [arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]];
+        return { ...g, entries: arr };
+      })
+    );
+  };
+
+  const applyTimeIdFix = async (groupKey) => {
+    const group = timeIdFixGroups.find((g) => g.key === groupKey);
+    if (!group) return;
+    const baseTime = new Date(group.date).getTime();
+    const updatedIds = group.entries.map((e, i) => ({ id: e.id, timeId: baseTime + i }));
+    const newEntries = journalEntries.map((e) => {
+      const match = updatedIds.find((u) => u.id === e.id);
+      return match ? { ...e, timeId: match.timeId } : e;
+    });
+    await saveJournalToCloud(newEntries);
+    setTimeIdFixGroups((prev) =>
+      prev.map((g) => {
+        if (g.key !== groupKey) return g;
+        return {
+          ...g,
+          entries: g.entries.map((e, i) => ({ ...e, timeId: baseTime + i })),
+        };
+      })
+    );
+  };
+
+  const renderTimeIdFix = () => (
+    <div style={{ marginTop: '15px', marginBottom: '15px', border: `1px solid ${GOLDEN_BORDER_COLOR}`, borderRadius: '5px', padding: '12px 15px' }}>
+      <button
+        type="button"
+        onClick={() => {
+          if (!timeIdFixOpen) initTimeIdFixGroups();
+          setTimeIdFixOpen((o) => !o);
+        }}
+        style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: 0, border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', textAlign: 'left' }}
+      >
+        <span style={{ fontSize: '0.7rem', color: '#64748b', width: '1em', flexShrink: 0 }}>{timeIdFixOpen ? '▼' : '▶'}</span>
+        <h3 style={{ margin: 0, fontSize: '1.1rem' }}>同日交易順序修正</h3>
+      </button>
+      {timeIdFixOpen && timeIdFixGroups !== null && (
+        <div style={{ marginTop: '12px' }}>
+          <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#666' }}>
+            同一天同一支股票有多筆交易時，順序會影響均價計算。用上下箭頭調整後點「套用」寫入。
+          </p>
+          {timeIdFixGroups.length === 0 ? (
+            <p style={{ margin: 0, color: '#15803d' }}>沒有需要處理的同日同股交易。</p>
+          ) : (
+            timeIdFixGroups.map((g) => (
+              <div key={g.key} style={{ marginBottom: '16px', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '10px 12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <strong style={{ fontSize: '0.95rem' }}>{g.date}　{g.name}（{g.code}）</strong>
+                  <button
+                    type="button"
+                    onClick={() => applyTimeIdFix(g.key)}
+                    style={{ padding: '4px 12px', fontSize: '0.85rem', cursor: 'pointer', borderRadius: '3px', border: '1px solid var(--ifm-color-primary)', background: 'white', color: 'var(--ifm-color-primary)', fontWeight: 'bold' }}
+                  >
+                    套用
+                  </button>
+                </div>
+                {g.entries.map((e, idx) => (
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', borderBottom: idx < g.entries.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#94a3b8', width: '1.5em', textAlign: 'center' }}>{idx + 1}</span>
+                    <span style={{ flex: 1, fontSize: '0.9rem' }}>
+                      <span style={{ fontWeight: 'bold', color: e.direction === 'BUY' ? '#15803d' : '#dc2626' }}>{e.direction}</span>
+                      　{Number(e.quantity).toLocaleString()} 股 @ {Number(e.price).toLocaleString()}
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <button type="button" onClick={() => moveEntry(g.key, idx, -1)} disabled={idx === 0} style={{ padding: '1px 6px', fontSize: '0.75rem', cursor: idx === 0 ? 'default' : 'pointer', border: '1px solid #cbd5e1', borderRadius: '2px', background: 'white', opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
+                      <button type="button" onClick={() => moveEntry(g.key, idx, 1)} disabled={idx === g.entries.length - 1} style={{ padding: '1px 6px', fontSize: '0.75rem', cursor: idx === g.entries.length - 1 ? 'default' : 'pointer', border: '1px solid #cbd5e1', borderRadius: '2px', background: 'white', opacity: idx === g.entries.length - 1 ? 0.3 : 1 }}>▼</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   const renderStockTableCard = () => (
     <div
       style={{
@@ -1083,6 +1193,9 @@ function TradeJournal() {
 
       {/* III. 歷史記錄列表區塊 */}
       {renderHistory()}
+
+      {/* 同日交易順序修正工具 */}
+      {renderTimeIdFix()}
 
       {/* 歷史紀錄名稱 vs Firestore 股票清單（折疊） */}
       <div

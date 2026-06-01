@@ -63,16 +63,16 @@ export const calculatePnlSummary = (entries, filterRange = 'ALL', options = {}) 
     );
 
     const stockMap = {};
-    const EPSILON = 1e-6; 
+    const EPSILON = 1e-6;
 
     sortedEntries.forEach((e) => {
         const code = e.code;
         if (!stockMap[code]) {
             stockMap[code] = {
                 name: e.name,
-                positionQty: 0,      
-                positionCost: 0,     
-                trades: [],          
+                positionQty: 0,
+                positionCost: 0,
+                trades: [],
             };
         }
 
@@ -89,7 +89,7 @@ export const calculatePnlSummary = (entries, filterRange = 'ALL', options = {}) 
             const nClosedQty = Number(closedQty);
             const nAvgPrice = Number(avgPrice);
             const nNewPrice = Number(newPrice);
-            
+
             if (isLong) {
                 realizedPnl = (nNewPrice * nClosedQty) - (nAvgPrice * nClosedQty);
             } else {
@@ -100,25 +100,25 @@ export const calculatePnlSummary = (entries, filterRange = 'ALL', options = {}) 
                 s.trades.push({ pnl: realizedPnl, closeTime: time });
             }
         };
-        
+
         const isPositionZero = (qty) => Math.abs(qty) < EPSILON;
         const resetPosition = () => { s.positionQty = 0; s.positionCost = 0; }
 
         if (e.direction === 'BUY') {
             if (s.positionQty < 0) {
                 const absShortQty = Math.abs(s.positionQty);
-                const avgShortPrice = absShortQty > EPSILON ? Number(s.positionCost) / absShortQty : 0; 
-                
-                const closedQty = Math.min(qty, absShortQty); 
-                const remainingQty = qty - closedQty; 
+                const avgShortPrice = absShortQty > EPSILON ? Number(s.positionCost) / absShortQty : 0;
+
+                const closedQty = Math.min(qty, absShortQty);
+                const remainingQty = qty - closedQty;
 
                 if (closedQty > EPSILON) {
-                    closeTradeAndRecord(closedQty, avgShortPrice, price, false); 
+                    closeTradeAndRecord(closedQty, avgShortPrice, price, false);
                     const costToReduce = avgShortPrice * closedQty;
                     s.positionCost = Number(s.positionCost) - costToReduce;
                     s.positionQty = Number(s.positionQty) + closedQty;
                 }
-                
+
                 if (isPositionZero(s.positionQty) && remainingQty > EPSILON) {
                     s.positionQty = remainingQty;
                     s.positionCost = price * remainingQty;
@@ -136,17 +136,17 @@ export const calculatePnlSummary = (entries, filterRange = 'ALL', options = {}) 
             if (s.positionQty > 0) {
                 const longQty = s.positionQty;
                 const avgCost = longQty > EPSILON ? Number(s.positionCost) / longQty : 0;
-                
+
                 const closedQty = Math.min(qty, longQty);
-                const remainingQty = qty - closedQty; 
+                const remainingQty = qty - closedQty;
 
                 if (closedQty > EPSILON) {
-                    closeTradeAndRecord(closedQty, avgCost, price, true); 
+                    closeTradeAndRecord(closedQty, avgCost, price, true);
                     const costToReduce = avgCost * closedQty;
-                    s.positionCost = Number(s.positionCost) - costToReduce; 
-                    s.positionQty = Number(s.positionQty) - closedQty; 
+                    s.positionCost = Number(s.positionCost) - costToReduce;
+                    s.positionQty = Number(s.positionQty) - closedQty;
                 }
-                
+
                 if (isPositionZero(s.positionQty) && remainingQty > EPSILON) {
                     s.positionQty = -remainingQty;
                     s.positionCost = price * remainingQty;
