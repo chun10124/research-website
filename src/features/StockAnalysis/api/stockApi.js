@@ -616,6 +616,126 @@ const safeFetch = async (targetUrl) => {
     }
 };
 
+// ─── 三大法人序列：解析 / 合併工具 ─────────────────────────────
+/** FinMind TaiwanStockInstitutionalInvestorsBuySell rows → parallel arrays (newest first)
+ *  name 值：Foreign_Investor / Foreign_Dealer_Self / Investment_Trust / Dealer_self / Dealer_Hedging
+ */
+function parseInstRows(rows) {
+  const dateMap = {};
+  for (const row of (rows || [])) {
+    const d = row.date?.slice(0, 10);
+    if (!d) continue;
+    if (!dateMap[d]) dateMap[d] = { f: 0, t: 0, d2: 0 };
+    const net = Math.round(((Number(row.buy) || 0) - (Number(row.sell) || 0)) / 1000);
+    const name = String(row.name || '');
+    // 外資 = Foreign_Investor + Foreign_Dealer_Self（累加）
+    if (name === 'Foreign_Investor' || name === 'Foreign_Dealer_Self') dateMap[d].f += net;
+    // 投信 = Investment_Trust
+    else if (name === 'Investment_Trust')                               dateMap[d].t  = net;
+    // 自營商 = Dealer_self + Dealer_Hedging（累加）
+    else if (name === 'Dealer_self' || name === 'Dealer_Hedging')      dateMap[d].d2 += net;
+  }
+  const dates = Object.keys(dateMap).sort().reverse(); // newest first
+  return {
+    instDates:   dates,
+    instForeign: dates.map(d => dateMap[d].f),
+    instTrust:   dates.map(d => dateMap[d].t),
+    instDealer:  dates.map(d => dateMap[d].d2),
+  };
+}
+
+/** 合併既有 + 新資料（新資料覆蓋同日舊資料，保持 newest-first） */
+export function mergeInstArrays(existing, newParsed) {
+  const combined = {};
+  const { instDates: eD = [], instForeign: eF = [], instTrust: eT = [], instDealer: eDl = [] } = existing || {};
+  const { instDates: nD = [], instForeign: nF = [], instTrust: nT = [], instDealer: nDl = [] } = newParsed || {};
+  eD.forEach((d, i) => { combined[d] = { f: eF[i] ?? 0, t: eT[i] ?? 0, d2: eDl[i] ?? 0 }; });
+  nD.forEach((d, i) => { combined[d] = { f: nF[i] ?? 0, t: nT[i] ?? 0, d2: nDl[i] ?? 0 }; });
+  const dates = Object.keys(combined).sort().reverse();
+  return {
+    instDates:   dates,
+    instForeign: dates.map(d => combined[d].f),
+    instTrust:   dates.map(d => combined[d].t),
+    instDealer:  dates.map(d => combined[d].d2),
+  };
+}
+
+/** 將 parallel arrays 轉成 { [dateStr]: { foreign, trust, dealer } }，供圖表使用 */
+export function instArraysToDateMap(instDates, instForeign, instTrust, instDealer) {
+  if (!instDates?.length) return {};
+  const map = {};
+  instDates.forEach((d, i) => {
+    map[d] = { foreign: instForeign?.[i] ?? 0, trust: instTrust?.[i] ?? 0, dealer: instDealer?.[i] ?? 0 };
+  });
+  return map;
+}
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * 懶載入外資持股序列（供個股視窗二使用，RS 排行頁不存這份資料）
+ * 回傳 { holdings: number[], latestDate: string }，newest-first，單位：張
+ */
+export const fetchForeignHoldingSeries = async (stockId) => {
+  try {
+    const threeYearsAgo = new Date();
+    threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+    const startDate = threeYearsAgo.toISOString().split('T')[0];
+    const params = new URLSearchParams({
+      dataset: 'TaiwanStockShareholding',
+      data_id: stockId,
+      start_date: startDate,
+      token: TOKEN,
+    });
+    const targetUrl = `${FINMIND_BASE}?${params.toString()}`;
+    const fullUrl = `${PROXY_BASE}${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(fullUrl);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const rows = json?.data || [];
+    if (!rows.length) return null;
+    const holdings = rows.map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000)).reverse();
+    const latestDate = rows[rows.length - 1]?.date?.slice(0, 10) ?? null;
+    return { holdings, latestDate };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * 抓取個股三大法人每日買賣超（懶載入，供個股視窗二使用）
+ * 回傳 { [dateStr]: { foreign, trust, dealer } }，單位：張（千股）
+ */
+export const fetchInstitutionalInvestorsSeries = async (stockId, startDate) => {
+  try {
+    const params = new URLSearchParams({
+      dataset: 'TaiwanStockInstitutionalInvestorsBuySell',
+      data_id: stockId,
+      start_date: startDate,
+      token: TOKEN,
+    });
+    const targetUrl = `${FINMIND_BASE}?${params.toString()}`;
+    const fullUrl = `${PROXY_BASE}${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(fullUrl);
+    if (!res.ok) return {};
+    const json = await res.json();
+    const rows = json?.data || [];
+    const dateMap = {};
+    for (const row of rows) {
+      const d = row.date?.slice(0, 10);
+      if (!d) continue;
+      if (!dateMap[d]) dateMap[d] = { foreign: 0, trust: 0, dealer: 0 };
+      const net = Math.round(((Number(row.buy) || 0) - (Number(row.sell) || 0)) / 1000);
+      const name = String(row.name || '');
+      if (name === 'Foreign_Investor' || name === 'Foreign_Dealer_Self') dateMap[d].foreign += net;
+      else if (name === 'Investment_Trust')                               dateMap[d].trust   = net;
+      else if (name === 'Dealer_self' || name === 'Dealer_Hedging')      dateMap[d].dealer  += net;
+    }
+    return dateMap;
+  } catch {
+    return {};
+  }
+};
+
 // 營收 API 日期轉「資料所屬月」YYYY-MM（公告日 1～15 日視為上月）
 const toRevenueMonthStr = (dateStr) => {
   if (!dateStr || dateStr.length < 10) return null;
@@ -637,6 +757,7 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
   const skipHoldings = options.skipHoldings === true && options.existingHoldings != null && Array.isArray(options.existingHoldings.foreignTotalHolding) && options.existingHoldings.foreignTotalHolding.length > 0;
   const skipInfo = options.skipInfo === true && options.existingInfo?.name;
   const skipPrice = options.skipPrice === true && options.existingPrice != null && Array.isArray(options.existingPrice.priceClose) && options.existingPrice.priceClose.length > 0;
+  const skipInstitutional = options.skipInstitutional === true && Array.isArray(options.existingInstitutional?.instDates) && options.existingInstitutional.instDates.length > 0;
   const today = new Date();
   const threeYearsAgo = new Date();
   threeYearsAgo.setFullYear(today.getFullYear() - 3);
@@ -648,6 +769,11 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
     return `${FINMIND_BASE}?${params.toString()}`;
   };
 
+  // 三大法人增量抓取起始日：有舊資料就從最新日+1天抓，否則抓三年
+  const instStartDate = !skipInstitutional && options.existingInstitutional?.latestInstDate
+    ? (() => { const d = new Date(options.existingInstitutional.latestInstDate); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); })()
+    : THREE_YEARS_START;
+
   try {
     onProgress(` [${sCode}] 正在抓取三年長線持股數據以計算策略門檻...`);
 
@@ -656,10 +782,12 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       : fetchTrackingTablePriceVolumeRows(sCode, options.market, options.yahooChartOpts);
     const holdingPromise = skipHoldings ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START));
     const revenuePromise = skipRevenue ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE));
-    const [priceBundle, holdingRes, revenueRes] = await Promise.all([
+    const institutionalPromise = skipInstitutional ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockInstitutionalInvestorsBuySell", instStartDate));
+    const [priceBundle, holdingRes, revenueRes, institutionalRes] = await Promise.all([
       priceBundlePromise,
       holdingPromise,
       revenuePromise,
+      institutionalPromise,
     ]);
 
     if (!skipPrice && !priceBundle) {
@@ -698,6 +826,11 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       foreignTotal_NewestFirst = rawHoldingData
         .map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000)).reverse();
       latestHoldingsDate = getLatestDateFromFinmindRows(holdingRes?.data);
+      // FinMind 查無資料（配額耗盡/暫時失敗）→ 保留現有持股，不用空陣列覆蓋
+      if (foreignTotal_NewestFirst.length === 0 && options.existingHoldings?.foreignTotalHolding?.length > 0) {
+        foreignTotal_NewestFirst = options.existingHoldings.foreignTotalHolding;
+        latestHoldingsDate = options.existingHoldings.latestHoldingsDate ?? latestHoldingsDate;
+      }
     }
     
     let revenueArray_OldestFirst;
@@ -735,6 +868,21 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       }
     }
 
+    // 三大法人序列：合併舊資料 + 新增量
+    let mergedInst;
+    if (skipInstitutional && options.existingInstitutional) {
+      mergedInst = {
+        instDates:   options.existingInstitutional.instDates   || [],
+        instForeign: options.existingInstitutional.instForeign || [],
+        instTrust:   options.existingInstitutional.instTrust   || [],
+        instDealer:  options.existingInstitutional.instDealer  || [],
+      };
+    } else {
+      const newParsed = parseInstRows(institutionalRes?.data);
+      mergedInst = mergeInstArrays(options.existingInstitutional, newParsed);
+    }
+    const latestInstDate = mergedInst.instDates[0] ?? null;
+
     return {
       code: sCode,
       name: stockName,
@@ -747,12 +895,17 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       latestHoldingsDate,
       latestRevenueDate,
       latestRevenueFetchedDate,
+      latestInstDate,
       history: {
         priceClose: priceCloseArray_NewestFirst,
         volume: volumeArray_NewestFirst,
         foreignTotalHolding: foreignTotal_NewestFirst,
         revenueRaw: revenueArray_OldestFirst,
-        revenueYoY: revenueYoYArray_OldestFirst
+        revenueYoY: revenueYoYArray_OldestFirst,
+        instDates:   mergedInst.instDates,
+        instForeign: mergedInst.instForeign,
+        instTrust:   mergedInst.instTrust,
+        instDealer:  mergedInst.instDealer,
       }
     };
   } catch (error) {
@@ -792,7 +945,11 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
     const holdingsUpToDate = stock.latestHoldingsDate >= yesterdayStr;
-    const skipHoldingsThisSync = (isBeforeTaiwan9PM() && holdingsUpToDate) || (stock.latestHoldingsDate === todayStr && stock.history?.foreignTotalHolding?.length > 0);
+    const hasHoldingsData = stock.history?.foreignTotalHolding?.length > 0;
+    // 加入 hasHoldingsData 判斷：即使日期夠新，若資料是空陣列也必須重抓（防止空資料卡死）
+    const skipHoldingsThisSync = (isBeforeTaiwan9PM() && holdingsUpToDate && hasHoldingsData) || (stock.latestHoldingsDate === todayStr && hasHoldingsData);
+    const instUpToDate = stock.latestInstDate >= yesterdayStr;
+    const skipInstThisSync = (isBeforeTaiwan9PM() && instUpToDate) || (stock.latestInstDate === todayStr && stock.history?.instDates?.length > 0);
     const havePriceData = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
     const haveLatestPrice = havePriceData;
     const opts = {};
@@ -819,6 +976,28 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
     if (skipHoldingsThisSync || forceSkipHoldings) {
       opts.skipHoldings = true;
       opts.existingHoldings = { foreignTotalHolding: stock.history?.foreignTotalHolding || [], latestHoldingsDate: stock.latestHoldingsDate };
+    } else if (stock.history?.foreignTotalHolding?.length > 0) {
+      // 需要重抓，但帶入現有資料作 fallback：防止 FinMind 暫時失敗時把 Firestore 覆蓋成空陣列
+      opts.existingHoldings = { foreignTotalHolding: stock.history.foreignTotalHolding, latestHoldingsDate: stock.latestHoldingsDate };
+    }
+    if (skipInstThisSync || forceSkipHoldings) {
+      opts.skipInstitutional = true;
+      opts.existingInstitutional = {
+        instDates:      stock.history?.instDates   || [],
+        instForeign:    stock.history?.instForeign || [],
+        instTrust:      stock.history?.instTrust   || [],
+        instDealer:     stock.history?.instDealer  || [],
+        latestInstDate: stock.latestInstDate       || null,
+      };
+    } else if (stock.history?.instDates?.length > 0) {
+      // 有舊資料但需更新：傳入現有資料供增量合併
+      opts.existingInstitutional = {
+        instDates:      stock.history.instDates,
+        instForeign:    stock.history.instForeign || [],
+        instTrust:      stock.history.instTrust   || [],
+        instDealer:     stock.history.instDealer  || [],
+        latestInstDate: stock.latestInstDate       || null,
+      };
     }
     if (stock.name && stock.name !== "讀取中..." && stock.name !== "未知") {
       opts.skipInfo = true;

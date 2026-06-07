@@ -10,7 +10,7 @@ import { JOURNAL_DOC_REF } from '../utils/firebaseConfig';
 import { PNL_COLOR, GOLDEN_BORDER_COLOR, formatQuantity, formatAvgCost, formatPnl } from '../utils/formatting';
 
 // 3. 引入核心計算邏輯
-import { calculatePnlSummary, getStartDate } from '../utils/pnlCalculator';
+import { calculatePnlSummary, getStartDate, MARGIN_LONG_LOAN_RATIO, MARGIN_LONG_SELF_RATIO, MARGIN_LONG_ANNUAL_RATE, MARGIN_SHORT_DEPOSIT_RATIO } from '../utils/pnlCalculator';
 import { autoDetectCashFlows, getCumulativeCFUpTo } from '../utils/periodReturns';
 import { fetchCurrentPrice } from '../features/StockAnalysis/api/stockApi';
 import {
@@ -33,10 +33,11 @@ const PIE_STOCK_COLORS = ['#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#10b981',
 function TradeJournal() {
   const [journalEntries, setJournalEntries] = useState([]);
   const [formData, setFormData] = useState({
-    id: '', 
+    id: '',
     code: '',
-    name: '', 
+    name: '',
     direction: 'BUY',
+    tradeType: 'STOCK',
     quantity: '',
     price: '',
     date: new Date().toISOString().substring(0, 10),
@@ -345,6 +346,51 @@ function TradeJournal() {
     }, 0);
   }, [pnlSummary.byStock, positionPrices]);
 
+  /** 總自付持倉金額：現股用市值全額，融資用市值 × 40%，融券用保證金估值 */
+  const totalSelfPaidValue = useMemo(() => {
+    return pnlSummary.byStock.reduce((sum, s) => {
+      const px = positionPrices[s.code];
+      // 現股多頭
+      if (s.stockQty > 0) {
+        const usePx = px != null && px > 0 ? px : s.stockAvgCost;
+        sum += s.stockQty * usePx;
+      }
+      // 融資多頭：只算自付部分
+      if (s.mlQty > 0) {
+        const usePx = px != null && px > 0 ? px : s.mlAvgCost;
+        sum += s.mlQty * usePx * MARGIN_LONG_SELF_RATIO;
+      }
+      // 融券空頭：保證金視為鎖定資金
+      if (s.msQty > 0) {
+        sum += s.msQty * s.msAvgDeposit;
+      }
+      return sum;
+    }, 0);
+  }, [pnlSummary.byStock, positionPrices]);
+
+  /** 總融資借款金額（按現價估算） */
+  const totalMarginLoan = useMemo(() => {
+    return pnlSummary.byStock.reduce((sum, s) => {
+      if (s.mlQty <= 0) return sum;
+      const px = positionPrices[s.code];
+      const usePx = px != null && px > 0 ? px : s.mlAvgCost;
+      return sum + s.mlQty * usePx * MARGIN_LONG_LOAN_RATIO;
+    }, 0);
+  }, [pnlSummary.byStock, positionPrices]);
+
+  /** 融資利息估算：各持倉 × 借款金額 × 年利率 × 持有天數 / 365 */
+  const totalMarginInterest = useMemo(() => {
+    const todayMs = Date.now();
+    return pnlSummary.byStock.reduce((sum, s) => {
+      if (s.mlQty <= 0 || s.mlEarliestMs == null) return sum;
+      const px = positionPrices[s.code];
+      const usePx = px != null && px > 0 ? px : s.mlAvgCost;
+      const loanValue = s.mlQty * usePx * MARGIN_LONG_LOAN_RATIO;
+      const daysHeld = Math.max(0, (todayMs - s.mlEarliestMs) / (1000 * 60 * 60 * 24));
+      return sum + loanValue * MARGIN_LONG_ANNUAL_RATE * daysHeld / 365;
+    }, 0);
+  }, [pnlSummary.byStock, positionPrices]);
+
   /**
    * 可用於投資（買股）的總資產（與績效頁一致）：
    * 累計入金 + 已實現損益 + 未實現損益 ≈ 現金 + 持倉市值
@@ -357,10 +403,16 @@ function TradeJournal() {
     [totalDeposits, allTimePnlSummary.totalRealizedPnl, totalUnrealizedPnl]
   );
 
-  /** 持倉水位：目前持倉市值 ÷ 上述總資產（持倉佔可投資資產比例） */
+  /** 市場曝險水位：全額持倉市值 ÷ 總資產（反映真實風險敞口） */
   const positionLevelPct =
     totalTradingAssets > 0
       ? (totalHoldingMarketValue / totalTradingAssets) * 100
+      : null;
+
+  /** 資金使用水位：自付持倉金額 ÷ 總資產（反映實際資金佔用） */
+  const selfPaidLevelPct =
+    totalTradingAssets > 0
+      ? (totalSelfPaidValue / totalTradingAssets) * 100
       : null;
 
   /** 圓餅圖資料：各持倉市值 + 現金 */
@@ -401,6 +453,22 @@ function TradeJournal() {
   const handleDirectionChange = (direction) => {
       setFormData(prevData => ({ ...prevData, direction }));
   };
+
+  const handleTradeTypeChange = (tradeType) => {
+      setFormData(prevData => ({ ...prevData, tradeType }));
+  };
+
+  const emptyForm = () => ({
+    id: '',
+    code: '',
+    name: '',
+    direction: 'BUY',
+    tradeType: 'STOCK',
+    quantity: '',
+    price: '',
+    date: new Date().toISOString().substring(0, 10),
+    reason: '',
+  });
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
@@ -446,18 +514,9 @@ function TradeJournal() {
       updatedEntries = [newEntry, ...journalEntries];
     }
 
-    saveJournalToCloud(updatedEntries); // <<< 替換點 >>>
-    
-    setFormData({
-      id: '',
-      code: '',
-      name: '',
-      direction: 'BUY',
-      quantity: '',
-      price: '',
-      date: new Date().toISOString().substring(0, 10),
-      reason: '',
-    });
+    saveJournalToCloud(updatedEntries);
+
+    setFormData(emptyForm());
   };
   
   // 6. 刪除與編輯功能 (保持不變)
@@ -470,7 +529,9 @@ function TradeJournal() {
 
   const handleEdit = (entry) => {
       setFormData({
+          ...emptyForm(),
           ...entry,
+          tradeType: entry.tradeType || 'STOCK',
           quantity: String(entry.quantity),
           price: String(entry.price),
       });
@@ -565,7 +626,7 @@ function TradeJournal() {
             <div
               className={styles.pnlSummaryCard}
               style={{
-                flex: positionLevelDetailOpen ? '1 1 100%' : '1 1 160px',
+                flex: positionLevelDetailOpen ? '1 1 100%' : '1 1 200px',
                 minWidth: '140px',
                 padding: '15px',
                 border: '1px solid #ccc',
@@ -582,7 +643,7 @@ function TradeJournal() {
                   alignItems: 'center',
                   gap: '6px',
                   width: '100%',
-                  margin: '0 0 5px 0',
+                  margin: '0 0 8px 0',
                   padding: 0,
                   border: 'none',
                   background: 'none',
@@ -596,9 +657,24 @@ function TradeJournal() {
                   {positionLevelDetailOpen ? '▼' : '▶'}
                 </span>
               </button>
-              <p style={{ margin: 0, fontSize: '1.5em', fontWeight: 'bold' }}>
-                {positionLevelPct != null ? `${positionLevelPct.toFixed(1)}%` : '—'}
+
+              {/* 雙水位顯示：單行並排 */}
+              <p style={{ margin: 0, fontSize: '1.4em', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                {positionLevelPct != null ? `${Math.round(positionLevelPct)}%` : '—'}
+                <span style={{ fontSize: '0.5em', color: '#64748b', fontWeight: 'normal', margin: '0 8px 0 2px' }}>曝險</span>
+                <span style={{ color: '#0ea5e9' }}>
+                  {selfPaidLevelPct != null ? `${Math.round(selfPaidLevelPct)}%` : '—'}
+                </span>
+                <span style={{ fontSize: '0.5em', color: '#64748b', fontWeight: 'normal', marginLeft: '2px' }}>自付</span>
               </p>
+
+              {/* 融資利息估算 */}
+              {totalMarginInterest > 0.5 && (
+                <div style={{ marginTop: '8px', padding: '6px 8px', background: '#fef3c7', borderRadius: '4px', fontSize: '0.8rem', color: '#92400e' }}>
+                  融資利息估計：{Math.round(totalMarginInterest).toLocaleString()} 元
+                </div>
+              )}
+
               {positionLevelDetailOpen && (
                 <div
                   style={{
@@ -629,15 +705,67 @@ function TradeJournal() {
                       {Math.round(totalTradingAssets).toLocaleString()}
                     </span>
                   </div>
-                  <p style={{ margin: '12px 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>分子 · 持倉市值</p>
+
+                  <p style={{ margin: '12px 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>市場曝險水位（分子 = 持倉市值全額）</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 12px' }}>
-                    <span>目前持倉市值加總</span>
+                    <span>持倉市值（含融資全額）</span>
                     <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 'bold' }}>
                       {Math.round(totalHoldingMarketValue).toLocaleString()}
                     </span>
                   </div>
+
+                  <p style={{ margin: '12px 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>資金使用水位（分子 = 自付金額）</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 12px' }}>
+                    <span>現股持倉市值</span>
+                    <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {Math.round(pnlSummary.byStock.reduce((s, st) => {
+                        if (st.stockQty <= 0) return s;
+                        const px = positionPrices[st.code];
+                        const usePx = px != null && px > 0 ? px : st.stockAvgCost;
+                        return s + st.stockQty * usePx;
+                      }, 0)).toLocaleString()}
+                    </span>
+                    <span>融資自付部分（40%）</span>
+                    <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {Math.round(pnlSummary.byStock.reduce((s, st) => {
+                        if (st.mlQty <= 0) return s;
+                        const px = positionPrices[st.code];
+                        const usePx = px != null && px > 0 ? px : st.mlAvgCost;
+                        return s + st.mlQty * usePx * MARGIN_LONG_SELF_RATIO;
+                      }, 0)).toLocaleString()}
+                    </span>
+                    {pnlSummary.byStock.some(st => st.msQty > 0) && (
+                      <>
+                        <span>融券保證金</span>
+                        <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {Math.round(pnlSummary.byStock.reduce((s, st) => s + st.msQty * st.msAvgDeposit, 0)).toLocaleString()}
+                        </span>
+                      </>
+                    )}
+                    <span style={{ fontWeight: 'bold', paddingTop: '6px', borderTop: '1px dashed #cbd5e1' }}>合計（自付）</span>
+                    <span style={{ textAlign: 'right', fontWeight: 'bold', paddingTop: '6px', borderTop: '1px dashed #cbd5e1', fontVariantNumeric: 'tabular-nums' }}>
+                      {Math.round(totalSelfPaidValue).toLocaleString()}
+                    </span>
+                  </div>
+
+                  {totalMarginLoan > 0 && (
+                    <>
+                      <p style={{ margin: '12px 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>融資借款概況</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 12px' }}>
+                        <span>未結清借款（按現價估）</span>
+                        <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {Math.round(totalMarginLoan).toLocaleString()}
+                        </span>
+                        <span>利息估算（年利率 {(MARGIN_LONG_ANNUAL_RATE * 100).toFixed(2)}%）</span>
+                        <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#92400e' }}>
+                          -{Math.round(totalMarginInterest).toLocaleString()}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
                   <p style={{ margin: '10px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                    水位 % ＝ 持倉市值 ÷ 總可投資資產；入金為交易明細推估，未實現需現價。
+                    市場曝險 ＝ 持倉全額 ÷ 總資產；資金使用 ＝ 自付金額 ÷ 總資產。融資利息從首筆開倉日估算，僅供參考。
                   </p>
                 </div>
               )}
@@ -842,9 +970,15 @@ function TradeJournal() {
                 sortedByStock.map(data => {
                   const avgCostDisplay = data.netQuantity !== 0 ? data.avgCost : 0;
                   const positionAmount = Math.round(data.netQuantity * data.avgCost);
+                  const hasMl = data.mlQty > 0;
+                  const hasMs = data.msQty > 0;
                   return (
                     <tr key={data.code} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '8px', fontWeight: 'bold' }}>{data.name} ({data.code})</td>
+                      <td style={{ padding: '8px', fontWeight: 'bold' }}>
+                        {data.name} ({data.code})
+                        {hasMl && <span style={{ marginLeft: '6px', padding: '1px 5px', fontSize: '0.72rem', borderRadius: '3px', background: '#dbeafe', color: '#1d4ed8', fontWeight: 'bold' }}>融資{data.mlQty}</span>}
+                        {hasMs && <span style={{ marginLeft: '4px', padding: '1px 5px', fontSize: '0.72rem', borderRadius: '3px', background: '#fce7f3', color: '#9d174d', fontWeight: 'bold' }}>融券{data.msQty}</span>}
+                      </td>
                       <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
                       <td className={styles.pnlAmountCell} style={{ padding: '8px', fontWeight: 'bold' }}>
                         {positionAmount !== 0 ? `${Math.abs(positionAmount).toLocaleString()}` : '--'}
@@ -964,6 +1098,19 @@ function TradeJournal() {
                     <span style={{ color: entry.direction === 'BUY' ? 'red' : 'green', fontWeight: 'bold' }}>{entry.direction}</span>:
                     {formatQuantity(entry.quantity)} 股 @ {formatAvgCost(entry.price)}
                 </span>
+                {entry.tradeType && entry.tradeType !== 'STOCK' && (
+                  <span style={{
+                    marginLeft: '8px',
+                    padding: '1px 6px',
+                    fontSize: '0.75rem',
+                    borderRadius: '3px',
+                    fontWeight: 'bold',
+                    background: entry.tradeType === 'MARGIN_LONG' ? '#dbeafe' : '#fce7f3',
+                    color: entry.tradeType === 'MARGIN_LONG' ? '#1d4ed8' : '#9d174d',
+                  }}>
+                    {entry.tradeType === 'MARGIN_LONG' ? '融資' : '融券'}
+                  </span>
+                )}
             </div>
         </div>
 
@@ -1104,46 +1251,131 @@ function TradeJournal() {
           />
         </div>
         
-        <div style={{ display: 'flex', gap: '10px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <button 
-                    type="button" 
-                    onClick={() => handleDirectionChange('BUY')} 
-                    className={`${styles.directionBtn} ${formData.direction === 'BUY' ? styles.activeBuy : ''}`}
-                    
-                    style={{ 
-                        padding: '10px', 
-                        color: formData.direction === 'BUY' ? 'white' : 'var(--ifm-color-primary)',
-                        border: '1px solid var(--ifm-color-primary)', cursor: 'pointer', borderRadius: '3px',
-                        width: '120px' ,fontWeight: 'bold', fontSize: '13px'
+        {isMobile ? (
+          /* ── 手機版：按鈕橫排一列，textarea 獨佔下一行 ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => handleDirectionChange('BUY')}
+                className={`${styles.directionBtn} ${formData.direction === 'BUY' ? styles.activeBuy : ''}`}
+                style={{
+                  flex: 1, padding: '10px 0', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', borderRadius: '3px', whiteSpace: 'nowrap',
+                  color: formData.direction === 'BUY' ? 'white' : 'var(--ifm-color-primary)',
+                  border: '1px solid var(--ifm-color-primary)',
+                }}
+              >買入</button>
+              <button
+                type="button"
+                onClick={() => handleDirectionChange('SELL')}
+                className={`${styles.directionBtn} ${formData.direction === 'SELL' ? styles.activeSell : ''}`}
+                style={{
+                  flex: 1, padding: '10px 0', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', borderRadius: '3px', whiteSpace: 'nowrap',
+                  color: formData.direction === 'SELL' ? 'white' : 'var(--ifm-color-primary)',
+                  border: '1px solid var(--ifm-color-primary)',
+                }}
+              >賣出</button>
+              {[
+                { value: 'STOCK',        label: '現股' },
+                { value: 'MARGIN_LONG',  label: '融資' },
+                { value: 'MARGIN_SHORT', label: '融券' },
+              ].map(({ value, label }) => {
+                const active = formData.tradeType === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => handleTradeTypeChange(value)}
+                    style={{
+                      flex: 1, padding: '10px 0', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', borderRadius: '3px',
+                      border: '1px solid var(--ifm-color-primary)',
+                      background: active ? 'var(--ifm-color-primary)' : 'transparent',
+                      color: active ? '#ffffff' : 'var(--ifm-color-primary)',
                     }}
-                >
-                    買入 (BUY)
-                </button>
-                <button 
-                    type="button" 
-                    onClick={() => handleDirectionChange('SELL')} 
-                    className={`${styles.directionBtn} ${formData.direction === 'SELL' ? styles.activeSell : ''}`}
-                    style={{ 
-                        padding: '10px',  
-                        color: formData.direction === 'SELL' ? 'white' : 'var(--ifm-color-primary)',
-                        border: '1px solid var(--ifm-color-primary)', cursor: 'pointer', borderRadius: '3px',
-                        width: '120px', fontWeight: 'bold', fontSize: '13px'
-                    }}
-                >
-                    賣出 (SELL)
-                </button>
+                  >{label}</button>
+                );
+              })}
             </div>
-
             <textarea
               name="reason"
               value={formData.reason}
               onChange={handleInputChange}
               placeholder="輸入交易理由或策略"
-              rows="6" 
+              rows="4"
+              style={{ width: '100%', resize: 'vertical', padding: '8px', border: '1px solid #a4a4a4ff', minHeight: '80px', boxSizing: 'border-box' }}
+            />
+          </div>
+        ) : (
+          /* ── 桌面版：左欄按鈕 + 右側 textarea ── */
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <button
+                type="button"
+                onClick={() => handleDirectionChange('BUY')}
+                className={`${styles.directionBtn} ${formData.direction === 'BUY' ? styles.activeBuy : ''}`}
+                style={{
+                  padding: '10px',
+                  color: formData.direction === 'BUY' ? 'white' : 'var(--ifm-color-primary)',
+                  border: '1px solid var(--ifm-color-primary)', cursor: 'pointer', borderRadius: '3px',
+                  width: '120px', fontWeight: 'bold', fontSize: '13px',
+                }}
+              >
+                買入 (BUY)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDirectionChange('SELL')}
+                className={`${styles.directionBtn} ${formData.direction === 'SELL' ? styles.activeSell : ''}`}
+                style={{
+                  padding: '10px',
+                  color: formData.direction === 'SELL' ? 'white' : 'var(--ifm-color-primary)',
+                  border: '1px solid var(--ifm-color-primary)', cursor: 'pointer', borderRadius: '3px',
+                  width: '120px', fontWeight: 'bold', fontSize: '13px',
+                }}
+              >
+                賣出 (SELL)
+              </button>
+              <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                {[
+                  { value: 'STOCK',        label: '現股' },
+                  { value: 'MARGIN_LONG',  label: '融資' },
+                  { value: 'MARGIN_SHORT', label: '融券' },
+                ].map(({ value, label }) => {
+                  const active = formData.tradeType === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => handleTradeTypeChange(value)}
+                      style={{
+                        flex: 1,
+                        padding: '5px 0',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        borderRadius: '3px',
+                        border: '1px solid var(--ifm-color-primary)',
+                        background: active ? 'var(--ifm-color-primary)' : 'transparent',
+                        color: active ? '#ffffff' : 'var(--ifm-color-primary)',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <textarea
+              name="reason"
+              value={formData.reason}
+              onChange={handleInputChange}
+              placeholder="輸入交易理由或策略"
+              rows="6"
               style={{ flexGrow: 1, resize: 'vertical', padding: '8px', border: '1px solid #a4a4a4ff', minHeight: '100px' }}
             />
-        </div>
+          </div>
+        )}
         
         <div style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button 
@@ -1163,18 +1395,8 @@ function TradeJournal() {
             {editingId && (
                 <button type="button" 
                 onClick={() => {
-                    setEditingId(null); // 1. 結束編輯狀態
-                    // 2. 新增：將輸入框重置為初始狀態
-                    setFormData({
-                        id: '',
-                        code: '',
-                        name: '',
-                        direction: 'BUY',
-                        quantity: '',
-                        price: '',
-                        date: new Date().toISOString().substring(0, 10),
-                        reason: '',
-                    });
+                    setEditingId(null);
+                    setFormData(emptyForm());
                 }}
                 
                 style={{ padding: '10px 20px', backgroundColor: '#6c757d', 

@@ -1,9 +1,10 @@
 /* src/pages/IBDRsRankingPage.jsx */
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { getDoc, onSnapshot, setDoc, updateDoc, doc } from 'firebase/firestore';
+import { db } from '../utils/firebaseConfig';
 import Layout from '@theme/Layout';
-import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache } from '../features/StockAnalysis/api/stockApi';
+import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache, fetchInstitutionalInvestorsSeries, fetchForeignHoldingSeries, instArraysToDateMap } from '../features/StockAnalysis/api/stockApi';
 import { syncSingleStock, syncTestBatch } from '../features/StockAnalysis/api/rsApi';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
 import {
@@ -1133,6 +1134,333 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
 }
 
 
+// ─────────────────────────────────────────────────
+// 外資視窗輔助：計算歷史 B 訊號（最近 130 個交易日）
+// holdings: newest-first 日頻陣列（每日晚上 10 點後更新）
+// ─────────────────────────────────────────────────
+function computeHistoricalForeignBSignals(holdings) {
+  const N = 10;
+  if (!holdings || holdings.length < 720) return [];
+  const n = holdings.length;
+  const rocs = new Array(n).fill(null);
+  for (let i = 0; i <= n - N - 1; i++) {
+    const prev = holdings[i + N];
+    if (prev && prev !== 0) rocs[i] = (holdings[i] - prev) / prev;
+  }
+  const limit = Math.min(130, n - 705);
+  const signals = new Array(limit).fill('N');
+  for (let i = 0; i < limit; i++) {
+    if (rocs[i] === null) continue;
+    const past = [];
+    for (let j = i + 1; j <= i + 700 && j < n; j++) {
+      if (rocs[j] !== null) past.push(rocs[j]);
+    }
+    if (past.length < 600) continue;
+    const len = past.length;
+    const mean = past.reduce((a, b) => a + b, 0) / len;
+    const stdDev = Math.sqrt(past.reduce((a, b) => a + (b - mean) ** 2, 0) / len);
+    if (stdDev > 0 && rocs[i] > stdDev) signals[i] = 'B';
+  }
+  return signals; // index 0 = 今天, index 1 = 昨天, ...
+}
+
+// ─────────────────────────────────────────────────
+// 外資籌碼視窗圖表
+// data: [{dateKey, open, high, low, close, holding, bSignal, foreign, trust, dealer}]
+// ─────────────────────────────────────────────────
+function ForeignChipChart({ data, allHoldings }) {
+  const wrapRef = useRef(null);
+  const [size, setSize] = useState({ w: 640, h: 320 });
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  /** 三大法人 Y 軸縮放（在下格拖動調整）*/
+  const [chipScale, setChipScale] = useState(1.0);
+  const chipScaleDragRef = useRef({ active: false, startY: 0, startScale: 1 });
+
+  useEffect(() => {
+    const stop = () => { chipScaleDragRef.current.active = false; };
+    window.addEventListener('mouseup', stop);
+    window.addEventListener('touchend', stop);
+    return () => { window.removeEventListener('mouseup', stop); window.removeEventListener('touchend', stop); };
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = Math.max(200, el.clientWidth || 200);
+      const h = Math.max(160, el.clientHeight || 320);
+      setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(el);
+    return () => { if (ro) ro.disconnect(); };
+  }, []);
+
+  const PAD_L = 44; const PAD_R = 50; const PAD_T = 10; const PAD_B = 26;
+  const { w, h } = size;
+  const innerW = Math.max(1, w - PAD_L - PAD_R);
+  const innerH = Math.max(1, h - PAD_T - PAD_B);
+
+  // 上格 K 線 + 下格三大法人
+  const CHIP_H = Math.round(innerH * 0.34);
+  const CHIP_GAP = 5;
+  const MAIN_H = innerH - CHIP_H - CHIP_GAP;
+
+  const n = data.length;
+  const slot = n > 0 ? innerW / n : innerW;
+  const xAt  = (i) => PAD_L + (i + 0.5) * slot;
+  const barW = Math.min(10, Math.max(1.5, slot * 0.62));
+
+  // K 線 Y 軸（上格）
+  let pMin = Infinity; let pMax = -Infinity;
+  for (const d of data) {
+    if (Number.isFinite(d.low))  pMin = Math.min(pMin, d.low);
+    if (Number.isFinite(d.high)) pMax = Math.max(pMax, d.high);
+  }
+  const hasOhlc = Number.isFinite(pMin);
+  if (hasOhlc) { const pp = (pMax - pMin || pMax * 0.01 || 1) * 0.05; pMin -= pp; pMax += pp; }
+  const yPrice = hasOhlc ? (v) => PAD_T + MAIN_H - ((v - pMin) / (pMax - pMin)) * MAIN_H : () => PAD_T;
+
+  // 右軸：外資持股（絕對張數）
+  let hMin = Infinity; let hMax = -Infinity;
+  for (const d of data) {
+    if (Number.isFinite(d.holding)) { hMin = Math.min(hMin, d.holding); hMax = Math.max(hMax, d.holding); }
+  }
+  const hasHolding = Number.isFinite(hMin);
+  if (hasHolding) { const hp = (hMax - hMin || Math.abs(hMax) * 0.01 || 1) * 0.06; hMin -= hp; hMax += hp; }
+  const yHolding = hasHolding ? (v) => PAD_T + MAIN_H - ((v - hMin) / (hMax - hMin)) * MAIN_H : () => PAD_T;
+  const toPct = () => null; // unused, kept for tooltip compat
+  const firstHoldingPct = null;
+
+  // 下格：三大法人，以零軸為中心
+  const chipYBase = PAD_T + MAIN_H + CHIP_GAP;
+  const chipMid   = chipYBase + CHIP_H / 2;
+  let chipAbsMax = 1;
+  for (const d of data) {
+    if (Number.isFinite(d.foreign)) chipAbsMax = Math.max(chipAbsMax, Math.abs(d.foreign));
+    if (Number.isFinite(d.trust))   chipAbsMax = Math.max(chipAbsMax, Math.abs(d.trust));
+    if (Number.isFinite(d.dealer))  chipAbsMax = Math.max(chipAbsMax, Math.abs(d.dealer));
+  }
+  chipAbsMax *= 1.05 * chipScale;
+  const yChip    = (v) => { if (!Number.isFinite(v)) return chipMid; return chipMid - (v / chipAbsMax) * (CHIP_H / 2); };
+  const chipBarH = (v) => Math.abs(yChip(v) - chipMid);
+
+  // 持股折線段
+  const buildSegs = (fn) => {
+    const segs = []; let seg = [];
+    data.forEach((d, i) => {
+      const v = fn(d);
+      if (Number.isFinite(v)) { seg.push(`${xAt(i).toFixed(2)},${v.toFixed(2)}`); }
+      else if (seg.length) { segs.push(seg.join(' ')); seg = []; }
+    });
+    if (seg.length) segs.push(seg.join(' '));
+    return segs;
+  };
+  const holdingSegs = buildSegs((d) => hasHolding && Number.isFinite(d.holding) ? yHolding(d.holding) : null);
+
+
+  // X 軸 ticks
+  const MAX_X_TICKS = 7;
+  const xTickIdxs = n <= MAX_X_TICKS
+    ? data.map((_, i) => i)
+    : Array.from({ length: MAX_X_TICKS }, (_, k) => Math.round((k * (n - 1)) / (MAX_X_TICKS - 1)));
+
+  // 在下格拖動調整縮放
+  const applyScaleDrag = (cy) => {
+    const { startY, startScale } = chipScaleDragRef.current;
+    setChipScale(Math.min(8, Math.max(0.15, startScale * Math.exp((cy - startY) / 120))));
+  };
+  const applyHover = (svgEl, cx, cy) => {
+    if (n === 0) return;
+    const rect = svgEl.getBoundingClientRect();
+    const mx = cx - rect.left; const my = cy - rect.top;
+    setHoverIdx(Math.max(0, Math.min(n - 1, Math.round((mx - PAD_L) / slot - 0.5))));
+    setMousePos({ x: mx, y: my });
+  };
+  const handleMouseDown = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if ((e.clientY - rect.top) >= chipYBase) {
+      e.preventDefault();
+      chipScaleDragRef.current = { active: true, startY: e.clientY, startScale: chipScale };
+    }
+  };
+  const handleMouseMove = (e) => {
+    if (chipScaleDragRef.current.active) { applyScaleDrag(e.clientY); return; }
+    applyHover(e.currentTarget, e.clientX, e.clientY);
+  };
+  const handleTouchStart = (e) => {
+    e.preventDefault(); const t = e.touches[0]; if (!t) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if ((t.clientY - rect.top) >= chipYBase) {
+      chipScaleDragRef.current = { active: true, startY: t.clientY, startScale: chipScale };
+    } else { applyHover(e.currentTarget, t.clientX, t.clientY); }
+  };
+  const handleTouchMove = (e) => {
+    e.preventDefault(); const t = e.touches[0]; if (!t) return;
+    if (chipScaleDragRef.current.active) { applyScaleDrag(t.clientY); return; }
+    applyHover(e.currentTarget, t.clientX, t.clientY);
+  };
+  const handleTouchEnd  = (e) => { if (e) e.preventDefault(); chipScaleDragRef.current.active = false; setHoverIdx(null); };
+  const handleWheel     = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+  const hd = hoverIdx != null ? data[hoverIdx] : null;
+  const tooltipTop = hoverIdx == null ? 0 : Math.min(Math.max(4, h - 180), Math.max(4, mousePos.y - 10));
+  const isInChipArea = mousePos.y >= chipYBase;
+  const holdingTicks = hasHolding ? [0, 1, 2, 3].map((t) => hMin + ((hMax - hMin) * t) / 3) : [];
+
+  return (
+    <div ref={wrapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <svg
+        width={w} height={h}
+        style={{ display: 'block', width: '100%', height: '100%', cursor: chipScaleDragRef.current.active ? 'ns-resize' : 'crosshair', touchAction: 'none' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => { chipScaleDragRef.current.active = false; setHoverIdx(null); }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        onWheel={handleWheel}
+      >
+        {/* 上格底色 */}
+        <rect x={PAD_L} y={PAD_T} width={innerW} height={MAIN_H} fill="#ffffff" />
+        {/* 下格底色 */}
+        <rect x={PAD_L} y={chipYBase} width={innerW} height={CHIP_H} fill="#fafafa" />
+
+        {/* 上格 grid */}
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+          <line key={`pg-${t}`} x1={PAD_L} y1={PAD_T + MAIN_H * t} x2={PAD_L + innerW} y2={PAD_T + MAIN_H * t} stroke="#eceff1" strokeWidth={1} strokeDasharray="3 3" />
+        ))}
+
+        {/* 下格零軸 */}
+        <line x1={PAD_L} y1={chipMid} x2={PAD_L + innerW} y2={chipMid} stroke="#cbd5e1" strokeWidth={1} />
+
+        {/* K 棒 */}
+        {hasOhlc && data.map((d, i) => {
+          if (!Number.isFinite(d.open) || !Number.isFinite(d.high) || !Number.isFinite(d.low) || !Number.isFinite(d.close)) return null;
+          const xc = xAt(i);
+          const prevClose = i > 0 && Number.isFinite(data[i - 1]?.close) ? data[i - 1].close : null;
+          const up = d.open !== d.close ? d.close >= d.open : prevClose != null ? d.close >= prevClose : true;
+          const fill = up ? '#e53935' : '#2e7d32'; const stroke = up ? '#c62828' : '#1b5e20';
+          const yH = yPrice(d.high); const yL = yPrice(d.low);
+          const yO = yPrice(d.open); const yC = yPrice(d.close);
+          return (
+            <g key={`k-${d.dateKey}`} opacity={0.72}>
+              <line x1={xc} y1={yH} x2={xc} y2={yL} stroke={stroke} strokeWidth={0.9} />
+              <rect x={xc - barW / 2} y={Math.min(yO, yC)} width={barW} height={Math.max(Math.abs(yC - yO), 1)} fill={fill} stroke={stroke} strokeWidth={0.8} />
+            </g>
+          );
+        })}
+
+        {/* 外資持股折線（金色，右軸） */}
+        {holdingSegs.map((pts, i) => (
+          <polyline key={`h-${i}`} points={pts} fill="none" stroke="#d97706" strokeWidth={2.0} strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+
+        {/* B 訊號：亮粉紅圓點 */}
+        {data.map((d, i) => {
+          if (d.bSignal !== 'B') return null;
+          const xc = xAt(i);
+          const yTop = Number.isFinite(d.high) ? yPrice(d.high) - 5 : PAD_T + 6;
+          return <circle key={`b-${d.dateKey}`} cx={xc} cy={yTop} r={3.2} fill="#ff2d87" stroke="#fff" strokeWidth={0.8} />;
+        })}
+
+        {/* 三大法人堆疊柱：正值往上、負值往下 */}
+        {data.map((d, i) => {
+          const xc = xAt(i);
+          const bw = Math.max(1.5, barW * 0.85);
+          const vals   = [d.foreign, d.trust, d.dealer];
+          const colors = ['#1565c0', '#16a34a', '#f97316'];
+          const rects = []; let posOff = 0; let negOff = 0;
+          vals.forEach((v, j) => {
+            if (!Number.isFinite(v) || v === 0) return;
+            const bh = Math.max(1, chipBarH(v));
+            if (v > 0) {
+              rects.push(<rect key={`c-${d.dateKey}-${j}`} x={xc - bw / 2} y={chipMid - posOff - bh} width={bw} height={bh} fill={colors[j]} opacity={0.82} />);
+              posOff += bh;
+            } else {
+              rects.push(<rect key={`c-${d.dateKey}-${j}`} x={xc - bw / 2} y={chipMid + negOff} width={bw} height={bh} fill={colors[j]} opacity={0.5} />);
+              negOff += bh;
+            }
+          });
+          return rects;
+        })}
+
+
+        {/* Hover 十字線 */}
+        {hoverIdx != null && (
+          <line x1={xAt(hoverIdx)} y1={PAD_T} x2={xAt(hoverIdx)} y2={PAD_T + innerH} stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 3" />
+        )}
+
+        {/* 左軸 K 線價格 */}
+        {hasOhlc && [pMin + (pMax - pMin) * 0.1, pMin + (pMax - pMin) * 0.9].map((v, i) => (
+          <text key={`pl-${i}`} x={PAD_L - 3} y={yPrice(v) + 4} textAnchor="end" fontSize={9} fill="#6b7280" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {v >= 100 ? Math.round(v) : v.toFixed(1)}
+          </text>
+        ))}
+
+        {/* 右軸 外資持股 */}
+        {holdingTicks.map((v, i) => (
+          <text key={`hl-${i}`} x={PAD_L + innerW + 3} y={yHolding(v) + 4} textAnchor="start" fontSize={9} fill="#d97706" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {v >= 10000 ? `${Math.round(v / 1000)}k` : Math.round(v)}
+          </text>
+        ))}
+
+        {/* X 軸日期 */}
+        {xTickIdxs.map((i) => (
+          <text key={`xl-${i}`} x={xAt(i)} y={PAD_T + innerH + 16} textAnchor="middle" fontSize={10} fill="#64748b">
+            {String(data[i]?.dateKey || '').slice(5)}
+          </text>
+        ))}
+
+        {/* X 軸底線 */}
+        <line x1={PAD_L} y1={PAD_T + innerH} x2={PAD_L + innerW} y2={PAD_T + innerH} stroke="#e2e8f0" strokeWidth={1} />
+        {/* 上下格分隔線 */}
+        <line x1={PAD_L} y1={chipYBase} x2={PAD_L + innerW} y2={chipYBase} stroke="#e2e8f0" strokeWidth={1} />
+      </svg>
+
+      {/* Tooltip */}
+      {hd && (
+        <div style={{
+          position: 'absolute', top: tooltipTop,
+          left: mousePos.x > w / 2 ? Math.max(4, mousePos.x - 190) : mousePos.x + 14,
+          pointerEvents: 'none', zIndex: 20, fontSize: 12, lineHeight: 1.5,
+          borderRadius: 8, border: '1px solid #cbd5e1', backgroundColor: '#fff',
+          boxShadow: '0 8px 24px rgba(15,23,42,0.18)', padding: '10px 12px', minWidth: 160,
+        }}>
+          <div style={{ color: '#64748b', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid #e2e8f0', paddingBottom: 6 }}>
+            {hd.dateKey}
+            {hd.bSignal === 'B' && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#ff2d87', background: '#fff0f7', borderRadius: 4, padding: '1px 5px' }}>B訊號</span>}
+          </div>
+          {Number.isFinite(hd.close) && (
+            <div style={{ color: '#374151', fontWeight: 700, paddingBottom: 2 }}>
+              收：{hd.close >= 100 ? Math.round(hd.close) : hd.close?.toFixed(1)}
+              {hoverIdx > 0 && Number.isFinite(data[hoverIdx - 1]?.close) && (() => {
+                const pct = (hd.close - data[hoverIdx - 1].close) / data[hoverIdx - 1].close * 100;
+                return <span style={{ marginLeft: 4, color: pct > 0 ? '#c0392b' : '#2e7d32', fontSize: 11 }}>{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%</span>;
+              })()}
+            </div>
+          )}
+          {Number.isFinite(hd.holding) && (
+            <div style={{ color: '#d97706', fontWeight: 600, paddingBottom: 2 }}>外資持股：{Number(hd.holding).toLocaleString()} 張</div>
+          )}
+          {isInChipArea && Number.isFinite(hd.foreign) && (
+            <div style={{ color: '#1565c0', paddingBottom: 1 }}>外資買賣：{hd.foreign >= 0 ? '+' : ''}{Number(hd.foreign).toLocaleString()} 張</div>
+          )}
+          {isInChipArea && Number.isFinite(hd.trust) && (
+            <div style={{ color: '#16a34a', paddingBottom: 1 }}>投信買賣：{hd.trust >= 0 ? '+' : ''}{Number(hd.trust).toLocaleString()} 張</div>
+          )}
+          {isInChipArea && Number.isFinite(hd.dealer) && (
+            <div style={{ color: '#f97316', paddingBottom: 1 }}>自營商買賣：{hd.dealer >= 0 ? '+' : ''}{Number(hd.dealer).toLocaleString()} 張</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal（觀察列表頁亦共用） */
 export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist, watchlistPriority, onSetPriority }) {
   const [watchlistBusy, setWatchlistBusy] = useState(false);
@@ -1146,6 +1474,15 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const [vcpSnapshot, setVcpSnapshot] = useState(null);
   /** Yahoo 日 K OHLC，與 VCP 同一請求 */
   const [ohlcSeries, setOhlcSeries] = useState([]);
+  /** 視窗切換：'rs' = 預設，'foreign' = 外資籌碼視窗（A 鍵切換） */
+  const [activeView, setActiveView] = useState('rs');
+  /** 三大法人每日買賣超：{ [dateStr]: { foreign, trust, dealer } }，懶載入 */
+  const [institutionalData, setInstitutionalData] = useState(null);
+  const [institutionalLoading, setInstitutionalLoading] = useState(false);
+  /** 外資持股序列（RS 排行頁 stock 物件不含此資料，切換視窗二時懶載入） */
+  const [fetchedHoldings, setFetchedHoldings] = useState(null); // { holdings, latestDate } | false(failed)
+  /** 追蹤上一個 stock.id：用來判斷是「modal 新開」還是「左右導航」 */
+  const prevStockIdRef = useRef(null);
 
   /** 同一「交易日」只保留一點（台灣曆週六／週日併入週五）；舊資料若同週內多筆則取曆日較新那筆的 r */
   const history = useMemo(() => {
@@ -1164,13 +1501,24 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const earliestHistoryDate = history.length > 0 ? history[0].d : null;
 
   useEffect(() => {
-    if (!stock) return;
+    if (!stock) {
+      prevStockIdRef.current = null; // modal 關閉，重置追蹤
+      return;
+    }
+    // 判斷是「左右導航切換個股」還是「modal 從關閉→新開」
+    const isNavigation = prevStockIdRef.current !== null;
+    prevStockIdRef.current = stock.id;
+
     setLoading(true);
     setError(null);
     setIndexMap(null);
     setCloseQuote(null);
     setVcpSnapshot(null);
     setOhlcSeries([]);
+    // 導航切換個股時保持現有視窗（RS 或籌碼）；只有 modal 初次開啟時才重置為 RS
+    if (!isNavigation) setActiveView('rs');
+    setInstitutionalData(null);
+    setFetchedHoldings(null);
 
     const endStr = new Date().toISOString().slice(0, 10);
     // startStr：取 RS history 最早日期 與 K 棒起始日（quoteStart）兩者較早者，
@@ -1278,6 +1626,178 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     };
   }, [stock?.id, earliestHistoryDate, stock?.ibdRsPriceFetchedDate]);
 
+  // 切換到外資視窗時懶載入：三大法人資料 + 外資持股序列（若 stock 物件未帶）
+  useEffect(() => {
+    if (activeView !== 'foreign' || !stock?.id) return;
+
+    const hasHoldings  = Array.isArray(stock?.history?.foreignTotalHolding) && stock.history.foreignTotalHolding.length > 100;
+    const hasInstInObj = stock?.history?.instDates?.length > 0;
+    const needHoldings = !hasHoldings && fetchedHoldings === null;
+    const needInst     = institutionalData === null && !institutionalLoading;
+
+    if (!needHoldings && !needInst) return; // 兩者都已就緒
+
+    // 三大法人：stock 物件已帶資料直接用
+    if (!needHoldings && needInst) {
+      if (hasInstInObj) {
+        const h = stock.history;
+        setInstitutionalData(instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer));
+        return;
+      }
+    }
+
+    // 統一一次讀 Firestore stockWatchlist，同時取外資持股 + 三大法人
+    if (needHoldings || (needInst && !hasInstInObj)) {
+      if (needHoldings) setFetchedHoldings(undefined); // loading
+      if (needInst)     setInstitutionalLoading(true);
+
+      (async () => {
+        let fsHoldingsDone = false;
+        let fsInstDone     = false;
+        try {
+          const snap = await getDoc(doc(db, 'stockWatchlist', stock.id));
+          if (snap.exists()) {
+            const d = snap.data();
+
+            // 外資持股
+            if (needHoldings) {
+              const h = d.history?.foreignTotalHolding;
+              const ld = d.latestHoldingsDate ?? null;
+              if (Array.isArray(h) && h.length > 100) {
+                setFetchedHoldings({ holdings: h, latestDate: ld });
+                fsHoldingsDone = true;
+              }
+            }
+
+            // 三大法人
+            if (needInst) {
+              const h = d.history;
+              if (h?.instDates?.length > 0) {
+                setInstitutionalData(instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer));
+                setInstitutionalLoading(false);
+                fsInstDone = true;
+              }
+            }
+          }
+        } catch (_) { /* ignore */ }
+
+        // Firestore 查無 → fallback 到 FinMind，抓完後寫回 Firestore
+        const stockCode = stock.code || stock.id;
+        const docRef = doc(db, 'stockWatchlist', stockCode);
+
+        /** 局部寫入 Firestore（updateDoc 支援 dot-notation，不覆蓋其他 history 欄位） */
+        const saveToFirestore = async (fields) => {
+          try {
+            await updateDoc(docRef, fields);
+          } catch (e) {
+            if (e?.code === 'not-found') {
+              // doc 尚不存在 → 直接建立
+              const topLevel = {};
+              const histFields = {};
+              for (const [k, v] of Object.entries(fields)) {
+                if (k.startsWith('history.')) histFields[k.slice(8)] = v;
+                else topLevel[k] = v;
+              }
+              await setDoc(docRef, { code: stockCode, history: histFields, ...topLevel }, { merge: true });
+            }
+          }
+        };
+
+        if (needHoldings && !fsHoldingsDone) {
+          try {
+            const result = await fetchForeignHoldingSeries(stockCode);
+            if (result && Array.isArray(result.holdings) && result.holdings.length > 100) {
+              setFetchedHoldings(result);
+              // 非同步存回 Firestore（不阻擋 UI）
+              saveToFirestore({
+                'history.foreignTotalHolding': result.holdings,
+                latestHoldingsDate: result.latestDate,
+              }).catch(() => {});
+            } else {
+              setFetchedHoldings(false);
+            }
+          } catch (_) {
+            setFetchedHoldings(false);
+          }
+        }
+        if (needInst && !fsInstDone) {
+          try {
+            const threeYearsAgo = new Date();
+            threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+            const startDate = threeYearsAgo.toISOString().slice(0, 10);
+            const result = await fetchInstitutionalInvestorsSeries(stockCode, startDate);
+            setInstitutionalData(result || {});
+            // 轉成 parallel arrays 存回 Firestore
+            if (result && Object.keys(result).length > 0) {
+              const dates = Object.keys(result).sort().reverse();
+              saveToFirestore({
+                'history.instDates':   dates,
+                'history.instForeign': dates.map(d => result[d].foreign),
+                'history.instTrust':   dates.map(d => result[d].trust),
+                'history.instDealer':  dates.map(d => result[d].dealer),
+                latestInstDate: dates[0] ?? null,
+              }).catch(() => {});
+            }
+          } catch (_) {
+            setInstitutionalData({});
+          } finally {
+            setInstitutionalLoading(false);
+          }
+        }
+      })();
+    }
+  }, [activeView, stock?.id, institutionalData, institutionalLoading, fetchedHoldings, stock?.history?.foreignTotalHolding, stock?.history?.instDates]);
+
+  // 有效持股資料：優先用 stock 物件，否則用懶載入結果
+  const effectiveHoldings = useMemo(() => {
+    if (Array.isArray(stock?.history?.foreignTotalHolding) && stock.history.foreignTotalHolding.length > 100)
+      return { holdings: stock.history.foreignTotalHolding, latestDate: stock.latestHoldingsDate };
+    if (fetchedHoldings && fetchedHoldings.holdings?.length > 100)
+      return fetchedHoldings;
+    return null;
+  }, [stock?.history?.foreignTotalHolding, stock?.latestHoldingsDate, fetchedHoldings]);
+
+  // 外資視窗：歷史 B 訊號（最近 130 個交易日）
+  const foreignBSignals = useMemo(() => {
+    if (activeView !== 'foreign') return [];
+    return computeHistoricalForeignBSignals(effectiveHoldings?.holdings);
+  }, [activeView, effectiveHoldings]);
+
+  // 外資視窗圖表資料：K 線 + 外資持股 + 三大法人
+  const foreignChartData = useMemo(() => {
+    if (activeView !== 'foreign' || !ohlcSeries.length) return [];
+    const holdings = effectiveHoldings?.holdings;
+    const latestHoldingsDate = effectiveHoldings?.latestDate;
+
+    // 建立 OHLC 日期序列（由舊到新）
+    const sortedOhlc = [...ohlcSeries].sort((a, b) => a.dateStr < b.dateStr ? -1 : 1);
+    const n = sortedOhlc.length;
+
+    // 找到 anchorIdx：最後一個 OHLC 日期 <= latestHoldingsDate（即 holdings[0] 對應的 OHLC 位置）
+    let anchorIdx = n - 1;
+    if (latestHoldingsDate) {
+      for (let i = n - 1; i >= 0; i--) {
+        if (sortedOhlc[i].dateStr <= latestHoldingsDate) { anchorIdx = i; break; }
+      }
+    }
+
+    return sortedOhlc.map((o, i) => {
+      const hIdx = anchorIdx - i; // holdings[hIdx] 對應此日期
+      const holding = (holdings && hIdx >= 0 && hIdx < holdings.length) ? holdings[hIdx] : null;
+      const bSignal = (foreignBSignals && hIdx >= 0 && hIdx < foreignBSignals.length) ? foreignBSignals[hIdx] : 'N';
+      const inst = institutionalData?.[o.dateStr] ?? null;
+      return {
+        dateKey: o.dateStr,
+        open: o.open, high: o.high, low: o.low, close: o.close,
+        holding: Number.isFinite(holding) ? holding : null,
+        bSignal,
+        foreign: inst ? inst.foreign : null,
+        trust:   inst ? inst.trust   : null,
+        dealer:  inst ? inst.dealer  : null,
+      };
+    });
+  }, [activeView, ohlcSeries, effectiveHoldings, foreignBSignals, institutionalData]);
+
   /** 有日 K 時以 Yahoo 交易日為 X（與疊加 K 線逐根對齊）；否則退回 RS 歷史日序 */
   const chartData = useMemo(() => {
     if (!indexMap) return [];
@@ -1380,6 +1900,9 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose?.();
+      } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveView((v) => v === 'rs' ? 'foreign' : 'rs');
       } else if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
         if (priorityBusy || watchlistBusy) return;
         if (typeof onToggleWatchlist !== 'function' && typeof onSetPriority !== 'function') return;
@@ -1760,7 +2283,7 @@ style={{
                 maxWidth: 760,
                 border: '1px solid #e5e7eb',
                 borderRadius: 10,
-                padding: '10px 12px 8px',
+                padding: '8px 4px 4px',
                 background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
                 boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
               }}
@@ -1787,11 +2310,37 @@ style={{
                     alignSelf: 'stretch',
                     minHeight: 22,
                     borderRadius: 3,
-                    background: '#c0392b',
+                    background: activeView === 'rs' ? '#c0392b' : '#d97706',
                     flexShrink: 0,
                   }}
                   aria-hidden
                 />
+                {/* 視窗切換 tabs */}
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  {[
+                    { key: 'rs',      label: 'RS' },
+                    { key: 'foreign', label: '籌碼' },
+                  ].map(({ key, label }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setActiveView(key)}
+                      style={{
+                        padding: '2px 9px',
+                        fontSize: 12,
+                        fontWeight: activeView === key ? 700 : 500,
+                        borderRadius: 5,
+                        border: `1px solid ${activeView === key ? (key === 'rs' ? '#c0392b' : '#d97706') : '#e2e8f0'}`,
+                        background: activeView === key ? (key === 'rs' ? '#fef2f2' : '#fffbeb') : 'transparent',
+                        color: activeView === key ? (key === 'rs' ? '#c0392b' : '#d97706') : '#94a3b8',
+                        cursor: 'pointer',
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <div
                   style={{
                     flex: '1 1 0',
@@ -1804,37 +2353,32 @@ style={{
                     lineHeight: 1.35,
                   }}
                 >
-                  <span style={{ fontSize: 14, fontWeight: 800, color: '#111827', letterSpacing: '-0.02em', flexShrink: 0 }}>
-                    RS 與大盤
-                  </span>
-                  <span
-                    className="ibd-rs-chart-legend-text ibd-rs-chart-legend-text--full"
-                    style={{
-                      color: '#64748b',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      minWidth: 0,
-                    }}
-                  >
-                    <strong style={{ color: '#c0392b' }}>紅線</strong>＝RS（左）　
-                    <strong style={{ color: '#1565c0' }}>藍線</strong>＝加權 ^TWII（右）
-                  </span>
-                  <span
-                    className="ibd-rs-chart-legend-text ibd-rs-chart-legend-text--short"
-                    style={{
-                      color: '#64748b',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      minWidth: 0,
-                      display: 'none',
-                    }}
-                  >
-                    <strong style={{ color: '#c0392b' }}>紅</strong>＝RS ·{' '}
-                    <strong style={{ color: '#1565c0' }}>藍</strong>＝加權
-                  </span>
+                  {activeView === 'rs' ? (
+                    <>
+                      <span
+                        className="ibd-rs-chart-legend-text ibd-rs-chart-legend-text--full"
+                        style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
+                      >
+                        <strong style={{ color: '#c0392b' }}>紅</strong>＝RS（左）
+                        <strong style={{ color: '#1565c0' }}>藍</strong>＝加權（右）
+                      </span>
+                    </>
+                  ) : (
+                    <span
+                      style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, fontSize: 11 }}
+                    >
+                      <strong style={{ color: '#d97706' }}>金線</strong>＝外資持股
+                      {effectiveHoldings === null && fetchedHoldings !== false && <span style={{ color: '#94a3b8' }}> 持股載入中…</span>}
+                      {fetchedHoldings === false && effectiveHoldings === null && <span style={{ color: '#f87171' }}> 持股數據不可用</span>}
+                      　<strong style={{ color: '#ff2d87' }}>●</strong>＝B訊號
+                      {institutionalLoading && <span style={{ color: '#94a3b8' }}>法人載入中…</span>}
+                      {!institutionalLoading && institutionalData && Object.keys(institutionalData).length > 0 && (
+                        <><span style={{ color: '#1565c0' }}>■</span>外資 <span style={{ color: '#16a34a' }}>■</span>投信 <span style={{ color: '#f97316' }}>■</span>自營</>
+                      )}
+                    </span>
+                  )}
                 </div>
+                <span style={{ fontSize: 10, color: '#cbd5e1', flexShrink: 0, marginLeft: 4 }}>↑↓ 切換</span>
               </header>
               <div
                 className="ibd-rs-chart-modal-svg-bleed"
@@ -1846,7 +2390,11 @@ style={{
                   flexDirection: 'column',
                 }}
               >
-                <IbdRsComboChart data={chartData} />
+                {activeView === 'rs' ? (
+                  <IbdRsComboChart data={chartData} />
+                ) : (
+                  <ForeignChipChart data={foreignChartData} allHoldings={effectiveHoldings?.holdings} />
+                )}
               </div>
             </section>
           </div>
@@ -1858,14 +2406,16 @@ style={{
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 8,
-            marginTop: 6,
+            marginTop: 3,
             lineHeight: 1.5,
-            padding: '4px 8px 0',
+            padding: '2px 4px 0',
             flexShrink: 0,
           }}
         >
           <span style={{ fontSize: 10, color: '#94a3b8', textAlign: 'left', flex: '1 1 auto', minWidth: 0 }}>
-            RS 歷史隨每日 sync 累積；股價與 VCP 同源（Yahoo）
+            {activeView === 'rs'
+              ? 'RS 歷史隨每日 sync 累積；股價與 VCP 同源（Yahoo）'
+              : '外資持股日頻（晚上 10 點後更新）；三大法人即時抓取；B 訊號回溯至近 130 交易日'}
           </span>
           {typeof onToggleWatchlist === 'function' && (
             <div style={{ position: 'relative', flex: '0 0 auto', display: 'inline-flex' }}>
