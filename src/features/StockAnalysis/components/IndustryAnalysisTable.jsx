@@ -96,7 +96,7 @@ const EditableCell = ({ initialValue, onSave, type = "text", style = {} }) => {
 };
 
 /** @type {'main'|'chip'}  main=一般欄位(不含籌碼)  chip=籌碼欄位 */
-const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loading, columnsMode = 'main', bigColumnConfig = {}, columnLabels = [], onColumnLabelChange, onStockNameClick }) => {
+const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loading, columnsMode = 'main', bigColumnConfig = {}, columnLabels = [], onColumnLabelChange, onStockNameClick, onFlowDotClick }) => {
     const [showColor, setShowColor] = useState(true);
     const isChipMode = columnsMode === 'chip';
 
@@ -173,12 +173,22 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
     const thStyle = (extra = {}) => ({ height: rowH, maxHeight: rowH, padding: '2px 4px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden', ...extra });
     const tdBase = { height: rowH, maxHeight: rowH, padding: '1px 4px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden' };
 
-    // 42+50+52+46+46+46+46 = 328px per big column
-    const SUB_COL_WIDTHS_PX = [44, 44, 50, 52, 42, 42, 56];
+    // 44+44+50+52+42+42+56+40 = 370px per big column
+    const SUB_COL_WIDTHS_PX = [44, 44, 50, 52, 42, 42, 56, 40];
     const SUB_COL_WIDTHS = SUB_COL_WIDTHS_PX.map(w => `${w}px`);
     const BIG_COL_WIDTH_PX = SUB_COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
     const TABLE_TOTAL_WIDTH = NUM_BIG_COLUMNS * BIG_COL_WIDTH_PX;
     const SEP_LINE_WIDTH = 1;
+
+    // 流量累積張數格式化（單位：張）
+    const fmtFlow = (cum) => {
+        if (cum == null || cum === 0) return '';
+        const abs = Math.abs(cum);
+        const sign = cum >= 0 ? '+' : '-';
+        if (abs >= 10000) return `${sign}${(abs / 10000).toFixed(1)}萬`;
+        if (abs >= 1000)  return `${sign}${(abs / 1000).toFixed(1)}k`;
+        return `${sign}${abs}`;
+    };
 
     const renderMainCellBlock = (item, blockIndex) => {
         if (!item) {
@@ -228,12 +238,43 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                     </div>
                 </td>
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6], textAlign: 'center', color: stock.HoldingGrowth_M > 0 ? 'red' : 'green' }}>{stock.HoldingGrowth_M != null ? Number(stock.HoldingGrowth_M).toFixed(1) : '0'}%</td>
+                {/* 流量預警（外資 🟠 + 投信 🟣 合併欄，hover 看細節） */}
+                {(() => {
+                    // active=實色大點，day1=空心小點，無訊號=不渲染
+                    const fActive = stock.foreignFlowActive;
+                    const fWatch  = !fActive && stock.foreignFlowDays === 1;
+                    const tActive = stock.trustFlowActive;
+                    const tWatch  = !tActive && stock.trustFlowDays === 1;
+                    const tip  = [
+                        `外資: ${stock.foreignFlowDays > 0 ? `${stock.foreignFlowDays}d ${fmtFlow(stock.foreignFlowCum)}張` : '-'}`,
+                        `投信: ${stock.trustFlowDays   > 0 ? `${stock.trustFlowDays}d ${fmtFlow(stock.trustFlowCum)}張`   : '-'}`,
+                    ].join('\n');
+                    const anySignal = (stock.foreignFlowDays > 0) || (stock.trustFlowDays > 0);
+                    const dot = (active, watch, activeColor, days, cum, label) => {
+                        if (!active && !watch) return null;
+                        const msg = active
+                            ? `${label}已連續 ${days} 天大買，累積買超 ${Math.abs(cum).toLocaleString()} 張`
+                            : `${label}今天出現異常大買，若明天持續將觸發預警`;
+                        const style = active
+                            ? { width: 7, height: 7, borderRadius: '50%', backgroundColor: activeColor, display: 'inline-block', flexShrink: 0, cursor: 'pointer' }
+                            : { width: 7, height: 7, borderRadius: '50%', border: `2px solid ${activeColor}`, display: 'inline-block', flexShrink: 0, cursor: 'pointer' };
+                        return <span style={style} onClick={e => { e.stopPropagation(); onFlowDotClick ? onFlowDotClick(stock, msg) : alert(msg); }} />;
+                    };
+                    return (
+                        <td title={anySignal ? tip : undefined} style={{ ...tdBase, width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7], textAlign: 'center', padding: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', height: rowH }}>
+                                {dot(fActive, fWatch, '#ff2222', stock.foreignFlowDays, stock.foreignFlowCum, '外資')}
+                                {dot(tActive, tWatch, '#1a8cff', stock.trustFlowDays,   stock.trustFlowCum,   '投信')}
+                            </div>
+                        </td>
+                    );
+                })()}
             </React.Fragment>
         );
     };
 
     return (
-        <div style={{ padding: '6px' }}>
+        <div style={{ padding: '6px', zoom: 0.9 }}>
             
             {/* 籌碼頁：頂部產業標籤；一般頁：多欄並排、無獨立產業列（產業標題在表格內各欄） */}
             {isChipMode && (
@@ -330,6 +371,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                                 <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4] }) }}>量</th>
                                 <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5] }) }}>外資</th>
                                 <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6] }) }}>月增</th>
+                                <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7] }) }}>法人</th>
                             </React.Fragment>
                         ))}
                         {isChipMode && (

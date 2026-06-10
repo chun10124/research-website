@@ -114,6 +114,65 @@ const normalizeTanh = (value, alpha) => {
 
 // --- 核心計算函式 ---
 
+/**
+ * 外資 / 投信流量預警（Z 分數法）
+ *
+ * 以滑動視窗計算每日買賣超的 z-score（vs 過去 window 天），
+ * 連續 2 天以上 z-score > zThreshold 才視為「有效大買」並啟動。
+ * 啟動後持續計天數 + 累積張數。
+ *
+ * @param {number[]} foreign  外資每日淨買超（newest-first，單位：張）
+ * @param {number[]} trust    投信每日淨買超（newest-first，單位：張）
+ * @param {number}  zThreshold  觸發門檻，預設 1.0σ
+ * @param {number}  histWindow  歷史基準視窗（交易日），預設 250
+ */
+export const calculateFlowSignal = (foreign = [], trust = [], zThreshold = 1.0, histWindow = 250) => {
+    const calcStreak = (arr) => {
+        if (!arr || arr.length < histWindow + 2) return { days: 0, cumAmount: 0, active: false };
+
+        // 以 arr[1..histWindow] 初始化滑動視窗
+        let wSum = 0, wSumSq = 0;
+        for (let j = 1; j <= histWindow; j++) {
+            wSum   += arr[j];
+            wSumSq += arr[j] * arr[j];
+        }
+
+        let days = 0, cumAmount = 0;
+        for (let i = 0; i + histWindow + 1 < arr.length; i++) {
+            const mean     = wSum / histWindow;
+            const variance = Math.max(0, wSumSq / histWindow - mean * mean);
+            const std      = Math.sqrt(variance);
+            const z        = std > 0 ? (arr[i] - mean) / std : 0;
+
+            if (z > zThreshold) {
+                days++;
+                cumAmount += arr[i];
+                // 滑動視窗：移出 arr[i+1]，移入 arr[i+1+histWindow]
+                const out = arr[i + 1];
+                const inV = arr[i + 1 + histWindow] ?? 0;
+                wSum   = wSum   - out    + inV;
+                wSumSq = wSumSq - out*out + inV*inV;
+            } else {
+                break; // 連續中斷，停止計算
+            }
+        }
+
+        return { days, cumAmount, active: days >= 2 };
+    };
+
+    const f = calcStreak(foreign);
+    const t = calcStreak(trust);
+
+    return {
+        foreignFlowDays:   f.days,
+        foreignFlowCum:    f.cumAmount,   // 單位：張
+        foreignFlowActive: f.active,
+        trustFlowDays:     t.days,
+        trustFlowCum:      t.cumAmount,
+        trustFlowActive:   t.active,
+    };
+};
+
 export const calculateSingleStockIndicators = (stock) => {
     const priceData = stock.history?.priceClose || [];
     const totalHoldingData = stock.history?.foreignTotalHolding || []; 
@@ -137,6 +196,11 @@ export const calculateSingleStockIndicators = (stock) => {
 
     // 4. 外資買進力道策略 (10D ROC)
     const force = calculateForeignForce(totalHoldingData, stock.foreignBCount || 0);
+
+    // 4b. 外資 / 投信流量預警（Z 分數法）
+    const instForeign = stock.history?.instForeign || [];
+    const instTrust   = stock.history?.instTrust   || [];
+    const flow = calculateFlowSignal(instForeign, instTrust);
 
     // 5. 漲跌幅計算
     const raw_DailyChange = stock.yesterdayClose ? ((stock.currentPrice - stock.yesterdayClose) / stock.yesterdayClose) * 100 : 0;
@@ -164,6 +228,13 @@ export const calculateSingleStockIndicators = (stock) => {
         MA21Curvature,
         RevenueYoYCurvature,
         realTimePE: stock.realTimePE || '--',
+        // 🔶 流量預警（外資 / 投信 Z 分數連續 2 日）
+        foreignFlowDays:   flow.foreignFlowDays,
+        foreignFlowCum:    flow.foreignFlowCum,
+        foreignFlowActive: flow.foreignFlowActive,
+        trustFlowDays:     flow.trustFlowDays,
+        trustFlowCum:      flow.trustFlowCum,
+        trustFlowActive:   flow.trustFlowActive,
         calculatedStatus: '更新成功',
     };
 };

@@ -8,6 +8,7 @@ import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
 import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable';
 import BigColumnDragBoard from '../features/StockAnalysis/components/BigColumnDragBoard';
 import { syncStockSnapshots, fetchForeignHoldingSeries } from '../features/StockAnalysis/api/stockApi';
+import { calculateFlowSignal } from '../features/StockAnalysis/utils/analysisUtils';
 import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF, db } from '../utils/firebaseConfig';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
 import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
@@ -47,6 +48,8 @@ const AnalysisPage = () => {
     const [bigColumnConfig, setBigColumnConfig] = useState({});
     const [columnLabels, setColumnLabels] = useState(Array(NUM_BIG_COLUMNS).fill(''));
     const [selectedRsId, setSelectedRsId] = useState(null);
+    const [flowSignalNote, setFlowSignalNote] = useState(null);
+    const [openWithChipView, setOpenWithChipView] = useState(false);
 
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
     const { stocks: rsRatings, loading: rsLoading } = useIbdRsData();
@@ -160,6 +163,8 @@ const AnalysisPage = () => {
             const p = s.progress;
             if (p?.phase === 'done') {
                 setLastSyncAllAt(Date.now());
+                // 同步完成後強制刷新一次，確保最後幾支股票的資料（含法人訊號）寫入 UI
+                void refreshData().catch(() => {});
             }
             if (p?.done != null && p?.total != null) {
                 setSyncAllProgress({ current: p.done, total: p.total });
@@ -243,8 +248,33 @@ const AnalysisPage = () => {
     const openStockModal = (st) => {
         const key = st?.code ?? st?.id;
         if (!key) return;
+        setOpenWithChipView(false);
         setSelectedRsId(String(key));
     };
+
+    const handleFlowDotClick = (st) => {
+        const key = st?.code ?? st?.id;
+        if (!key) return;
+        setOpenWithChipView(true);
+        // 若 modal 已開著（prevStockId 非 null），先關閉再打開
+        // 讓 RsChartModal 的 isNavigation 判斷為 false，確保以 initialView='foreign' 開啟
+        setSelectedRsId(null);
+        requestAnimationFrame(() => setSelectedRsId(String(key)));
+    };
+
+    // 每次選股切換時，自動從 watchlist stocks 計算 flow 訊號
+    useEffect(() => {
+        if (!selectedRsId) { setFlowSignalNote(null); return; }
+        const ws = stocks.find(s => String(s.code ?? s.id) === selectedRsId || String(s.id) === selectedRsId);
+        if (!ws) { setFlowSignalNote(null); return; }
+        const flow = calculateFlowSignal(ws.history?.instForeign || [], ws.history?.instTrust || []);
+        const parts = [];
+        if (flow.foreignFlowActive)      parts.push(`外資已連續 ${flow.foreignFlowDays} 天大買，累積 ${Math.abs(flow.foreignFlowCum).toLocaleString()} 張`);
+        else if (flow.foreignFlowDays === 1) parts.push(`外資今天出現異常大買，若明天持續將觸發預警`);
+        if (flow.trustFlowActive)        parts.push(`投信已連續 ${flow.trustFlowDays} 天大買，累積 ${Math.abs(flow.trustFlowCum).toLocaleString()} 張`);
+        else if (flow.trustFlowDays === 1)   parts.push(`投信今天出現異常大買，若明天持續將觸發預警`);
+        setFlowSignalNote(parts.length > 0 ? parts.join('　／　') : null);
+    }, [selectedRsId, stocks]);
 
     const categoriesFromStocks = [...new Set((stocks || []).map(s => s.category || '未分類'))].sort();
 
@@ -332,6 +362,7 @@ const AnalysisPage = () => {
                             columnLabels={columnLabels}
                             onColumnLabelChange={saveColumnLabel}
                             onStockNameClick={openStockModal}
+                            onFlowDotClick={handleFlowDotClick}
                         />
                     </div>
 
@@ -640,11 +671,13 @@ const AnalysisPage = () => {
                     stock={selectedStock}
                     navigationList={navigationList}
                     onNavigate={(st) => setSelectedRsId(st?.id ?? null)}
-                    onClose={() => setSelectedRsId(null)}
+                    onClose={() => { setSelectedRsId(null); setFlowSignalNote(null); setOpenWithChipView(false); }}
                     inWatchlist={rsWatchlistIdSet.has(selectedStock.id)}
                     onToggleWatchlist={async (st) => { await toggleRsWatchlist(st.id); }}
                     watchlistPriority={rsWatchlistPriorities[selectedStock.id] ?? null}
                     onSetPriority={async (st, p) => { await setRsWatchlistPriority(st.id, p); }}
+                    signalNote={flowSignalNote}
+                    initialView={openWithChipView ? 'foreign' : 'rs'}
                 />
             )}
         </Layout>

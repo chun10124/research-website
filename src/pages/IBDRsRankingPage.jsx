@@ -1465,7 +1465,7 @@ function ForeignChipChart({ data, allHoldings }) {
 }
 
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal（觀察列表頁亦共用） */
-export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist, watchlistPriority, onSetPriority }) {
+export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist, watchlistPriority, onSetPriority, signalNote, initialView }) {
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   const [priorityBusy, setPriorityBusy] = useState(false);
   const [indexMap, setIndexMap] = useState(null);
@@ -1478,7 +1478,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   /** Yahoo 日 K OHLC，與 VCP 同一請求 */
   const [ohlcSeries, setOhlcSeries] = useState([]);
   /** 視窗切換：'rs' = 預設，'foreign' = 外資籌碼視窗（A 鍵切換） */
-  const [activeView, setActiveView] = useState('rs');
+  const [activeView, setActiveView] = useState(initialView ?? 'rs');
   /** 三大法人每日買賣超：{ [dateStr]: { foreign, trust, dealer } }，懶載入 */
   const [institutionalData, setInstitutionalData] = useState(null);
   const [institutionalLoading, setInstitutionalLoading] = useState(false);
@@ -1518,8 +1518,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     setCloseQuote(null);
     setVcpSnapshot(null);
     setOhlcSeries([]);
-    // 導航切換個股時保持現有視窗（RS 或籌碼）；只有 modal 初次開啟時才重置為 RS
-    if (!isNavigation) setActiveView('rs');
+    // 初次開啟用 initialView（預設 rs）；導航切換個股時一律回到 rs
+    setActiveView(isNavigation ? 'rs' : (initialView ?? 'rs'));
     setInstitutionalData(null);
     setFetchedHoldings(null);
 
@@ -2249,6 +2249,22 @@ style={{
                 K 線圖
               </a>
             )}
+            {signalNote && (
+              <span style={{
+                fontSize: 11,
+                fontWeight: 500,
+                color: '#92400e',
+                background: '#fff8e1',
+                border: '1px solid #f59e0b',
+                borderRadius: 4,
+                padding: '2px 7px',
+                lineHeight: 1.4,
+                flexShrink: 1,
+                minWidth: 0,
+              }}>
+                {signalNote}
+              </span>
+            )}
           </div>
           <button
             type="button"
@@ -2591,7 +2607,7 @@ function downloadWatchlistJson(items) {
   URL.revokeObjectURL(url);
 }
 
-function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, onMeasure, mobileLayout = false, onDownload }) {
+function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, onMeasure, mobileLayout = false, onDownload, pctShortDays = 5, pctLongDays = 20 }) {
   const { key, title, subtitle, items, totalCount, emptyText } = section;
   const cardRef = useRef(null);
   const [cardPage, setCardPage] = useState(0);
@@ -2760,8 +2776,8 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
                 <th style={th}>RS</th>
                 <th style={th}>Δ5</th>
                 <th style={th}>Δ20</th>
-                <th style={th}>5D</th>
-                <th style={th}>20D</th>
+                <th style={th}>{pctShortDays}D</th>
+                <th style={th}>{pctLongDays}D</th>
                 <th style={th}>HL</th>
               </tr>
             </thead>
@@ -2808,8 +2824,8 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
                     <td style={{ ...td, color: '#334155' }}>{displayRs ?? '—'}</td>
                     <td style={{ ...td, color: getDeltaColor(s.delta5d) }}>{fmtDelta(s.delta5d)}</td>
                     <td style={{ ...td, color: getDeltaColor(s.delta20d) }}>{fmtDelta(s.delta20d)}</td>
-                    <td style={{ ...td, color: getDeltaColor(s.pricePct5d) }}>{fmtPct(s.pricePct5d)}</td>
-                    <td style={{ ...td, color: getDeltaColor(s.pricePct20d) }}>{fmtPct(s.pricePct20d)}</td>
+                    <td style={{ ...td, color: getDeltaColor(s.pricePctShort ?? s.pricePct5d) }}>{fmtPct(s.pricePctShort ?? s.pricePct5d)}</td>
+                    <td style={{ ...td, color: getDeltaColor(s.pricePctLong ?? s.pricePct20d) }}>{fmtPct(s.pricePctLong ?? s.pricePct20d)}</td>
                     <td style={{ ...td, color: '#475569' }}>{fmtHl(s.pricePos6m)}</td>
                   </tr>
                 );
@@ -3278,10 +3294,10 @@ function stockPassesNonVcpFilters(s, filters) {
   if (d5max != null && (s.delta5d == null || s.delta5d > d5max)) return false;
   if (d20min != null && (s.delta20d == null || s.delta20d < d20min)) return false;
   if (d20max != null && (s.delta20d == null || s.delta20d > d20max)) return false;
-  if (pct5dMin != null && (s.pricePct5d == null || s.pricePct5d < pct5dMin)) return false;
-  if (pct5dMax != null && (s.pricePct5d == null || s.pricePct5d > pct5dMax)) return false;
-  if (pct20dMin != null && (s.pricePct20d == null || s.pricePct20d < pct20dMin)) return false;
-  if (pct20dMax != null && (s.pricePct20d == null || s.pricePct20d > pct20dMax)) return false;
+  if (pct5dMin != null && (s.pricePctShort == null || s.pricePctShort < pct5dMin)) return false;
+  if (pct5dMax != null && (s.pricePctShort == null || s.pricePctShort > pct5dMax)) return false;
+  if (pct20dMin != null && (s.pricePctLong == null || s.pricePctLong < pct20dMin)) return false;
+  if (pct20dMax != null && (s.pricePctLong == null || s.pricePctLong > pct20dMax)) return false;
   if (hlMin != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m < hlMin)) return false;
   if (hlMax != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m > hlMax)) return false;
 
@@ -3310,6 +3326,9 @@ const DEFAULT_FILTERS = {
   delta5dMax: '',
   delta20dMin: '',
   delta20dMax: '',
+  /** 漲跌幅：短／長回溯「交易日」數（priceMap；自選天數） */
+  pctShortDays: '5',
+  pctLongDays: '20',
   pct5dMin: '',
   pct5dMax: '',
   pct20dMin: '',
@@ -3594,15 +3613,25 @@ export default function IBDRsRankingPage() {
     () => clampIbdDeltaDays(filters.deltaLongDays, 20),
     [filters.deltaLongDays]
   );
+  const pctShortDaysResolved = useMemo(
+    () => clampIbdDeltaDays(filters.pctShortDays, 5),
+    [filters.pctShortDays]
+  );
+  const pctLongDaysResolved = useMemo(
+    () => clampIbdDeltaDays(filters.pctLongDays, 20),
+    [filters.pctLongDays]
+  );
 
-  // ── Step 1：預先計算每檔兩欄「RS 變化」（回溯**交易日**數由篩選器自訂；預設 5／20）
+  // ── Step 1：預先計算每檔 RS 變化 + 自選天數漲跌幅
   const enriched = useMemo(() => {
     const deltaFilters = {
       deltaShortDays: deltaShortDaysResolved,
-      deltaLongDays: deltaLongDaysResolved,
+      deltaLongDays:  deltaLongDaysResolved,
+      pctShortDays:   pctShortDaysResolved,
+      pctLongDays:    pctLongDaysResolved,
     };
     return stocks.map((s) => enrichIbdRsRow(s, deltaFilters));
-  }, [stocks, deltaShortDaysResolved, deltaLongDaysResolved]);
+  }, [stocks, deltaShortDaysResolved, deltaLongDaysResolved, pctShortDaysResolved, pctLongDaysResolved]);
 
   // ── Step 2：依全體 RS 排序（有「顯示用 RS」的在前；含僅歷史有值者）
   const globalSorted = useMemo(() => {
@@ -4693,16 +4722,50 @@ export default function IBDRsRankingPage() {
                     onLowerChange={setFilter('delta20dMin')}
                   />
 
-                  <FilterSectionTitle>5D / 20D 漲跌幅（%）</FilterSectionTitle>
+                  <FilterSectionTitle>漲跌幅（%）</FilterSectionTitle>
                   <FilterSandwichBetween
-                    centerLabel="5D"
+                    centerAriaName={`漲跌幅·${pctShortDaysResolved}日`}
+                    centerSlot={
+                      <>
+                        <input
+                          {...FILTER_INPUT_MARK}
+                          className="ibd-rs-filter-input"
+                          type="number"
+                          min={1}
+                          max={365}
+                          step={1}
+                          value={filters.pctShortDays}
+                          onChange={(e) => setFilter('pctShortDays')(e.target.value)}
+                          style={FILTER_DELTA_DAYS_INPUT}
+                          aria-label="漲跌幅：短區間交易日數"
+                        />
+                        <span style={FILTER_DELTA_MID_TEXT_STYLE}>日</span>
+                      </>
+                    }
                     upperValue={filters.pct5dMax}
                     lowerValue={filters.pct5dMin}
                     onUpperChange={setFilter('pct5dMax')}
                     onLowerChange={setFilter('pct5dMin')}
                   />
                   <FilterSandwichBetween
-                    centerLabel="20D"
+                    centerAriaName={`漲跌幅·${pctLongDaysResolved}日`}
+                    centerSlot={
+                      <>
+                        <input
+                          {...FILTER_INPUT_MARK}
+                          className="ibd-rs-filter-input"
+                          type="number"
+                          min={1}
+                          max={365}
+                          step={1}
+                          value={filters.pctLongDays}
+                          onChange={(e) => setFilter('pctLongDays')(e.target.value)}
+                          style={FILTER_DELTA_DAYS_INPUT}
+                          aria-label="漲跌幅：長區間交易日數"
+                        />
+                        <span style={FILTER_DELTA_MID_TEXT_STYLE}>日</span>
+                      </>
+                    }
                     upperValue={filters.pct20dMax}
                     lowerValue={filters.pct20dMin}
                     onUpperChange={setFilter('pct20dMax')}
@@ -4841,6 +4904,8 @@ export default function IBDRsRankingPage() {
                     uniformHeight={isMobileLayout ? null : homeCardUniformHeight}
                     mobileLayout={isMobileLayout}
                     onMeasure={handleHomeCardMeasure}
+                    pctShortDays={pctShortDaysResolved}
+                    pctLongDays={pctLongDaysResolved}
                     onPickStock={(s) => {
                       setChartNavOverride({
                         list: sec.items,
