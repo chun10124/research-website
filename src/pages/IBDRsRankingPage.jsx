@@ -1667,11 +1667,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               const h  = d.history?.foreignTotalHolding;
               const hd = d.history?.foreignHoldingDates ?? null;
               const ld = d.latestHoldingsDate ?? null;
-              // 新鮮度檢查：資料超過 5 天視為過期，繼續往下呼叫 FinMind API 補新資料
+              // 新鮮度檢查：持股資料超過 3 天視為過期（持股有出版延遲），繼續往下呼叫 API
               const daysSinceUpdate = ld
                 ? Math.floor((Date.now() - new Date(ld).getTime()) / 86400000)
                 : 999;
-              if (Array.isArray(h) && h.length > 100 && daysSinceUpdate <= 5) {
+              if (Array.isArray(h) && h.length > 100 && daysSinceUpdate <= 3) {
                 setFetchedHoldings({ holdings: h, holdingDates: hd, latestDate: ld });
                 fsHoldingsDone = true;
               }
@@ -1684,7 +1684,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               const instDaysSince = instLd
                 ? Math.floor((Date.now() - new Date(instLd).getTime()) / 86400000)
                 : 999;
-              if (h?.instDates?.length > 0 && instDaysSince <= 5) {
+              // 當天或前一個交易日的資料才算新鮮，否則打 API 補最新買賣超
+              if (h?.instDates?.length > 0 && instDaysSince <= 1) {
                 setInstitutionalData(instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer));
                 setInstitutionalLoading(false);
                 fsInstDone = true;
