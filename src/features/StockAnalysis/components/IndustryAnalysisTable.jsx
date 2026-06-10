@@ -240,22 +240,28 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6], textAlign: 'center', color: stock.HoldingGrowth_M > 0 ? 'red' : 'green' }}>{stock.HoldingGrowth_M != null ? Number(stock.HoldingGrowth_M).toFixed(1) : '0'}%</td>
                 {/* 流量預警（外資 🟠 + 投信 🟣 合併欄，hover 看細節） */}
                 {(() => {
-                    // active=實色大點，day1=空心小點，無訊號=不渲染
-                    const fActive = stock.foreignFlowActive;
-                    const fWatch  = !fActive && stock.foreignFlowDays === 1;
-                    const tActive = stock.trustFlowActive;
-                    const tWatch  = !tActive && stock.trustFlowDays === 1;
-                    const tip  = [
-                        `外資: ${stock.foreignFlowDays > 0 ? `${stock.foreignFlowDays}d ${fmtFlow(stock.foreignFlowCum)}張` : '-'}`,
-                        `投信: ${stock.trustFlowDays   > 0 ? `${stock.trustFlowDays}d ${fmtFlow(stock.trustFlowCum)}張`   : '-'}`,
-                    ].join('\n');
-                    const anySignal = (stock.foreignFlowDays > 0) || (stock.trustFlowDays > 0);
-                    const dot = (active, watch, activeColor, days, cum, label) => {
-                        if (!active && !watch) return null;
+                    // active=實色大點，persist=訊號消退仍持續實色，day1=空心小點，無訊號=不渲染
+                    const fActive  = stock.foreignFlowActive;
+                    const fPersist = !fActive && (stock.foreignFlowPersist > 0);
+                    const fWatch   = !fActive && !fPersist && stock.foreignFlowDays === 1;
+                    const tActive  = stock.trustFlowActive;
+                    const tPersist = !tActive && (stock.trustFlowPersist > 0);
+                    const tWatch   = !tActive && !tPersist && stock.trustFlowDays === 1;
+                    const tip = [
+                        fActive  ? `外資: ${stock.foreignFlowDays}d ${fmtFlow(stock.foreignFlowCum)}張`
+                                 : fPersist ? `外資: 訊號消退中` : null,
+                        tActive  ? `投信: ${stock.trustFlowDays}d ${fmtFlow(stock.trustFlowCum)}張`
+                                 : tPersist ? `投信: 訊號消退中` : null,
+                    ].filter(Boolean).join('\n');
+                    const anySignal = fActive || fPersist || fWatch || tActive || tPersist || tWatch;
+                    const dot = (active, persist, watch, activeColor, days, cum, persistRemaining, label) => {
+                        if (!active && !persist && !watch) return null;
                         const msg = active
                             ? `${label}已連續 ${days} 天大買，累積買超 ${Math.abs(cum).toLocaleString()} 張`
+                            : persist
+                            ? `${label}訊號消退中`
                             : `${label}今天出現異常大買，若明天持續將觸發預警`;
-                        const style = active
+                        const style = (active || persist)
                             ? { width: 7, height: 7, borderRadius: '50%', backgroundColor: activeColor, display: 'inline-block', flexShrink: 0, cursor: 'pointer' }
                             : { width: 7, height: 7, borderRadius: '50%', border: `2px solid ${activeColor}`, display: 'inline-block', flexShrink: 0, cursor: 'pointer' };
                         return <span style={style} onClick={e => { e.stopPropagation(); onFlowDotClick ? onFlowDotClick(stock, msg) : alert(msg); }} />;
@@ -263,8 +269,8 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                     return (
                         <td title={anySignal ? tip : undefined} style={{ ...tdBase, width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7], textAlign: 'center', padding: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', height: rowH }}>
-                                {dot(fActive, fWatch, '#ff2222', stock.foreignFlowDays, stock.foreignFlowCum, '外資')}
-                                {dot(tActive, tWatch, '#1a8cff', stock.trustFlowDays,   stock.trustFlowCum,   '投信')}
+                                {dot(fActive, fPersist, fWatch, '#ff2222', stock.foreignFlowDays, stock.foreignFlowCum, stock.foreignFlowPersist, '外資')}
+                                {dot(tActive, tPersist, tWatch, '#1a8cff', stock.trustFlowDays,   stock.trustFlowCum,   stock.trustFlowPersist,   '投信')}
                             </div>
                         </td>
                     );

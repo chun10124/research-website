@@ -48,7 +48,6 @@ const AnalysisPage = () => {
     const [bigColumnConfig, setBigColumnConfig] = useState({});
     const [columnLabels, setColumnLabels] = useState(Array(NUM_BIG_COLUMNS).fill(''));
     const [selectedRsId, setSelectedRsId] = useState(null);
-    const [flowSignalNote, setFlowSignalNote] = useState(null);
     const [openWithChipView, setOpenWithChipView] = useState(false);
 
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
@@ -262,18 +261,20 @@ const AnalysisPage = () => {
         requestAnimationFrame(() => setSelectedRsId(String(key)));
     };
 
-    // 每次選股切換時，自動從 watchlist stocks 計算 flow 訊號
-    useEffect(() => {
-        if (!selectedRsId) { setFlowSignalNote(null); return; }
+    // render 時同步計算，避免切換股票時閃現前一檔訊號
+    const flowSignalNote = useMemo(() => {
+        if (!selectedRsId) return null;
         const ws = stocks.find(s => String(s.code ?? s.id) === selectedRsId || String(s.id) === selectedRsId);
-        if (!ws) { setFlowSignalNote(null); return; }
-        const flow = calculateFlowSignal(ws.history?.instForeign || [], ws.history?.instTrust || []);
+        if (!ws?.history?.instForeign?.length) return null;
+        const flow = calculateFlowSignal(ws.history.instForeign, ws.history?.instTrust || []);
         const parts = [];
-        if (flow.foreignFlowActive)      parts.push(`外資已連續 ${flow.foreignFlowDays} 天大買，累積 ${Math.abs(flow.foreignFlowCum).toLocaleString()} 張`);
-        else if (flow.foreignFlowDays === 1) parts.push(`外資今天出現異常大買，若明天持續將觸發預警`);
-        if (flow.trustFlowActive)        parts.push(`投信已連續 ${flow.trustFlowDays} 天大買，累積 ${Math.abs(flow.trustFlowCum).toLocaleString()} 張`);
-        else if (flow.trustFlowDays === 1)   parts.push(`投信今天出現異常大買，若明天持續將觸發預警`);
-        setFlowSignalNote(parts.length > 0 ? parts.join('　／　') : null);
+        if (flow.foreignFlowActive)           parts.push(`外資連買 ${flow.foreignFlowDays}日`);
+        else if (flow.foreignFlowPersist > 0) parts.push(`外資消退中`);
+        else if (flow.foreignFlowDays === 1)  parts.push(`外資今日大買`);
+        if (flow.trustFlowActive)             parts.push(`投信連買 ${flow.trustFlowDays}日`);
+        else if (flow.trustFlowPersist > 0)   parts.push(`投信消退中`);
+        else if (flow.trustFlowDays === 1)    parts.push(`投信今日大買`);
+        return parts.length > 0 ? parts.join(' / ') : null;
     }, [selectedRsId, stocks]);
 
     const categoriesFromStocks = [...new Set((stocks || []).map(s => s.category || '未分類'))].sort();
@@ -671,7 +672,7 @@ const AnalysisPage = () => {
                     stock={selectedStock}
                     navigationList={navigationList}
                     onNavigate={(st) => setSelectedRsId(st?.id ?? null)}
-                    onClose={() => { setSelectedRsId(null); setFlowSignalNote(null); setOpenWithChipView(false); }}
+                    onClose={() => { setSelectedRsId(null); setOpenWithChipView(false); }}
                     inWatchlist={rsWatchlistIdSet.has(selectedStock.id)}
                     onToggleWatchlist={async (st) => { await toggleRsWatchlist(st.id); }}
                     watchlistPriority={rsWatchlistPriorities[selectedStock.id] ?? null}

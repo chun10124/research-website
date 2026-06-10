@@ -127,49 +127,77 @@ const normalizeTanh = (value, alpha) => {
  * @param {number}  histWindow  歷史基準視窗（交易日），預設 250
  */
 export const calculateFlowSignal = (foreign = [], trust = [], zThreshold = 1.0, histWindow = 250) => {
-    const calcStreak = (arr) => {
-        if (!arr || arr.length < histWindow + 2) return { days: 0, cumAmount: 0, active: false };
+    const PERSIST_DAYS = 3;
 
-        // 以 arr[1..histWindow] 初始化滑動視窗
+    const calcStreak = (arr) => {
+        if (!arr || arr.length < histWindow + 2) return { days: 0, cumAmount: 0, active: false, persistRemaining: 0 };
+
+        // 預算足夠掃描的 z-score（當前連續段 + PERSIST_DAYS 緩衝）
+        const maxScan = Math.min(PERSIST_DAYS + 20, arr.length - histWindow - 1);
         let wSum = 0, wSumSq = 0;
         for (let j = 1; j <= histWindow; j++) {
             wSum   += arr[j];
             wSumSq += arr[j] * arr[j];
         }
-
-        let days = 0, cumAmount = 0;
-        for (let i = 0; i + histWindow + 1 < arr.length; i++) {
+        const zScores = new Array(maxScan);
+        for (let i = 0; i < maxScan; i++) {
             const mean     = wSum / histWindow;
             const variance = Math.max(0, wSumSq / histWindow - mean * mean);
             const std      = Math.sqrt(variance);
-            const z        = std > 0 ? (arr[i] - mean) / std : 0;
+            zScores[i]     = std > 0 ? (arr[i] - mean) / std : 0;
+            const out = arr[i + 1];
+            const inV = arr[i + 1 + histWindow] ?? 0;
+            wSum   = wSum   - out    + inV;
+            wSumSq = wSumSq - out*out + inV*inV;
+        }
 
-            if (z > zThreshold) {
-                days++;
-                cumAmount += arr[i];
-                // 滑動視窗：移出 arr[i+1]，移入 arr[i+1+histWindow]
-                const out = arr[i + 1];
-                const inV = arr[i + 1 + histWindow] ?? 0;
-                wSum   = wSum   - out    + inV;
-                wSumSq = wSumSq - out*out + inV*inV;
-            } else {
-                break; // 連續中斷，停止計算
+        // 從今天（i=0）往回數連續大買天數
+        let days = 0, cumAmount = 0;
+        for (let i = 0; i < zScores.length; i++) {
+            if (zScores[i] > zThreshold) { days++; cumAmount += arr[i]; }
+            else break;
+        }
+
+        const active = days >= 2;
+
+        // 若目前不在 active 狀態，往前找最近一次 active 結束的時間點
+        // i=1 → 訊號昨天還在、今天消失，persistRemaining=5
+        // i=2 → 訊號前天結束，persistRemaining=4，以此類推
+        let persistRemaining = 0;
+        let persistStreakDays = 0;
+        if (!active) {
+            let i = days;
+            while (i < zScores.length) {
+                if (zScores[i] > zThreshold) {
+                    let pastDays = 0, j = i;
+                    while (j < zScores.length && zScores[j] > zThreshold) { pastDays++; j++; }
+                    if (pastDays >= 2) {
+                        persistRemaining = Math.max(0, PERSIST_DAYS - (i - 1));
+                        persistStreakDays = pastDays;
+                    }
+                    break;
+                }
+                i++;
             }
         }
 
-        return { days, cumAmount, active: days >= 2 };
+        return { days, cumAmount, active, persistRemaining, persistStreakDays };
     };
 
     const f = calcStreak(foreign);
     const t = calcStreak(trust);
 
     return {
-        foreignFlowDays:   f.days,
-        foreignFlowCum:    f.cumAmount,   // 單位：張
-        foreignFlowActive: f.active,
-        trustFlowDays:     t.days,
-        trustFlowCum:      t.cumAmount,
-        trustFlowActive:   t.active,
+        foreignFlowDays:         f.days,
+        foreignFlowCum:          f.cumAmount,   // 單位：張
+        foreignFlowActive:       f.active,
+        foreignFlowPersist:      f.persistRemaining,
+        foreignFlowPersistDays:  f.persistStreakDays,
+        trustFlowDays:           t.days,
+        trustFlowCum:            t.cumAmount,
+        trustFlowActive:         t.active,
+        trustFlowPersist:        t.persistRemaining,
+        trustFlowPersistDays:    t.persistStreakDays,
     };
 };
 
@@ -229,12 +257,16 @@ export const calculateSingleStockIndicators = (stock) => {
         RevenueYoYCurvature,
         realTimePE: stock.realTimePE || '--',
         // 🔶 流量預警（外資 / 投信 Z 分數連續 2 日）
-        foreignFlowDays:   flow.foreignFlowDays,
-        foreignFlowCum:    flow.foreignFlowCum,
-        foreignFlowActive: flow.foreignFlowActive,
-        trustFlowDays:     flow.trustFlowDays,
-        trustFlowCum:      flow.trustFlowCum,
-        trustFlowActive:   flow.trustFlowActive,
+        foreignFlowDays:        flow.foreignFlowDays,
+        foreignFlowCum:         flow.foreignFlowCum,
+        foreignFlowActive:      flow.foreignFlowActive,
+        foreignFlowPersist:     flow.foreignFlowPersist,
+        foreignFlowPersistDays: flow.foreignFlowPersistDays,
+        trustFlowDays:          flow.trustFlowDays,
+        trustFlowCum:           flow.trustFlowCum,
+        trustFlowActive:        flow.trustFlowActive,
+        trustFlowPersist:       flow.trustFlowPersist,
+        trustFlowPersistDays:   flow.trustFlowPersistDays,
         calculatedStatus: '更新成功',
     };
 };

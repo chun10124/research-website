@@ -2228,43 +2228,48 @@ style={{
                 </>
               )}
             </span>
-            {tradingViewUrl && (
-              <a
-                href={tradingViewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="TradingView K 線圖（新分頁）"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#1565c0',
-                  textDecoration: 'none',
-                  borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
-                  lineHeight: 1.2,
-                  flexShrink: 0,
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
+              {tradingViewUrl && (
+                <a
+                  href={tradingViewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="TradingView K 線圖（新分頁）"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#1565c0',
+                    textDecoration: 'none',
+                    borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
+                    lineHeight: 1.2,
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  K 線圖
+                </a>
+              )}
+              {signalNote && (
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: '#92400e',
+                  background: '#fff8e1',
+                  border: '1px solid #f59e0b',
+                  borderRadius: 4,
+                  padding: '2px 7px',
+                  lineHeight: 1.4,
+                  flexShrink: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
-                }}
-              >
-                K 線圖
-              </a>
-            )}
-            {signalNote && (
-              <span style={{
-                fontSize: 11,
-                fontWeight: 500,
-                color: '#92400e',
-                background: '#fff8e1',
-                border: '1px solid #f59e0b',
-                borderRadius: 4,
-                padding: '2px 7px',
-                lineHeight: 1.4,
-                flexShrink: 1,
-                minWidth: 0,
-              }}>
-                {signalNote}
-              </span>
-            )}
+                }}>
+                  {signalNote}
+                </span>
+              )}
+            </div>
           </div>
           <button
             type="button"
