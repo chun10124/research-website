@@ -1,14 +1,14 @@
 /* src/pages/AnalysisPage.jsx */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { setDoc, onSnapshot } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { setDoc, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
 import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable';
 import BigColumnDragBoard from '../features/StockAnalysis/components/BigColumnDragBoard';
-import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
-import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF } from '../utils/firebaseConfig';
+import { syncStockSnapshots, fetchForeignHoldingSeries } from '../features/StockAnalysis/api/stockApi';
+import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF, db } from '../utils/firebaseConfig';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
 import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
 import { RsChartModal } from './IBDRsRankingPage';
@@ -51,6 +51,73 @@ const AnalysisPage = () => {
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
     const { stocks: rsRatings, loading: rsLoading } = useIbdRsData();
     const { idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } = useIbdRsWatchlist();
+
+    // ── 追蹤表籌碼懶載入 ──────────────────────────────────────────────
+    // 初次載入完成後，對持股資料不足的股票自動背景補抓 FinMind，
+    // 確保 calculateForeignForce (需 ≥710 筆) 能正常計算 B/N 訊號。
+    const chipAutoFetchDoneRef = useRef(false);
+    useEffect(() => {
+        if (loading || stocks.length === 0) return;
+        if (chipAutoFetchDoneRef.current) return; // 每次掛載只跑一次
+        chipAutoFetchDoneRef.current = true;
+
+        const HOLDING_MIN = 710; // calculateForeignForce 門檻
+        const incomplete = stocks.filter((s) => {
+            const h = s.history?.foreignTotalHolding;
+            return !Array.isArray(h) || h.length < HOLDING_MIN;
+        });
+        if (incomplete.length === 0) return;
+
+        console.log(`[追蹤表] ${incomplete.length} 支股票外資持股不足，背景補抓中…`);
+        let cancelled = false;
+        (async () => {
+            let updated = 0;
+            for (const stock of incomplete) {
+                if (cancelled) break;
+                const code = stock.code || stock.id;
+                try {
+                    const result = await fetchForeignHoldingSeries(code);
+                    if (result?.holdings?.length > 100) {
+                        const docRef = doc(db, 'stockWatchlist', stock.id);
+                        const saveFields = {
+                            'history.foreignTotalHolding': result.holdings,
+                            latestHoldingsDate: result.latestDate ?? null,
+                        };
+                        if (Array.isArray(result.holdingDates) && result.holdingDates.length > 0) {
+                            saveFields['history.foreignHoldingDates'] = result.holdingDates;
+                        }
+                        try {
+                            await updateDoc(docRef, saveFields);
+                        } catch (e) {
+                            if (e?.code === 'not-found') {
+                                // 文件不存在（新加的股票）→ setDoc 建立
+                                await setDoc(docRef, {
+                                    code,
+                                    history: {
+                                        foreignTotalHolding: result.holdings,
+                                        ...(result.holdingDates?.length ? { foreignHoldingDates: result.holdingDates } : {}),
+                                    },
+                                    latestHoldingsDate: result.latestDate ?? null,
+                                }, { merge: true });
+                            }
+                        }
+                        updated++;
+                        console.log(`[追蹤表] ${code} 籌碼補抓完成 (${result.holdings.length} 筆)`);
+                    }
+                } catch (e) {
+                    console.warn(`[追蹤表] ${code} 籌碼補抓失敗:`, e?.message);
+                }
+                if (!cancelled) await new Promise((r) => setTimeout(r, 600)); // 限速，避免 API 過載
+            }
+            if (!cancelled && updated > 0) {
+                console.log(`[追蹤表] 籌碼補抓完畢 (${updated}/${incomplete.length})，重新整理資料`);
+                refreshData().catch(() => {});
+            }
+        })();
+
+        return () => { cancelled = true; };
+    }, [loading, stocks, refreshData]);
+    // ─────────────────────────────────────────────────────────────────
 
     useEffect(() => {
         setMounted(true);

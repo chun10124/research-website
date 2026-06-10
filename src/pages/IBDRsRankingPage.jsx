@@ -1258,7 +1258,25 @@ function ForeignChipChart({ data, allHoldings }) {
     if (seg.length) segs.push(seg.join(' '));
     return segs;
   };
-  const holdingSegs = buildSegs((d) => hasHolding && Number.isFinite(d.holding) ? yHolding(d.holding) : null);
+
+  // 持股金線：後顧 MA-5 平滑，壓低噪音但保留趨勢
+  const HOLDING_SMOOTH_N = 3;
+  const holdingSegs = (() => {
+    const smoothed = data.map((_, i) => {
+      let sum = 0, cnt = 0;
+      for (let j = Math.max(0, i - HOLDING_SMOOTH_N + 1); j <= i; j++) {
+        if (Number.isFinite(data[j].holding)) { sum += data[j].holding; cnt++; }
+      }
+      return cnt > 0 ? sum / cnt : null;
+    });
+    const segs = []; let seg = [];
+    smoothed.forEach((v, i) => {
+      if (v !== null) { seg.push(`${xAt(i).toFixed(2)},${yHolding(v).toFixed(2)}`); }
+      else if (seg.length) { segs.push(seg.join(' ')); seg = []; }
+    });
+    if (seg.length) segs.push(seg.join(' '));
+    return segs;
+  })();
 
 
   // X 軸 ticks
