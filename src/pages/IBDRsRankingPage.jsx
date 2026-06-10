@@ -1263,6 +1263,28 @@ function ForeignChipChart({ data, allHoldings }) {
   // 持股金線：原始資料，Y 軸已透過 padding 倍率壓縮，不另做平滑
   const holdingSegs = buildSegs((d) => hasHolding && Number.isFinite(d.holding) ? yHolding(d.holding) : null);
 
+  // 投信累積持股折線（以最早日為 0 基準，逐日累加買賣超）
+  let tcCum = 0;
+  const trustCumVals = data.map((d) => {
+    if (Number.isFinite(d.trust)) tcCum += d.trust;
+    return tcCum;
+  });
+  let tcMin = Infinity; let tcMax = -Infinity;
+  for (const v of trustCumVals) { tcMin = Math.min(tcMin, v); tcMax = Math.max(tcMax, v); }
+  const hasTrustCum = tcMin !== Infinity && tcMax !== tcMin;
+  if (hasTrustCum) { const tp = (tcMax - tcMin) * 0.6; tcMin -= tp; tcMax += tp; }
+  const yTrustCum = hasTrustCum
+    ? (v) => PAD_T + MAIN_H - ((v - tcMin) / (tcMax - tcMin)) * MAIN_H
+    : () => PAD_T;
+  const trustCumSegs = (() => {
+    const segs = []; let seg = [];
+    trustCumVals.forEach((v, i) => {
+      if (Number.isFinite(v)) seg.push(`${xAt(i).toFixed(2)},${yTrustCum(v).toFixed(2)}`);
+      else if (seg.length) { segs.push(seg.join(' ')); seg = []; }
+    });
+    if (seg.length) segs.push(seg.join(' '));
+    return segs;
+  })();
 
   // X 軸 ticks
   const MAX_X_TICKS = 7;
@@ -1357,10 +1379,16 @@ function ForeignChipChart({ data, allHoldings }) {
           );
         })}
 
-        {/* 外資持股折線（金色，右軸） */}
+        {/* 外資持股折線（藍色，右軸） */}
         {holdingSegs.map((pts, i) => (
-          <polyline key={`h-${i}`} points={pts} fill="none" stroke="#d97706" strokeWidth={2.0} strokeLinejoin="round" strokeLinecap="round" />
+          <polyline key={`h-${i}`} points={pts} fill="none" stroke="#1565c0" strokeWidth={2.0} strokeLinejoin="round" strokeLinecap="round" />
         ))}
+
+        {/* 投信累積持股折線（綠色實線，獨立 Y 軸） */}
+        {hasTrustCum && trustCumSegs.map((pts, i) => (
+          <polyline key={`tc-${i}`} points={pts} fill="none" stroke="#16a34a" strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" opacity={0.9} />
+        ))}
+
 
         {/* B 訊號：亮粉紅圓點 */}
         {data.map((d, i) => {
@@ -1406,7 +1434,7 @@ function ForeignChipChart({ data, allHoldings }) {
 
         {/* 右軸 外資持股 */}
         {holdingTicks.map((v, i) => (
-          <text key={`hl-${i}`} x={PAD_L + innerW + 3} y={yHolding(v) + 4} textAnchor="start" fontSize={9} fill="#d97706" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          <text key={`hl-${i}`} x={PAD_L + innerW + 3} y={yHolding(v) + 4} textAnchor="start" fontSize={9} fill="#1565c0" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {v >= 10000 ? `${Math.round(v / 1000)}k` : Math.round(v)}
           </text>
         ))}
@@ -1446,8 +1474,8 @@ function ForeignChipChart({ data, allHoldings }) {
               })()}
             </div>
           )}
-          {Number.isFinite(hd.holding) && (
-            <div style={{ color: '#d97706', fontWeight: 600, paddingBottom: 2 }}>外資持股：{Number(hd.holding).toLocaleString()} 張</div>
+          {!isInChipArea && Number.isFinite(hd.holding) && (
+            <div style={{ color: '#1565c0', fontWeight: 600, paddingBottom: 2 }}>外資持股：{Number(hd.holding).toLocaleString()} 張</div>
           )}
           {isInChipArea && Number.isFinite(hd.foreign) && (
             <div style={{ color: '#1565c0', paddingBottom: 1 }}>外資買賣：{hd.foreign >= 0 ? '+' : ''}{Number(hd.foreign).toLocaleString()} 張</div>
@@ -2457,7 +2485,7 @@ style={{
                     <span
                       style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, fontSize: 11 }}
                     >
-                      <strong style={{ color: '#d97706' }}>金線</strong>＝外資持股
+                      <strong style={{ color: '#1565c0' }}>藍線</strong>＝外資持股
                       {effectiveHoldings === null && fetchedHoldings !== false && <span style={{ color: '#94a3b8' }}> 持股載入中…</span>}
                       {fetchedHoldings === false && effectiveHoldings === null && <span style={{ color: '#f87171' }}> 持股數據不可用</span>}
                       　<strong style={{ color: '#ff2d87' }}>●</strong>＝B訊號
