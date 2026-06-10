@@ -1680,7 +1680,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             // 三大法人
             if (needInst) {
               const h = d.history;
-              if (h?.instDates?.length > 0) {
+              const instLd = d.latestInstDate ?? null;
+              const instDaysSince = instLd
+                ? Math.floor((Date.now() - new Date(instLd).getTime()) / 86400000)
+                : 999;
+              if (h?.instDates?.length > 0 && instDaysSince <= 5) {
                 setInstitutionalData(instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer));
                 setInstitutionalLoading(false);
                 fsInstDone = true;
