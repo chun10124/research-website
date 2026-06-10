@@ -1229,8 +1229,8 @@ function ForeignChipChart({ data, allHoldings }) {
     if (Number.isFinite(d.holding)) { hMin = Math.min(hMin, d.holding); hMax = Math.max(hMax, d.holding); }
   }
   const hasHolding = Number.isFinite(hMin);
-  // padding 倍率 0.8 → Y 軸範圍是實際波幅的 2.6 倍，金線壓縮在中間約 38% 高度，趨勢清楚但振幅不誇張
-  if (hasHolding) { const hp = (hMax - hMin || Math.abs(hMax) * 0.01 || 1) * 0.8; hMin -= hp; hMax += hp; }
+  // padding 倍率 0.6 → Y 軸範圍是實際波幅的 2.2 倍，金線壓縮在中間約 45% 高度
+  if (hasHolding) { const hp = (hMax - hMin || Math.abs(hMax) * 0.01 || 1) * 0.6; hMin -= hp; hMax += hp; }
   const yHolding = hasHolding ? (v) => PAD_T + MAIN_H - ((v - hMin) / (hMax - hMin)) * MAIN_H : () => PAD_T;
   const toPct = () => null; // unused, kept for tooltip compat
   const firstHoldingPct = null;
@@ -1667,7 +1667,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               const h  = d.history?.foreignTotalHolding;
               const hd = d.history?.foreignHoldingDates ?? null;
               const ld = d.latestHoldingsDate ?? null;
-              if (Array.isArray(h) && h.length > 100) {
+              // 新鮮度檢查：資料超過 5 天視為過期，繼續往下呼叫 FinMind API 補新資料
+              const daysSinceUpdate = ld
+                ? Math.floor((Date.now() - new Date(ld).getTime()) / 86400000)
+                : 999;
+              if (Array.isArray(h) && h.length > 100 && daysSinceUpdate <= 5) {
                 setFetchedHoldings({ holdings: h, holdingDates: hd, latestDate: ld });
                 fsHoldingsDone = true;
               }
@@ -1838,7 +1842,12 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     }
     return sortedOhlc.map((o, i) => {
       const hIdx = anchorIdx - i;
-      const holding = (holdings && hIdx >= 0 && hIdx < holdings.length) ? holdings[hIdx] : null;
+      // hIdx < 0 → 此 K 線日期在最後一筆持股之後，forward-fill 用最新一筆值，避免圖上空白
+      const holding = holdings
+        ? (hIdx >= 0 && hIdx < holdings.length
+            ? holdings[hIdx]
+            : (hIdx < 0 && holdings.length > 0 ? holdings[0] : null))
+        : null;
       const bSignal = (foreignBSignals && hIdx >= 0 && hIdx < foreignBSignals.length) ? foreignBSignals[hIdx] : 'N';
       const inst = institutionalData?.[o.dateStr] ?? null;
       return {
