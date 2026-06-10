@@ -1518,8 +1518,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     setCloseQuote(null);
     setVcpSnapshot(null);
     setOhlcSeries([]);
-    // 初次開啟用 initialView（預設 rs）；導航切換個股時一律回到 rs
-    setActiveView(isNavigation ? 'rs' : (initialView ?? 'rs'));
+    // 初次開啟用 initialView；導航切換個股時保留當前視圖
+    if (!isNavigation) setActiveView(initialView ?? 'rs');
     setInstitutionalData(null);
     setFetchedHoldings(null);
 
