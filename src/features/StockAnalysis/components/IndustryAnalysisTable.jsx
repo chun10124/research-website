@@ -269,8 +269,8 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                     return (
                         <td title={anySignal ? tip : undefined} style={{ ...tdBase, width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7], textAlign: 'center', padding: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', height: rowH }}>
-                                {dot(fActive, fPersist, fWatch, '#ff2222', stock.foreignFlowDays, stock.foreignFlowCum, stock.foreignFlowPersist, '外資')}
-                                {dot(tActive, tPersist, tWatch, '#1a8cff', stock.trustFlowDays,   stock.trustFlowCum,   stock.trustFlowPersist,   '投信')}
+                                {dot(fActive, fPersist, fWatch, '#1565c0', stock.foreignFlowDays, stock.foreignFlowCum, stock.foreignFlowPersist, '外資')}
+                                {dot(tActive, tPersist, tWatch, '#16a34a', stock.trustFlowDays,   stock.trustFlowCum,   stock.trustFlowPersist,   '投信')}
                             </div>
                         </td>
                     );
