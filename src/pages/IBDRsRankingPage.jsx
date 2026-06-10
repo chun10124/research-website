@@ -1661,10 +1661,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
 
             // 外資持股
             if (needHoldings) {
-              const h = d.history?.foreignTotalHolding;
+              const h  = d.history?.foreignTotalHolding;
+              const hd = d.history?.foreignHoldingDates ?? null;
               const ld = d.latestHoldingsDate ?? null;
               if (Array.isArray(h) && h.length > 100) {
-                setFetchedHoldings({ holdings: h, latestDate: ld });
+                setFetchedHoldings({ holdings: h, holdingDates: hd, latestDate: ld });
                 fsHoldingsDone = true;
               }
             }
@@ -1709,10 +1710,14 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             if (result && Array.isArray(result.holdings) && result.holdings.length > 100) {
               setFetchedHoldings(result);
               // 非同步存回 Firestore（不阻擋 UI）
-              saveToFirestore({
+              const saveFields = {
                 'history.foreignTotalHolding': result.holdings,
                 latestHoldingsDate: result.latestDate,
-              }).catch(() => {});
+              };
+              if (Array.isArray(result.holdingDates) && result.holdingDates.length > 0) {
+                saveFields['history.foreignHoldingDates'] = result.holdingDates;
+              }
+              saveToFirestore(saveFields).catch(() => {});
             } else {
               setFetchedHoldings(false);
             }
@@ -1751,11 +1756,15 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   // 有效持股資料：優先用 stock 物件，否則用懶載入結果
   const effectiveHoldings = useMemo(() => {
     if (Array.isArray(stock?.history?.foreignTotalHolding) && stock.history.foreignTotalHolding.length > 100)
-      return { holdings: stock.history.foreignTotalHolding, latestDate: stock.latestHoldingsDate };
+      return {
+        holdings: stock.history.foreignTotalHolding,
+        holdingDates: Array.isArray(stock.history.foreignHoldingDates) ? stock.history.foreignHoldingDates : null,
+        latestDate: stock.latestHoldingsDate,
+      };
     if (fetchedHoldings && fetchedHoldings.holdings?.length > 100)
-      return fetchedHoldings;
+      return fetchedHoldings; // fetchForeignHoldingSeries 已帶 holdingDates
     return null;
-  }, [stock?.history?.foreignTotalHolding, stock?.latestHoldingsDate, fetchedHoldings]);
+  }, [stock?.history?.foreignTotalHolding, stock?.history?.foreignHoldingDates, stock?.latestHoldingsDate, fetchedHoldings]);
 
   // 外資視窗：歷史 B 訊號（最近 130 個交易日）
   const foreignBSignals = useMemo(() => {
@@ -1766,23 +1775,66 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   // 外資視窗圖表資料：K 線 + 外資持股 + 三大法人
   const foreignChartData = useMemo(() => {
     if (activeView !== 'foreign' || !ohlcSeries.length) return [];
-    const holdings = effectiveHoldings?.holdings;
+    const holdings    = effectiveHoldings?.holdings;
+    const holdingDates = effectiveHoldings?.holdingDates;   // newest-first，與 holdings 等長
     const latestHoldingsDate = effectiveHoldings?.latestDate;
 
     // 建立 OHLC 日期序列（由舊到新）
     const sortedOhlc = [...ohlcSeries].sort((a, b) => a.dateStr < b.dateStr ? -1 : 1);
-    const n = sortedOhlc.length;
 
-    // 找到 anchorIdx：最後一個 OHLC 日期 <= latestHoldingsDate（即 holdings[0] 對應的 OHLC 位置）
+    // ── 新路徑：有日期陣列 → 用 date-based lookup（forward-fill），不用 index 偏移 ──
+    const hasDates = Array.isArray(holdingDates)
+      && holdingDates.length > 0
+      && holdingDates.length === (holdings?.length ?? 0);
+
+    if (hasDates) {
+      // holdingDates 是 newest-first → 建立 {date, val, bSig} 並按日期由舊到新排序
+      const sortedPairs = holdingDates
+        .map((d, i) => ({
+          date: d,
+          val:  holdings[i],
+          bSig: (foreignBSignals && i < foreignBSignals.length) ? foreignBSignals[i] : 'N',
+        }))
+        .filter(p => p.date)
+        .sort((a, b) => (a.date < b.date ? -1 : 1)); // oldest-first
+
+      return sortedOhlc.map((o) => {
+        // Binary search：最後一個 holdingDate <= o.dateStr（forward-fill）
+        let lo = 0, hi = sortedPairs.length - 1, found = -1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          if (sortedPairs[mid].date <= o.dateStr) { found = mid; lo = mid + 1; }
+          else hi = mid - 1;
+        }
+        const holdingVal = found >= 0 ? sortedPairs[found].val : null;
+        // B 訊號只在持股資料的實際日期顯示，其餘日填 'N'
+        const bSignal = (found >= 0 && sortedPairs[found].date === o.dateStr)
+          ? sortedPairs[found].bSig
+          : 'N';
+
+        const inst = institutionalData?.[o.dateStr] ?? null;
+        return {
+          dateKey: o.dateStr,
+          open: o.open, high: o.high, low: o.low, close: o.close,
+          holding: Number.isFinite(holdingVal) ? holdingVal : null,
+          bSignal,
+          foreign: inst ? inst.foreign : null,
+          trust:   inst ? inst.trust   : null,
+          dealer:  inst ? inst.dealer  : null,
+        };
+      });
+    }
+
+    // ── 舊路徑 fallback：無 holdingDates（舊版 Firestore 資料），退回 index 偏移 ──
+    const n = sortedOhlc.length;
     let anchorIdx = n - 1;
     if (latestHoldingsDate) {
       for (let i = n - 1; i >= 0; i--) {
         if (sortedOhlc[i].dateStr <= latestHoldingsDate) { anchorIdx = i; break; }
       }
     }
-
     return sortedOhlc.map((o, i) => {
-      const hIdx = anchorIdx - i; // holdings[hIdx] 對應此日期
+      const hIdx = anchorIdx - i;
       const holding = (holdings && hIdx >= 0 && hIdx < holdings.length) ? holdings[hIdx] : null;
       const bSignal = (foreignBSignals && hIdx >= 0 && hIdx < foreignBSignals.length) ? foreignBSignals[hIdx] : 'N';
       const inst = institutionalData?.[o.dateStr] ?? null;

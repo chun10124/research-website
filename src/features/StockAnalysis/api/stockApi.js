@@ -693,9 +693,12 @@ export const fetchForeignHoldingSeries = async (stockId) => {
     const json = await res.json();
     const rows = json?.data || [];
     if (!rows.length) return null;
-    const holdings = rows.map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000)).reverse();
-    const latestDate = rows[rows.length - 1]?.date?.slice(0, 10) ?? null;
-    return { holdings, latestDate };
+    // reverse：FinMind 原始資料最舊在前，改為最新在前（newest-first）
+    const reversedRows = [...rows].reverse();
+    const holdings = reversedRows.map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000));
+    const holdingDates = reversedRows.map(d => d.date?.slice(0, 10) ?? null);
+    const latestDate = holdingDates[0] ?? null;
+    return { holdings, holdingDates, latestDate };
   } catch {
     return null;
   }
@@ -817,18 +820,23 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
     }
 
     let foreignTotal_NewestFirst;
+    let foreignDates_NewestFirst;
     let latestHoldingsDate;
     if (skipHoldings && options.existingHoldings) {
       foreignTotal_NewestFirst = options.existingHoldings.foreignTotalHolding || [];
+      foreignDates_NewestFirst = options.existingHoldings.foreignHoldingDates || [];
       latestHoldingsDate = options.existingHoldings.latestHoldingsDate || null;
     } else {
       const rawHoldingData = holdingRes?.data || [];
-      foreignTotal_NewestFirst = rawHoldingData
-        .map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000)).reverse();
-      latestHoldingsDate = getLatestDateFromFinmindRows(holdingRes?.data);
+      // reverse：FinMind 原始資料最舊在前，改為最新在前（newest-first）
+      const reversedHoldingData = [...rawHoldingData].reverse();
+      foreignTotal_NewestFirst = reversedHoldingData.map(d => Math.round((d.ForeignInvestmentShares || 0) / 1000));
+      foreignDates_NewestFirst = reversedHoldingData.map(d => d.date?.slice(0, 10) ?? null);
+      latestHoldingsDate = foreignDates_NewestFirst[0] ?? getLatestDateFromFinmindRows(holdingRes?.data);
       // FinMind 查無資料（配額耗盡/暫時失敗）→ 保留現有持股，不用空陣列覆蓋
       if (foreignTotal_NewestFirst.length === 0 && options.existingHoldings?.foreignTotalHolding?.length > 0) {
         foreignTotal_NewestFirst = options.existingHoldings.foreignTotalHolding;
+        foreignDates_NewestFirst = options.existingHoldings.foreignHoldingDates || [];
         latestHoldingsDate = options.existingHoldings.latestHoldingsDate ?? latestHoldingsDate;
       }
     }
@@ -900,6 +908,7 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
         priceClose: priceCloseArray_NewestFirst,
         volume: volumeArray_NewestFirst,
         foreignTotalHolding: foreignTotal_NewestFirst,
+        foreignHoldingDates: foreignDates_NewestFirst,
         revenueRaw: revenueArray_OldestFirst,
         revenueYoY: revenueYoYArray_OldestFirst,
         instDates:   mergedInst.instDates,
@@ -975,10 +984,10 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
     }
     if (skipHoldingsThisSync || forceSkipHoldings) {
       opts.skipHoldings = true;
-      opts.existingHoldings = { foreignTotalHolding: stock.history?.foreignTotalHolding || [], latestHoldingsDate: stock.latestHoldingsDate };
+      opts.existingHoldings = { foreignTotalHolding: stock.history?.foreignTotalHolding || [], foreignHoldingDates: stock.history?.foreignHoldingDates || [], latestHoldingsDate: stock.latestHoldingsDate };
     } else if (stock.history?.foreignTotalHolding?.length > 0) {
       // 需要重抓，但帶入現有資料作 fallback：防止 FinMind 暫時失敗時把 Firestore 覆蓋成空陣列
-      opts.existingHoldings = { foreignTotalHolding: stock.history.foreignTotalHolding, latestHoldingsDate: stock.latestHoldingsDate };
+      opts.existingHoldings = { foreignTotalHolding: stock.history.foreignTotalHolding, foreignHoldingDates: stock.history?.foreignHoldingDates || [], latestHoldingsDate: stock.latestHoldingsDate };
     }
     if (skipInstThisSync || forceSkipHoldings) {
       opts.skipInstitutional = true;
