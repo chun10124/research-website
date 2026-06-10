@@ -1229,7 +1229,8 @@ function ForeignChipChart({ data, allHoldings }) {
     if (Number.isFinite(d.holding)) { hMin = Math.min(hMin, d.holding); hMax = Math.max(hMax, d.holding); }
   }
   const hasHolding = Number.isFinite(hMin);
-  if (hasHolding) { const hp = (hMax - hMin || Math.abs(hMax) * 0.01 || 1) * 0.06; hMin -= hp; hMax += hp; }
+  // padding 倍率 0.8 → Y 軸範圍是實際波幅的 2.6 倍，金線壓縮在中間約 38% 高度，趨勢清楚但振幅不誇張
+  if (hasHolding) { const hp = (hMax - hMin || Math.abs(hMax) * 0.01 || 1) * 0.8; hMin -= hp; hMax += hp; }
   const yHolding = hasHolding ? (v) => PAD_T + MAIN_H - ((v - hMin) / (hMax - hMin)) * MAIN_H : () => PAD_T;
   const toPct = () => null; // unused, kept for tooltip compat
   const firstHoldingPct = null;
@@ -1259,24 +1260,8 @@ function ForeignChipChart({ data, allHoldings }) {
     return segs;
   };
 
-  // 持股金線：後顧 MA-5 平滑，壓低噪音但保留趨勢
-  const HOLDING_SMOOTH_N = 3;
-  const holdingSegs = (() => {
-    const smoothed = data.map((_, i) => {
-      let sum = 0, cnt = 0;
-      for (let j = Math.max(0, i - HOLDING_SMOOTH_N + 1); j <= i; j++) {
-        if (Number.isFinite(data[j].holding)) { sum += data[j].holding; cnt++; }
-      }
-      return cnt > 0 ? sum / cnt : null;
-    });
-    const segs = []; let seg = [];
-    smoothed.forEach((v, i) => {
-      if (v !== null) { seg.push(`${xAt(i).toFixed(2)},${yHolding(v).toFixed(2)}`); }
-      else if (seg.length) { segs.push(seg.join(' ')); seg = []; }
-    });
-    if (seg.length) segs.push(seg.join(' '));
-    return segs;
-  })();
+  // 持股金線：原始資料，Y 軸已透過 padding 倍率壓縮，不另做平滑
+  const holdingSegs = buildSegs((d) => hasHolding && Number.isFinite(d.holding) ? yHolding(d.holding) : null);
 
 
   // X 軸 ticks
