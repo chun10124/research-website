@@ -43,6 +43,7 @@ export const SYNC_STATUS_DOC_REF = doc(db, "ibdRsMeta", "syncStatus");
 /** RS 首頁區塊「新出現」藍點：首次入列日期 byId（跨裝置統一） */
 export const IBD_RS_HOME_FIRST_SEEN_DOC_REF = doc(db, "ibdRsMeta", "homeFirstSeen");
 export const JOURNAL_DOC_REF = doc(db, "trade_journals", "my_only_log");
+export const NAV_HISTORY_DOC_REF = doc(db, "navHistory", "main");
 export const WHITEBOARD_DOC_REF = doc(db, "whiteboard", "my_whiteboard");
 export const MINDMAP_DOC_REF = doc(db, "mindmaps", "mindmap_list");
 export const CALENDAR_DOC_REF = doc(db, "investor_calendar", "my_calendar");

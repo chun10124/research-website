@@ -113,6 +113,39 @@ export const fetchHistoricalPriceMap = async (stockCode, startStr, endStr) => {
   }
 };
 
+/**
+ * 優先從 Firestore ibdRsRatings.priceMap 取歷史收盤價（非除息調整的 quote.close）；
+ * 若 Firestore 資料未覆蓋 startStr 起始日（超過 15 個月舊資料），fallback 至 FinMind。
+ */
+export const fetchHistoricalPriceMapFromDB = async (stockCode, startStr, endStr) => {
+  const bare = String(stockCode || '').trim().replace(/\.(TW|tw|TWO|two)$/i, '');
+  if (!bare) return {};
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  try {
+    const snap = await getDoc(doc(RS_RATINGS_COLLECTION, bare));
+    if (snap.exists()) {
+      const pm = snap.data()?.priceMap;
+      if (pm && typeof pm === 'object') {
+        const filtered = {};
+        for (const [d, p] of Object.entries(pm)) {
+          if ((!start || d >= start) && (!end || d <= end) && Number(p) > 0) {
+            filtered[d] = Number(p);
+          }
+        }
+        const dates = Object.keys(filtered).sort();
+        if (dates.length > 0) {
+          // 若第一筆資料在 start 後 15 天內，視為覆蓋足夠
+          const bufDate = new Date(start || dates[0]);
+          bufDate.setDate(bufDate.getDate() + 15);
+          if (dates[0] <= bufDate.toISOString().slice(0, 10)) return filtered;
+        }
+      }
+    }
+  } catch (e) {}
+  return fetchHistoricalPriceMap(stockCode, startStr, endStr);
+};
+
 /** 台股代碼去掉 .TW / .TWO 後綴，回傳純數字/代碼 */
 function toYahooBare(stockCode) {
   return String(stockCode || '').trim().replace(/\.(TW|tw|TWO|two)$/i, '');
@@ -224,12 +257,12 @@ async function fetchYahooStockDisplayName(stockCode, market) {
 /** 依起迄日數選 Yahoo chart range 參數 */
 function yahooRangeForDays(days) {
   if (days <= 0) return '1mo';
-  if (days <= 35) return '1mo';
-  if (days <= 95) return '3mo';
-  if (days <= 190) return '6mo';
-  if (days <= 380) return '1y';
-  if (days <= 760) return '2y';
-  if (days <= 1900) return '5y';
+  if (days <= 28) return '1mo';
+  if (days <= 85) return '3mo';
+  if (days <= 175) return '6mo';
+  if (days <= 350) return '1y';
+  if (days <= 700) return '2y';
+  if (days <= 1750) return '5y';
   return 'max';
 }
 
@@ -241,7 +274,7 @@ function parseChartToPriceMap(json, startStr, endStr) {
   const end = (endStr || '').slice(0, 10);
   const timestamps = result.timestamp || [];
   const quote = result.indicators?.quote?.[0];
-  const closes = quote?.close || result.indicators?.adjclose?.[0]?.adjclose || [];
+  const closes = quote?.close || [];
   const map = {};
   for (let i = 0; i < timestamps.length; i++) {
     const d = new Date(timestamps[i] * 1000);

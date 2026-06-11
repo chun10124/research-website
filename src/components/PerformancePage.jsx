@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { onSnapshot, getDoc, doc } from 'firebase/firestore';
+import { onSnapshot, getDoc, setDoc, doc } from 'firebase/firestore';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts';
-import { JOURNAL_DOC_REF, STOCK_WATCHLIST_COLLECTION } from '../utils/firebaseConfig';
+import { JOURNAL_DOC_REF, STOCK_WATCHLIST_COLLECTION, NAV_HISTORY_DOC_REF } from '../utils/firebaseConfig';
 import {
   fetchCurrentPrice,
   fetchYahooPrice,
-  fetchYahooHistoricalPriceMap,
+  fetchHistoricalPriceMapFromDB,
 } from '../features/StockAnalysis/api/stockApi';
 import { calculatePnlSummary } from '../utils/pnlCalculator';
 import { formatPnl } from '../utils/formatting';
@@ -47,6 +47,9 @@ function PerformancePage() {
   const [chartNormalized, setChartNormalized] = useState(false);
   const [historicalPricesByCode, setHistoricalPricesByCode] = useState({});
   const [historicalPricesLoading, setHistoricalPricesLoading] = useState(false);
+  // NAV 快照：{ [dateStr]: { nav, totalAssets, totalUnits } }
+  const [savedSnapshots, setSavedSnapshots] = useState({});
+  const [savedSignature, setSavedSignature] = useState(null);
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -61,6 +64,20 @@ function PerformancePage() {
       (err) => console.error('Firestore 監聽失敗:', err)
     );
     return () => unsub();
+  }, []);
+
+  // ── 載入 NAV 歷史快照 ─────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDoc(NAV_HISTORY_DOC_REF);
+        if (snap.exists()) {
+          const d = snap.data();
+          setSavedSnapshots(d.snapshots || {});
+          setSavedSignature(d.entriesSignature || null);
+        }
+      } catch (e) {}
+    })();
   }, []);
 
   // ── 自動識別入金 ──────────────────────────────────────────
@@ -186,7 +203,7 @@ function PerformancePage() {
     const load = async () => {
       const results = await Promise.all(
         curveCodes.map((code) =>
-          fetchYahooHistoricalPriceMap(code, start, end).then((map) => [code, map])
+          fetchHistoricalPriceMapFromDB(code, start, end).then((map) => [code, map])
         )
       );
       const next = {};
@@ -216,14 +233,60 @@ function PerformancePage() {
     [entries, todayStr, priceMapWithToday]
   );
 
-  const totalNetWorthFromCurve = dailyNavCurve.length > 0 ? dailyNavCurve[dailyNavCurve.length - 1].totalAssets : (totalCumulativeCF + totalRealizedPnl + totalUnrealizedPnl);
+  // 簽名：交易筆數 + 最後一筆交易日期（用來判斷 journal 有無變動）
+  const entriesSignature = useMemo(() => {
+    const dates = (entries || [])
+      .filter((e) => e.direction === 'BUY' || e.direction === 'SELL')
+      .map((e) => (e.date || '').slice(0, 10))
+      .filter(Boolean)
+      .sort();
+    return dates.length ? `${dates.length}_${dates[dates.length - 1]}` : '';
+  }, [entries]);
+
+  // 價格載入完成後，把過去每天的 NAV 存到 Firestore
+  useEffect(() => {
+    if (historicalPricesLoading || dailyNavCurve.length === 0 || !entriesSignature) return;
+    const pastRows = dailyNavCurve.filter((r) => r.date < todayStr);
+    if (pastRows.length === 0) return;
+    const isNewSignature = entriesSignature !== savedSignature;
+    const newSnapshots = isNewSignature ? {} : { ...savedSnapshots };
+    let changed = isNewSignature;
+    for (const r of pastRows) {
+      if (!newSnapshots[r.date] || isNewSignature) {
+        newSnapshots[r.date] = { nav: r.nav, totalAssets: r.totalAssets, totalUnits: r.totalUnits };
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    (async () => {
+      try {
+        await setDoc(NAV_HISTORY_DOC_REF, { snapshots: newSnapshots, entriesSignature, savedAt: todayStr });
+        setSavedSnapshots(newSnapshots);
+        setSavedSignature(entriesSignature);
+      } catch (e) {
+        console.warn('NAV 快照儲存失敗:', e?.message);
+      }
+    })();
+  }, [historicalPricesLoading, dailyNavCurve, entriesSignature, todayStr]);
+
+  // 若歷史價還在載入中（且快照簽名相符），先用 Firestore 快照顯示；載入完成後換成即時計算
+  const navCurveDisplay = useMemo(() => {
+    const snapshotsValid = entriesSignature && entriesSignature === savedSignature && Object.keys(savedSnapshots).length > 0;
+    if (!historicalPricesLoading || !snapshotsValid) return dailyNavCurve;
+    const historicalDates = Object.keys(savedSnapshots).sort();
+    const historicalRows = historicalDates.map((d) => ({ date: d, ...savedSnapshots[d] }));
+    const todayRow = dailyNavCurve.find((r) => r.date === todayStr);
+    return todayRow ? [...historicalRows, todayRow] : historicalRows;
+  }, [dailyNavCurve, historicalPricesLoading, savedSnapshots, savedSignature, entriesSignature, todayStr]);
+
+  const totalNetWorthFromCurve = navCurveDisplay.length > 0 ? navCurveDisplay[navCurveDisplay.length - 1].totalAssets : (totalCumulativeCF + totalRealizedPnl + totalUnrealizedPnl);
 
   const chartPoints = useMemo(() => {
-    if (dailyNavCurve.length === 0) {
+    if (navCurveDisplay.length === 0) {
       return totalNetWorthFromCurve !== 0 ? [{ date: todayStr, 淨值: totalNetWorthFromCurve }] : [];
     }
-    return dailyNavCurve.map((r) => ({ date: r.date, 淨值: r.totalAssets }));
-  }, [dailyNavCurve, totalNetWorthFromCurve, todayStr]);
+    return navCurveDisplay.map((r) => ({ date: r.date, 淨值: r.totalAssets }));
+  }, [navCurveDisplay, totalNetWorthFromCurve, todayStr]);
 
   const displayChartPoints = useMemo(() => {
     if (!chartNormalized || chartPoints.length === 0) return chartPoints;
@@ -232,7 +295,7 @@ function PerformancePage() {
     return chartPoints.map((p) => ({ ...p, 淨值: (100 * p.淨值) / base }));
   }, [chartPoints, chartNormalized]);
 
-  const navCurve = dailyNavCurve;
+  const navCurve = navCurveDisplay;
 
   const navChartData = useMemo(() => {
     if (navCurve.length === 0) return [];
