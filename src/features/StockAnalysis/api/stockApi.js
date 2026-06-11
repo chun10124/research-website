@@ -737,12 +737,70 @@ export const fetchForeignHoldingSeries = async (stockId) => {
   }
 };
 
+// ─── TWSE 三大法人（上市股票，免 token）────────────────────────────────────
+const TWSE_INST_URL = 'https://www.twse.com.tw/fund/T86';
+
+/** T86 row → { foreign, trust, dealer }（股→張）
+ *  欄位順序：[0]代號 [1]名稱
+ *  [4] 外陸資買賣超(不含外資自營商)  [7] 外資自營商買賣超
+ *  [10] 投信買賣超  [11] 自營商買賣超合計
+ */
+function parseTWSEInstRow(row) {
+  const n = (s) => parseInt(String(s || '0').replace(/,/g, ''), 10) || 0;
+  return {
+    foreign: Math.round((n(row[4]) + n(row[7])) / 1000),
+    trust:   Math.round(n(row[10]) / 1000),
+    dealer:  Math.round(n(row[11]) / 1000),
+  };
+}
+
+async function fetchTWSEInstOneDay(stockId, dateStr) {
+  try {
+    const d = dateStr.replace(/-/g, '');
+    const url = `${TWSE_INST_URL}?response=json&date=${d}&selectType=ALL`;
+    const res = await fetch(`${PROXY_BASE}${encodeURIComponent(url)}`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json?.stat !== 'OK' || !Array.isArray(json.data)) return null;
+    const row = json.data.find((r) => r[0] === stockId);
+    if (!row) return null;
+    return { date: dateStr, ...parseTWSEInstRow(row) };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchInstRangeFromTWSE(stockId, startDate) {
+  const today = new Date();
+  const start = new Date(startDate);
+  const dates = [];
+  for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  if (!dates.length) return {};
+  const results = await Promise.all(dates.map((ds) => fetchTWSEInstOneDay(stockId, ds)));
+  const dateMap = {};
+  for (const r of results) {
+    if (r) dateMap[r.date] = { foreign: r.foreign, trust: r.trust, dealer: r.dealer };
+  }
+  return dateMap;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * 抓取個股三大法人每日買賣超（懶載入，供個股視窗二使用）
  * 回傳 { [dateStr]: { foreign, trust, dealer } }，單位：張（千股）
+ * 策略：上市股 ≤60 日範圍優先走 TWSE（免 token）；超出或失敗時用 FinMind 備用
  */
 export const fetchInstitutionalInvestorsSeries = async (stockId, startDate) => {
   try {
+    const daysDiff = (Date.now() - new Date(startDate).getTime()) / 86400000;
+    if (daysDiff <= 60) {
+      const twseMap = await fetchInstRangeFromTWSE(stockId, startDate);
+      if (twseMap && Object.keys(twseMap).length > 0) return twseMap;
+      // TWSE 無資料（可能是上櫃股）→ fall through to FinMind
+    }
+    // FinMind 備用（大範圍歷史 or 上櫃股）
     const params = new URLSearchParams({
       dataset: 'TaiwanStockInstitutionalInvestorsBuySell',
       data_id: stockId,
