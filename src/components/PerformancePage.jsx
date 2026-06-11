@@ -269,15 +269,17 @@ function PerformancePage() {
     })();
   }, [historicalPricesLoading, dailyNavCurve, entriesSignature, todayStr]);
 
-  // 若歷史價還在載入中（且快照簽名相符），先用 Firestore 快照顯示；載入完成後換成即時計算
+  // snapshot 有效（簽名相符）時，歷史 NAV 一律用 Firestore 快照——免疫除息還原後的 Yahoo 歷史價調整
+  // 僅把 snapshot 最後日期之後（含今天）的列補自 dailyNavCurve（即時計算）
   const navCurveDisplay = useMemo(() => {
     const snapshotsValid = entriesSignature && entriesSignature === savedSignature && Object.keys(savedSnapshots).length > 0;
-    if (!historicalPricesLoading || !snapshotsValid) return dailyNavCurve;
+    if (!snapshotsValid) return dailyNavCurve;
     const historicalDates = Object.keys(savedSnapshots).sort();
     const historicalRows = historicalDates.map((d) => ({ date: d, ...savedSnapshots[d] }));
-    const todayRow = dailyNavCurve.find((r) => r.date === todayStr);
-    return todayRow ? [...historicalRows, todayRow] : historicalRows;
-  }, [dailyNavCurve, historicalPricesLoading, savedSnapshots, savedSignature, entriesSignature, todayStr]);
+    const lastSnapshotDate = historicalDates.at(-1) || '';
+    const newRows = dailyNavCurve.filter((r) => r.date > lastSnapshotDate);
+    return [...historicalRows, ...newRows];
+  }, [dailyNavCurve, savedSnapshots, savedSignature, entriesSignature]);
 
   const totalNetWorthFromCurve = navCurveDisplay.length > 0 ? navCurveDisplay[navCurveDisplay.length - 1].totalAssets : (totalCumulativeCF + totalRealizedPnl + totalUnrealizedPnl);
 
