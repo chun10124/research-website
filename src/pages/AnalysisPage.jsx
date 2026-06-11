@@ -624,12 +624,21 @@ const AnalysisPage = () => {
                                     const mStr = parsed ? `${parsed.y}-${String(parsed.m).padStart(2, '0')}` : '';
                                     return mStr === lastCompleteMonth;
                                 }).length;
+                                /** 法人買賣超：以全表最新法人日期（instDates[0]，newest-first）為基準 */
+                                const latestInstDateStr = (() => {
+                                    const dates = stocks.map((s) => s.instDates?.[0]).filter(Boolean);
+                                    return dates.length ? dates.sort().at(-1) : null;
+                                })();
+                                const instOk = latestInstDateStr
+                                    ? stocks.filter((s) => s.instDates?.[0] === latestInstDateStr).length
+                                    : 0;
                                 const total = stocks.length;
                                 const overNine = (ok) => total > 0 && ok / total >= 0.9;
                                 const hasPriceAll = overNine(priceOk);
                                 const hasVolumeAll = overNine(volumeOk);
                                 const hasHoldingsAll = overNine(holdingsOk);
                                 const hasRevenueAll = overNine(revenueOk);
+                                const hasInstAll = overNine(instOk);
                                 const countStr = (n, t) => t > 0 ? `（${n}/${t}）` : '';
                                 const priceDataLabel = (n, t) =>
                                     latestPriceDateStr
@@ -643,6 +652,7 @@ const AnalysisPage = () => {
                                     { label: '股價', has: hasPriceAll, text: () => priceDataLabel(priceOk, total) },
                                     { label: '量能', has: hasVolumeAll, text: () => priceDataLabel(volumeOk, total) },
                                     { label: '外資持股（外資指標）', has: hasHoldingsAll, text: () => holdingsDataLabel(holdingsOk, total) },
+                                    { label: '法人買賣超', has: hasInstAll, text: () => latestInstDateStr ? `${formatDate(latestInstDateStr)}${countStr(instOk, total)}` : '尚無資料' },
                                     { label: '營收', has: hasRevenueAll, text: () => latestRevenueDateStr ? `最新：${formatRevenueMonth(latestRevenueDateStr)}${countStr(revenueOk, total)}` : '尚無資料' },
                                 ];
                                 return (
