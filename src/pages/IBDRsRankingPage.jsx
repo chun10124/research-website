@@ -1685,6 +1685,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       (async () => {
         let fsHoldingsDone = false;
         let fsInstDone     = false;
+        let staleInstBase  = null; // Firestore 有舊資料但過期時暫存，供增量合併
         try {
           const snap = await getDoc(doc(db, 'stockWatchlist', stock.id));
           if (snap.exists()) {
@@ -1712,11 +1713,17 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               const instDaysSince = instLd
                 ? Math.floor((Date.now() - new Date(instLd).getTime()) / 86400000)
                 : 999;
-              // 當天或前一個交易日的資料才算新鮮，否則打 API 補最新買賣超
               if (h?.instDates?.length > 0 && instDaysSince <= 1) {
+                // 當天或前一個交易日：直接用
                 setInstitutionalData(instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer));
                 setInstitutionalLoading(false);
                 fsInstDone = true;
+              } else if (h?.instDates?.length > 0 && instLd) {
+                // 有舊資料但過期：記下來，之後只補缺少的天數
+                staleInstBase = {
+                  map: instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer),
+                  latestInstDate: instLd,
+                };
               }
             }
           }
@@ -1767,24 +1774,31 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         }
         if (needInst && !fsInstDone) {
           try {
-            const threeYearsAgo = new Date();
-            threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
-            const startDate = threeYearsAgo.toISOString().slice(0, 10);
-            const result = await fetchInstitutionalInvestorsSeries(stockCode, startDate);
-            setInstitutionalData(result || {});
-            // 轉成 parallel arrays 存回 Firestore
-            if (result && Object.keys(result).length > 0) {
-              const dates = Object.keys(result).sort().reverse();
+            // 增量：有舊資料就從最新日+1天開始，否則抓三年
+            const baseDate = staleInstBase?.latestInstDate;
+            const startDate = baseDate
+              ? (() => { const dt = new Date(baseDate); dt.setDate(dt.getDate() + 1); return dt.toISOString().slice(0, 10); })()
+              : (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 3); return d.toISOString().slice(0, 10); })();
+            const newResult = await fetchInstitutionalInvestorsSeries(stockCode, startDate);
+            // 合併舊資料 + 新增資料
+            const merged = staleInstBase
+              ? { ...staleInstBase.map, ...(newResult || {}) }
+              : (newResult || {});
+            setInstitutionalData(merged);
+            // 存回 Firestore
+            if (Object.keys(merged).length > 0) {
+              const dates = Object.keys(merged).sort().reverse();
               saveToFirestore({
                 'history.instDates':   dates,
-                'history.instForeign': dates.map(d => result[d].foreign),
-                'history.instTrust':   dates.map(d => result[d].trust),
-                'history.instDealer':  dates.map(d => result[d].dealer),
+                'history.instForeign': dates.map(d => merged[d].foreign),
+                'history.instTrust':   dates.map(d => merged[d].trust),
+                'history.instDealer':  dates.map(d => merged[d].dealer),
                 latestInstDate: dates[0] ?? null,
               }).catch(() => {});
             }
           } catch (_) {
-            setInstitutionalData({});
+            // API 失敗時仍顯示舊資料
+            setInstitutionalData(staleInstBase?.map || {});
           } finally {
             setInstitutionalLoading(false);
           }
