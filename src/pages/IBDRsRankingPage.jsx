@@ -1774,11 +1774,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         }
         if (needInst && !fsInstDone) {
           try {
-            // 增量：有舊資料就從最新日+1天開始，否則抓三年
+            // 增量：有舊資料就從最新日+1天開始，否則抓一年
             const baseDate = staleInstBase?.latestInstDate;
             const startDate = baseDate
               ? (() => { const dt = new Date(baseDate); dt.setDate(dt.getDate() + 1); return dt.toISOString().slice(0, 10); })()
-              : (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 3); return d.toISOString().slice(0, 10); })();
+              : (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10); })();
             const newResult = await fetchInstitutionalInvestorsSeries(stockCode, startDate);
             // 合併舊資料 + 新增資料
             const merged = staleInstBase
