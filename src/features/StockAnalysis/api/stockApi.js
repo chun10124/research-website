@@ -863,9 +863,11 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
     return `${FINMIND_BASE}?${params.toString()}`;
   };
 
-  // 三大法人增量抓取起始日：有舊資料就從最新日+1天抓，否則抓一年
-  const oneYearAgo = new Date(); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  const ONE_YEAR_START = oneYearAgo.toISOString().split('T')[0];
+  // 三大法人增量抓取起始日：有舊資料就從最新日+1天抓，否則抓 18 個月
+  // calculateFlowSignal histWindow=250 個交易日，需 274 筆才能完整掃連續訊號 ≈ 14 個月
+  // 多留 4 個月 buffer 避免假日稀疏時剛好不足
+  const eighteenMonthsAgo = new Date(); eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
+  const ONE_YEAR_START = eighteenMonthsAgo.toISOString().split('T')[0];
   const instStartDate = !skipInstitutional && options.existingInstitutional?.latestInstDate
     ? (() => { const d = new Date(options.existingInstitutional.latestInstDate); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); })()
     : ONE_YEAR_START;
