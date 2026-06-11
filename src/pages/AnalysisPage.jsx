@@ -624,13 +624,13 @@ const AnalysisPage = () => {
                                     const mStr = parsed ? `${parsed.y}-${String(parsed.m).padStart(2, '0')}` : '';
                                     return mStr === lastCompleteMonth;
                                 }).length;
-                                /** 法人買賣超：以全表最新法人日期（instDates[0]，newest-first）為基準 */
+                                /** 法人買賣超：以全表 latestInstDate（root 欄位）最新值為基準 */
                                 const latestInstDateStr = (() => {
-                                    const dates = stocks.map((s) => s.instDates?.[0]).filter(Boolean);
+                                    const dates = stocks.map((s) => s.latestInstDate).filter(Boolean);
                                     return dates.length ? dates.sort().at(-1) : null;
                                 })();
                                 const instOk = latestInstDateStr
-                                    ? stocks.filter((s) => s.instDates?.[0] === latestInstDateStr).length
+                                    ? stocks.filter((s) => s.latestInstDate === latestInstDateStr).length
                                     : 0;
                                 const total = stocks.length;
                                 const overNine = (ok) => total > 0 && ok / total >= 0.9;
