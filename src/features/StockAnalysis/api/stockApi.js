@@ -114,6 +114,30 @@ export const fetchHistoricalPriceMap = async (stockCode, startStr, endStr) => {
 };
 
 /**
+ * NAV 盯市專用歷史收盤：一律走 FinMind 原始收盤（不追溯除權調整），
+ * 與 ibdRsRatings.priceMap（為 RS 而調整過的價）區隔，避免除權後歷史價被回調污染 NAV。
+ * 以 localStorage 做「每檔每日」快取，避免每次進頁面重打 FinMind。
+ */
+export const fetchHistoricalPriceMapForNav = async (stockCode, startStr, endStr) => {
+  const code = toFinmindStockId(String(stockCode || '').trim());
+  if (!code) return {};
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  if (!start) return {};
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const cacheKey = `rw-navpx_${code}_${start}_${end}`;
+  try {
+    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+    if (cached && cached.date === todayStr && cached.map) return cached.map;
+  } catch (_) {}
+  const map = await fetchHistoricalPriceMap(code, start, end);
+  if (Object.keys(map).length > 0) {
+    try { localStorage.setItem(cacheKey, JSON.stringify({ date: todayStr, map })); } catch (_) {}
+  }
+  return map;
+};
+
+/**
  * 優先從 Firestore ibdRsRatings.priceMap 取歷史收盤價（非除息調整的 quote.close）；
  * 若 Firestore 資料未覆蓋 startStr 起始日（超過 15 個月舊資料），fallback 至 FinMind。
  */
