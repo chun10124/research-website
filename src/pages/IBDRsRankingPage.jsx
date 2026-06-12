@@ -273,9 +273,9 @@ function FilterSectionTitle({ children, first }) {
         fontWeight: 800,
         color: '#0d9488',
         letterSpacing: '0.04em',
-        marginTop: first ? 0 : 6,
-        marginBottom: 4,
-        paddingBottom: 4,
+        marginTop: first ? 0 : 5,
+        marginBottom: 3,
+        paddingBottom: 3,
         borderBottom: '1px solid #e6f7f4',
         lineHeight: 1.2,
       }}
@@ -287,7 +287,7 @@ function FilterSectionTitle({ children, first }) {
 
 /** 篩選三明治：數字欄固定寬，勿 flex:1 拉滿整列 */
 const FILTER_SANDWICH_INPUT = {
-  padding: '6px 10px',
+  padding: '5px 10px',
   border: '1px solid #d0d0d0',
   borderRadius: 6,
   fontSize: 12,
@@ -310,7 +310,7 @@ const FILTER_DELTA_MID_TEXT_STYLE = {
 };
 
 const FILTER_DELTA_DAYS_INPUT = {
-  padding: '6px 8px',
+  padding: '5px 8px',
   border: '1px solid #d0d0d0',
   borderRadius: 6,
   fontSize: 12,
@@ -3350,6 +3350,20 @@ function MajorMovesModal({
  * RS／Δ／漲跌幅／HL／型態／搜尋等；不含 VCP（與主表邏輯一致）。
  * 先過此關再決定要對哪些檔抓 Yahoo VCP，可減少請求數。
  */
+/** 從 priceMap 取最新收盤與 MA10/MA20/MA60（依日期排序後的最後 N 筆有效收盤平均） */
+function priceVsMAFromPriceMap(priceMap) {
+  if (!priceMap || typeof priceMap !== 'object') return null;
+  const dates = Object.keys(priceMap).sort();
+  const closes = [];
+  for (const d of dates) {
+    const v = Number(priceMap[d]);
+    if (Number.isFinite(v) && v > 0) closes.push(v);
+  }
+  if (closes.length === 0) return null;
+  const maOf = (p) => (closes.length >= p ? closes.slice(-p).reduce((a, b) => a + b, 0) / p : null);
+  return { close: closes[closes.length - 1], ma10: maOf(10), ma20: maOf(20), ma60: maOf(60) };
+}
+
 function stockPassesNonVcpFilters(s, filters) {
   const n = (v) => {
     if (v === '' || v == null) return null;
@@ -3396,6 +3410,17 @@ function stockPassesNonVcpFilters(s, filters) {
   if (hlMin != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m < hlMin)) return false;
   if (hlMax != null && (s.pricePos6m == null || !Number.isFinite(s.pricePos6m) || s.pricePos6m > hlMax)) return false;
 
+  const wantMA10 = filters.priceAboveMA10 === '1';
+  const wantMA20 = filters.priceAboveMA20 === '1';
+  const wantMA60 = filters.priceAboveMA60 === '1';
+  if (wantMA10 || wantMA20 || wantMA60) {
+    const pv = priceVsMAFromPriceMap(s.priceMap);
+    if (!pv || pv.close == null) return false;
+    if (wantMA10 && !(pv.ma10 != null && pv.close > pv.ma10)) return false;
+    if (wantMA20 && !(pv.ma20 != null && pv.close > pv.ma20)) return false;
+    if (wantMA60 && !(pv.ma60 != null && pv.close > pv.ma60)) return false;
+  }
+
   if (crossFilterActive) {
     if (!detectCrossUp(effRs, s.ibdRsHistory, crossLevelParsed, crossDaysParsed)) return false;
   }
@@ -3435,6 +3460,10 @@ const DEFAULT_FILTERS = {
   crossLevel: '',
   /** 近 K「週」＝ K×5 交易日內 RS 為區間最高；填數字才套用 */
   weeksNewHigh: '',
+  /** 價格站上均線：各自勾選（'1' 表要求收盤 > 該均線），可複選＝同時站上 */
+  priceAboveMA10: '',
+  priceAboveMA20: '',
+  priceAboveMA60: '',
   /** VCP 加權合成（0～1）；與圖表區塊相同公式，需即時抓 Yahoo */
   vcpMin: '',
   vcpMax: '',
@@ -3494,6 +3523,11 @@ function summarizeIbdRsFilters(filters, deltaShortResolved, deltaLongResolved) {
   if (Number.isFinite(wk) && wk >= 1 && wk <= 52) {
     parts.push(`近 ${wk} 週區間新高`);
   }
+  const maOver = [];
+  if (f.priceAboveMA10 === '1') maOver.push('MA10');
+  if (f.priceAboveMA20 === '1') maOver.push('MA20');
+  if (f.priceAboveMA60 === '1') maOver.push('MA60');
+  if (maOver.length) parts.push(`價格站上 ${maOver.join('、')}`);
   if (f.query.trim()) {
     parts.push(`搜尋「${f.query.trim()}」`);
   }
@@ -3764,6 +3798,9 @@ export default function IBDRsRankingPage() {
     filters.crossDays,
     filters.crossLevel,
     filters.weeksNewHigh,
+    filters.priceAboveMA10,
+    filters.priceAboveMA20,
+    filters.priceAboveMA60,
     filters.query,
   ]);
 
@@ -4686,9 +4723,8 @@ export default function IBDRsRankingPage() {
                   border: '1px solid #cfe8e2',
                   borderRadius: 12,
                   boxShadow: '0 24px 56px rgba(0,0,0,0.22)',
-                  padding: '16px 20px 14px',
-                  minHeight: '78vh',
-                  maxHeight: '98vh',
+                  padding: '12px 16px 10px',
+                  maxHeight: '96vh',
                   overflowY: 'auto',
                 }}
               >
@@ -4697,7 +4733,7 @@ export default function IBDRsRankingPage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
-                    marginBottom: 12,
+                    marginBottom: 8,
                     flexWrap: 'wrap',
                   }}
                 >
@@ -4751,7 +4787,7 @@ export default function IBDRsRankingPage() {
                   style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(240px, auto))',
-                    gap: '6px 16px',
+                    gap: '5px 16px',
                     alignItems: 'end',
                     justifyItems: 'start',
                   }}
@@ -4944,6 +4980,38 @@ export default function IBDRsRankingPage() {
                       aria-label="近 K 週（K×5 交易日）RS 新高"
                     />
                     <span>週（5 交易日）內 RS 最高</span>
+                  </div>
+
+                  <div
+                    style={{
+                      gridColumn: '1 / -1',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      color: '#444',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: '#134e4a' }}>價格站上均線</span>
+                    {[
+                      { key: 'priceAboveMA10', label: 'MA10' },
+                      { key: 'priceAboveMA20', label: 'MA20' },
+                      { key: 'priceAboveMA60', label: 'MA60' },
+                    ].map(({ key, label }) => (
+                      <label
+                        key={key}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={filters[key] === '1'}
+                          onChange={(e) => setFilter(key)(e.target.checked ? '1' : '')}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        {label}
+                      </label>
+                    ))}
                   </div>
 
                   <FilterSectionTitle>VCP（0～1）</FilterSectionTitle>
