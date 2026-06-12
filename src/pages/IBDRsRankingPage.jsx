@@ -595,7 +595,7 @@ function thinSwingIndicesEvenly(indices, maxKeep) {
  * - X 軸：每筆資料等寬 slot，K 棒中心 = RS/大盤折線點位，完全一致
  * - Y 軸左：RS 固定 1-99；Y 軸右：大盤指數 auto；K 棒獨立 Y（不影響其他 Y 軸）
  */
-function IbdRsComboChart({ data }) {
+function IbdRsComboChart({ data, showMA = true }) {
   const wrapRef = useRef(null);
   const [size, setSize] = useState({ w: 640, h: 320 });
   const [hoverIdx, setHoverIdx] = useState(null);
@@ -662,7 +662,7 @@ function IbdRsComboChart({ data }) {
   const buildSegs = (fn) => {
     const segs = []; let seg = [];
     data.forEach((d, i) => {
-      const v = fn(d);
+      const v = fn(d, i);
       if (Number.isFinite(v)) { seg.push(`${xAt(i).toFixed(2)},${v.toFixed(2)}`); }
       else if (seg.length) { segs.push(seg.join(' ')); seg = []; }
     });
@@ -671,6 +671,24 @@ function IbdRsComboChart({ data }) {
   };
   const rsSegs  = buildSegs((d) => (Number.isFinite(d.rs)  ? yRs(d.rs)   : null));
   const idxSegs = buildSegs((d) => (Number.isFinite(d.idx) ? yIdx(d.idx) : null));
+
+  /* 均線 MA：以收盤價滾動平均；資料不足或遇缺口則該點為 null（價格刻度） */
+  const computeMA = (period) => {
+    const out = new Array(n).fill(null);
+    const q = []; let sum = 0;
+    for (let i = 0; i < n; i++) {
+      const c = Number.isFinite(data[i]?.close) ? data[i].close : null;
+      if (c == null) { q.length = 0; sum = 0; continue; }
+      q.push(c); sum += c;
+      if (q.length > period) sum -= q.shift();
+      if (q.length === period) out[i] = sum / period;
+    }
+    return out;
+  };
+  const ma10 = hasOhlc ? computeMA(10) : [];
+  const ma20 = hasOhlc ? computeMA(20) : [];
+  const ma10Segs = hasOhlc ? buildSegs((_, i) => (Number.isFinite(ma10[i]) ? yPrice(ma10[i]) : null)) : [];
+  const ma20Segs = hasOhlc ? buildSegs((_, i) => (Number.isFinite(ma20[i]) ? yPrice(ma20[i]) : null)) : [];
 
   /* X ticks：最多 7 筆 */
   const MAX_X_TICKS = 7;
@@ -785,6 +803,14 @@ function IbdRsComboChart({ data }) {
             </g>
           );
         })}
+
+        {/* 均線 MA10 / MA20（價格刻度，疊在 K 棒之上）；showMA 關閉時不顯示 */}
+        {showMA && hasOhlc && ma10Segs.map((pts, i) => (
+          <polyline key={`ma10-${i}`} points={pts} fill="none" stroke="#f59e0b" strokeWidth={1.3} strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+        {showMA && hasOhlc && ma20Segs.map((pts, i) => (
+          <polyline key={`ma20-${i}`} points={pts} fill="none" stroke="#7c3aed" strokeWidth={1.3} strokeLinejoin="round" strokeLinecap="round" />
+        ))}
 
         {/* 大盤折線 */}
         {idxSegs.map((pts, i) => (
@@ -1507,6 +1533,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const [ohlcSeries, setOhlcSeries] = useState([]);
   /** 視窗切換：'rs' = 預設，'foreign' = 外資籌碼視窗（A 鍵切換） */
   const [activeView, setActiveView] = useState(initialView ?? 'rs');
+  /** RS K 線是否顯示均線（MA10/MA20）；按鈕或 Shift 鍵切換，預設顯示 */
+  const [showMA, setShowMA] = useState(true);
   /** 三大法人每日買賣超：{ [dateStr]: { foreign, trust, dealer } }，懶載入 */
   const [institutionalData, setInstitutionalData] = useState(null);
   const [institutionalLoading, setInstitutionalLoading] = useState(false);
@@ -1713,8 +1741,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               const instDaysSince = instLd
                 ? Math.floor((Date.now() - new Date(instLd).getTime()) / 86400000)
                 : 999;
-              if (h?.instDates?.length > 0 && instDaysSince <= 1) {
-                // 當天或前一個交易日：直接用
+              if (h?.instDates?.length > 0 && instDaysSince < 1) {
+                // 僅「當天」資料才算新鮮，直接用；昨日（含）以前一律往下增量補抓
                 setInstitutionalData(instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer));
                 setInstitutionalLoading(false);
                 fsInstDone = true;
@@ -1852,6 +1880,9 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         .filter(p => p.date)
         .sort((a, b) => (a.date < b.date ? -1 : 1)); // oldest-first
 
+      // 持股資料實際涵蓋的最後日期；晚於此的 K 線日（今日資料尚未發布）一律留空，不 forward-fill
+      const lastHoldingDate = sortedPairs.length ? sortedPairs[sortedPairs.length - 1].date : null;
+
       return sortedOhlc.map((o) => {
         // Binary search：最後一個 holdingDate <= o.dateStr（forward-fill）
         let lo = 0, hi = sortedPairs.length - 1, found = -1;
@@ -1860,7 +1891,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           if (sortedPairs[mid].date <= o.dateStr) { found = mid; lo = mid + 1; }
           else hi = mid - 1;
         }
-        const holdingVal = found >= 0 ? sortedPairs[found].val : null;
+        // 僅在資料涵蓋範圍內 forward-fill；K 線日晚於最後一筆持股 → null（避免誤導為昨日值）
+        const holdingVal = (found >= 0 && lastHoldingDate && o.dateStr <= lastHoldingDate) ? sortedPairs[found].val : null;
         // B 訊號只在持股資料的實際日期顯示，其餘日填 'N'
         const bSignal = (found >= 0 && sortedPairs[found].date === o.dateStr)
           ? sortedPairs[found].bSig
@@ -1889,12 +1921,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     }
     return sortedOhlc.map((o, i) => {
       const hIdx = anchorIdx - i;
-      // hIdx < 0 → 此 K 線日期在最後一筆持股之後，forward-fill 用最新一筆值，避免圖上空白
-      const holding = holdings
-        ? (hIdx >= 0 && hIdx < holdings.length
-            ? holdings[hIdx]
-            : (hIdx < 0 && holdings.length > 0 ? holdings[0] : null))
-        : null;
+      // hIdx < 0 → 此 K 線日期在最後一筆持股之後（今日資料尚未發布）→ 留空，不補昨日值（避免誤導）
+      const holding = holdings && hIdx >= 0 && hIdx < holdings.length ? holdings[hIdx] : null;
       const bSignal = (foreignBSignals && hIdx >= 0 && hIdx < foreignBSignals.length) ? foreignBSignals[hIdx] : 'N';
       const inst = institutionalData?.[o.dateStr] ?? null;
       return {
@@ -1981,6 +2009,18 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     window.addEventListener('keydown', handleKey, true);
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [stock, stock?.id, navigationList, onNavigate]);
+
+  // Shift 鍵切換 RS K 線均線顯示（僅 RS 視圖、開窗時；忽略長按重複與輸入框）
+  useEffect(() => {
+    if (!stock || activeView !== 'rs') return;
+    const handleKey = (e) => {
+      if (e.key !== 'Shift' || e.repeat) return;
+      if (isDomTypingTarget(e.target)) return;
+      setShowMA((v) => !v);
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => window.removeEventListener('keydown', handleKey, true);
+  }, [stock, stock?.id, activeView]);
 
   // 預取前後各一檔的 K 線，避免切換時等待
   useEffect(() => {
@@ -2493,6 +2533,14 @@ style={{
                       >
                         <strong style={{ color: '#c0392b' }}>紅</strong>＝RS（左）
                         <strong style={{ color: '#1565c0' }}>藍</strong>＝加權（右）
+                        　<span
+                          role="button"
+                          onClick={() => setShowMA((v) => !v)}
+                          title="點擊切換均線顯示（也可按 Shift 鍵）"
+                          style={{ cursor: 'pointer', userSelect: 'none', opacity: showMA ? 1 : 0.4 }}
+                        >
+                          <strong style={{ color: '#f59e0b' }}>MA10</strong> <strong style={{ color: '#7c3aed' }}>MA20</strong>
+                        </span>
                       </span>
                     </>
                   ) : (
@@ -2523,7 +2571,7 @@ style={{
                 }}
               >
                 {activeView === 'rs' ? (
-                  <IbdRsComboChart data={chartData} />
+                  <IbdRsComboChart data={chartData} showMA={showMA} />
                 ) : (
                   <ForeignChipChart data={foreignChartData} allHoldings={effectiveHoldings?.holdings} />
                 )}
