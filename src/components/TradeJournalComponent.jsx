@@ -668,13 +668,6 @@ function TradeJournal() {
                 <span style={{ fontSize: '0.5em', color: '#64748b', fontWeight: 'normal', marginLeft: '2px' }}>自付</span>
               </p>
 
-              {/* 融資利息估算 */}
-              {totalMarginInterest > 0.5 && (
-                <div style={{ marginTop: '8px', padding: '6px 8px', background: '#fef3c7', borderRadius: '4px', fontSize: '0.8rem', color: '#92400e' }}>
-                  融資利息估計：{Math.round(totalMarginInterest).toLocaleString()} 元
-                </div>
-              )}
-
               {positionLevelDetailOpen && (
                 <div
                   style={{
