@@ -2671,15 +2671,78 @@ style={{
   );
 }
 
-function downloadWatchlistJson(items) {
+/**
+ * 讀單一檔的籌碼完整序列（Firestore stockWatchlist/{code}）。
+ * 結構與 prefetchChipData/籌碼視窗一致：三大法人每日買賣超 + 外資持股序列。
+ * 查無資料或失敗回 null，不阻斷整體匯出。
+ */
+async function fetchWatchlistChipSeries(code) {
+  try {
+    const snap = await getDoc(doc(db, 'stockWatchlist', String(code)));
+    if (!snap.exists()) return null;
+    const d = snap.data() || {};
+    const h = d.history || {};
+    const hasInst = Array.isArray(h.instDates) && h.instDates.length > 0;
+    const hasHolding = Array.isArray(h.foreignTotalHolding) && h.foreignTotalHolding.length > 0;
+    if (!hasInst && !hasHolding) return null;
+
+    // 只保留近三個月（兩序列皆 newest-first，依日期過濾；無日期時退回取前 ~63 個交易日）
+    const cutoff = (() => {
+      const x = new Date();
+      x.setMonth(x.getMonth() - 3);
+      return x.toISOString().slice(0, 10);
+    })();
+    const keepIdx = (dates, len) =>
+      Array.isArray(dates) && dates.length
+        ? dates.map((_, i) => i).filter((i) => (dates[i] || '') >= cutoff)
+        : Array.from({ length: Math.min(63, len || 0) }, (_, i) => i);
+    const pick = (arr, idx) => (Array.isArray(arr) ? idx.map((i) => arr[i]) : null);
+
+    let inst = null;
+    if (hasInst) {
+      const idx = keepIdx(h.instDates, h.instDates.length);
+      // 三大法人每日買賣超（單位：股，正=買超）。dates 與各陣列同序（由新到舊）。
+      inst = {
+        latestDate: d.latestInstDate ?? h.instDates[0] ?? null,
+        dates: pick(h.instDates, idx),
+        foreign: pick(h.instForeign, idx),
+        trust: pick(h.instTrust, idx),
+        dealer: pick(h.instDealer, idx),
+      };
+    }
+
+    let foreignHolding = null;
+    if (hasHolding) {
+      const idx = keepIdx(h.foreignHoldingDates, h.foreignTotalHolding.length);
+      // 外資持股張數（單位：張）時間序列。
+      foreignHolding = {
+        latestDate: d.latestHoldingsDate ?? null,
+        dates: pick(h.foreignHoldingDates, idx),
+        holdingLots: pick(h.foreignTotalHolding, idx),
+      };
+    }
+
+    return { inst, foreignHolding };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function downloadWatchlistJson(items) {
+  // 平行撈每檔籌碼序列（清單僅約數十檔，單檔失敗回 null 不影響其他檔）
+  const chipList = await Promise.all(items.map((s) => fetchWatchlistChipSeries(s.id)));
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
   const timeStr = now.toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
   const data = {
     exportedAt: `${dateStr} ${timeStr}`,
     total: items.length,
-    description: 'RS 觀察清單匯出，供 AI 分析用。RS = 相對強度（0-99），Δ = 相對強度變化，HL = 近六個月高低位置（0=最低，1=最高）。',
-    stocks: items.map((s) => ({
+    description:
+      'RS 觀察清單匯出，供 AI 分析用。RS=相對強度(0-99)，rsDelta=RS 變化，pricePct=漲跌幅(%)，' +
+      'pricePos6m=近六個月高低位置(0=最低,1=最高)。chip=預抓籌碼(僅近三個月)：inst 為三大法人每日買賣超' +
+      '(單位:股,正=買超；foreign 外資/trust 投信/dealer 自營商；dates 與各陣列同序,由新到舊)；' +
+      'foreignHolding 為外資持股張數(單位:張)時間序列。chip 為 null 表示尚未抓到籌碼。',
+    stocks: items.map((s, i) => ({
       code: s.id,
       name: s.name,
       rs: getEffectiveDisplayRs(s) ?? null,
@@ -2688,6 +2751,7 @@ function downloadWatchlistJson(items) {
       pricePct5d: s.pricePct5d ?? null,
       pricePct20d: s.pricePct20d ?? null,
       pricePos6m: s.pricePos6m ?? null,
+      chip: chipList[i],
     })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -2703,6 +2767,7 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
   const { key, title, subtitle, items, totalCount, emptyText } = section;
   const cardRef = useRef(null);
   const [cardPage, setCardPage] = useState(0);
+  const [downloading, setDownloading] = useState(false);
   const cardPageCount = Math.max(1, Math.ceil(items.length / IBDRS_HOME_CARD_PAGE_SIZE));
   const safeCardPage = Math.min(cardPage, cardPageCount - 1);
   const visibleItems = useMemo(
@@ -2775,14 +2840,22 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
         {onDownload ? (
           <button
             type="button"
-            onClick={() => onDownload(items)}
-            disabled={items.length === 0}
-            title="下載觀察清單 JSON，供 AI 分析用"
+            onClick={async () => {
+              if (downloading || items.length === 0) return;
+              setDownloading(true);
+              try {
+                await onDownload(items);
+              } finally {
+                setDownloading(false);
+              }
+            }}
+            disabled={items.length === 0 || downloading}
+            title="下載清單 JSON（含籌碼完整序列），供 AI 分析用"
             style={{
               padding: '1px 4px',
               background: 'none',
               border: 'none',
-              cursor: items.length === 0 ? 'not-allowed' : 'pointer',
+              cursor: items.length === 0 || downloading ? 'not-allowed' : 'pointer',
               lineHeight: 1,
               opacity: items.length === 0 ? 0.3 : 0.55,
               display: 'inline-flex',
@@ -2790,10 +2863,19 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
               alignSelf: 'center',
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M7 1v7M4.5 5.5L7 8l2.5-2.5" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <line x1="2" y1="12" x2="12" y2="12" stroke="#555" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
+            {downloading ? (
+              <svg width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="7" cy="7" r="5" fill="none" stroke="#cbd5e1" strokeWidth="1.5" />
+                <path d="M7 2a5 5 0 0 1 5 5" fill="none" stroke="#0f766e" strokeWidth="1.5" strokeLinecap="round">
+                  <animateTransform attributeName="transform" type="rotate" from="0 7 7" to="360 7 7" dur="0.7s" repeatCount="indefinite" />
+                </path>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M7 1v7M4.5 5.5L7 8l2.5-2.5" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <line x1="2" y1="12" x2="12" y2="12" stroke="#555" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            )}
           </button>
         ) : null}
         {cardPageCount > 1 ? (
@@ -5087,7 +5169,7 @@ export default function IBDRsRankingPage() {
                       });
                       setSelectedStock(s);
                     }}
-                    onDownload={sec.key === 'watchlist' ? downloadWatchlistJson : undefined}
+                    onDownload={sec.key === 'watchlist' || sec.key === 'watchlistStar1' ? downloadWatchlistJson : undefined}
                   />
                 ))}
               </div>
