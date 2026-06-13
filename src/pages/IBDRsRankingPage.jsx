@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { getDoc, onSnapshot, setDoc, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../utils/firebaseConfig';
 import Layout from '@theme/Layout';
-import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache, fetchInstitutionalInvestorsSeries, fetchForeignHoldingSeries, instArraysToDateMap } from '../features/StockAnalysis/api/stockApi';
+import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache, fetchInstitutionalInvestorsSeries, fetchForeignHoldingSeries, instArraysToDateMap, lastExpectedInstDate } from '../features/StockAnalysis/api/stockApi';
 import { syncSingleStock, syncTestBatch } from '../features/StockAnalysis/api/rsApi';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
 import {
@@ -1738,11 +1738,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             if (needInst) {
               const h = d.history;
               const instLd = d.latestInstDate ?? null;
-              const instDaysSince = instLd
-                ? Math.floor((Date.now() - new Date(instLd).getTime()) / 86400000)
-                : 999;
-              if (h?.instDates?.length > 0 && instDaysSince < 1) {
-                // 僅「當天」資料才算新鮮，直接用；昨日（含）以前一律往下增量補抓
+              if (h?.instDates?.length > 0 && instLd && instLd >= lastExpectedInstDate()) {
+                // 快取最新日 >= 目前應已公告的最近交易日即為新鮮（週末/盤前/假日不補抓），直接用
                 setInstitutionalData(instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer));
                 setInstitutionalLoading(false);
                 fsInstDone = true;
