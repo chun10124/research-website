@@ -3961,6 +3961,12 @@ export default function IBDRsRankingPage() {
       });
   }, [globalSorted, rsWatchlistIdSet, rsWatchlistPriorities]);
 
+  /** 觀察清單中評分（分類）為 1 星的股票 */
+  const watchlistStar1Stocks = useMemo(
+    () => watchlistStocks.filter((s) => (rsWatchlistPriorities[String(s.id)] ?? null) === 1),
+    [watchlistStocks, rsWatchlistPriorities]
+  );
+
   const hasActiveFilter = Object.entries(filters).some(([k, v]) => v !== '' && v !== DEFAULT_FILTERS[k]);
 
   const deltaShortTitle = `今日 RS 減去 ${deltaShortDaysResolved} 個交易日前之 RS（ibdRsHistory 筆數；需足夠歷史）`;
@@ -4081,14 +4087,22 @@ export default function IBDRsRankingPage() {
   /** 首頁卡片篩選母體：永遠以全市場 filtered 結果為準 */
   const filteredIdSet = useMemo(() => new Set(filtered.map((s) => s.id)), [filtered]);
 
-  const homeSections = useMemo(
-    () => [
+  const homeSections = useMemo(() => {
+    const sections = [
       {
         key: 'watchlist',
-        title: '觀察清單',
-        subtitle: '自選追蹤',
+        title: 'Universe',
+        subtitle: '選股母體',
         items: watchlistStocks.filter((s) => filteredIdSet.has(s.id)),
         totalCount: watchlistStocks.filter((s) => filteredIdSet.has(s.id)).length,
+        emptyText: 'Universe 目前沒有股票',
+      },
+      {
+        key: 'watchlistStar1',
+        title: '觀察清單',
+        subtitle: '',
+        items: watchlistStar1Stocks.filter((s) => filteredIdSet.has(s.id)),
+        totalCount: watchlistStar1Stocks.filter((s) => filteredIdSet.has(s.id)).length,
         emptyText: '觀察清單目前沒有股票',
       },
       {
@@ -4097,13 +4111,6 @@ export default function IBDRsRankingPage() {
         subtitle: '',
         items: hlHighList.filter((s) => filteredIdSet.has(s.id)),
         totalCount: hlHighList.filter((s) => filteredIdSet.has(s.id)).length,
-      },
-      {
-        key: 'majorMove',
-        title: `單日 |ΔRS| > ${IBDRS_MAJOR_MOVE_DELTA_GT} 且 RS > ${IBDRS_MAJOR_MOVE_RS_GT}`,
-        subtitle: '',
-        items: majorMoveStocksToday.filter((s) => filteredIdSet.has(s.id)),
-        totalCount: majorMoveStocksToday.filter((s) => filteredIdSet.has(s.id)).length,
       },
       {
         key: 'priceBigMove',
@@ -4126,15 +4133,23 @@ export default function IBDRsRankingPage() {
         items: rsBreakthrough90Today.filter((s) => filteredIdSet.has(s.id)),
         totalCount: rsBreakthrough90Today.filter((s) => filteredIdSet.has(s.id)).length,
       },
-    ],
+    ];
+    // 手機版：把「觀察清單」（評分 1）移到最上面
+    if (isMobileLayout) {
+      const idx = sections.findIndex((s) => s.key === 'watchlistStar1');
+      if (idx > 0) sections.unshift(sections.splice(idx, 1)[0]);
+    }
+    return sections;
+  },
     [
       filteredIdSet,
       watchlistStocks,
-      majorMoveStocksToday,
+      watchlistStar1Stocks,
       priceBigMoveHighRsToday,
       rsBreakthrough80Today,
       rsBreakthrough90Today,
       hlHighList,
+      isMobileLayout,
     ]
   );
 
