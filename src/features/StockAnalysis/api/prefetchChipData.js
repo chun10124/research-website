@@ -80,7 +80,7 @@ export async function prefetchWatchlistChipData(stockCode) {
     // 週末/盤前未到 21:00/假日皆無新資料，避免一直空補抓。
     // 需補抓時：沒資料抓 18 個月，有舊資料則自最新日+1 增量。
     const instLd = existing.latestInstDate ?? null;
-    const instFresh = hist.instDates?.length > 0 && instLd && instLd >= lastExpectedInstDate();
+    const instFresh = hist.instDates?.length > 0 && instLd && instLd >= lastExpectedInstDate(existing.market);
     if (!instFresh) {
       try {
         const startDate = instLd ? dayPlusOne(instLd) : eighteenMonthsAgo();

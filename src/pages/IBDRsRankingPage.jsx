@@ -1738,7 +1738,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             if (needInst) {
               const h = d.history;
               const instLd = d.latestInstDate ?? null;
-              if (h?.instDates?.length > 0 && instLd && instLd >= lastExpectedInstDate()) {
+              if (h?.instDates?.length > 0 && instLd && instLd >= lastExpectedInstDate(stock?.market)) {
                 // 快取最新日 >= 目前應已公告的最近交易日即為新鮮（週末/盤前/假日不補抓），直接用
                 setInstitutionalData(instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer));
                 setInstitutionalLoading(false);

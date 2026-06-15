@@ -1052,15 +1052,20 @@ const isBeforeTaiwan9PM = () => {
 /**
  * 目前「應該已公告」的最近一個交易日（YYYY-MM-DD，台灣時區）。
  * 用於三大法人快取新鮮度判定：快取的 latestInstDate >= 此日即視為新鮮、不需補抓。
- * 規則：
- *   - 三大法人當日資料台灣時間 21:00 後才公告，未到則回退一天。
+ * 規則（依市場分流今日資料公告時間）：
+ *   - 上市（TWSE，走 T86）約下午 17:00 公告，未到則回退一天。
+ *   - 上櫃（TPEX，走 FinMind）約晚上 21:00 公告，未到則回退一天。
+ *   - 市場不明：採樂觀的 17:00（上櫃此時打 TWSE 會空、自動 fallthrough 到 FinMind 取舊資料，無害）。
  *   - 週六/週日無交易，回退到最近的平日（週五）。
  * 注意：未含國定假日表，假日當天可能仍判定為「應有資料」而觸發一次空補抓（少見、可接受）。
+ * @param {'TWSE'|'TPEX'|string} [market] 股票市場別
  */
-export const lastExpectedInstDate = () => {
+export const lastExpectedInstDate = (market) => {
+  // 上櫃資料晚上 9 點才出；上市/未知用下午 5 點
+  const cutoffHour = market === 'TPEX' ? 21 : 17;
   // 以台灣牆鐘時間建構 Date，後續只做日期加減與格式化
   const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
-  if (d.getHours() < 21) d.setDate(d.getDate() - 1); // 今日資料尚未公告
+  if (d.getHours() < cutoffHour) d.setDate(d.getDate() - 1); // 今日資料尚未公告
   let dow = d.getDay(); // 0=日, 6=六
   while (dow === 0 || dow === 6) { d.setDate(d.getDate() - 1); dow = d.getDay(); }
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
