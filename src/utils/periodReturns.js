@@ -1,7 +1,12 @@
 /**
  * 績效計算核心
  *
- * 入金自動識別：BUY 時現金不足則缺口記為入金；SELL 收益加回。僅能推估「最少」入金。
+ * 入金自動識別：依「真實現金流」掃描，現金不足則缺口記為入金；多餘現金回流。僅能推估「最少」入金。
+ *   - 現股：BUY 出全額、SELL 入全額（現金換部位）。
+ *   - 融資：BUY 只出自付 40%（借的 60% 非自有資金）；SELL 入「價金 − 償還借款本金」。
+ *   - 融券：開倉(SELL) 出保證金 90%（賣出價金被鎖為擔保，非可用現金）；
+ *           回補(BUY) 入「釋放保證金 + 已實現損益」。
+ *   ⇒ 開槓桿不會被誤判為入金，總資產 = 真實權益，曝險可正確 > 100%。
  *
  * 正確資產定義：
  *   Account_Assets(date) = cumAutoDeposit(date) + cumulativeRealized(date)
@@ -15,6 +20,12 @@
  *   - 報酬率 = (End_NAV / Start_NAV) - 1，完全不受入金影響。
  */
 
+import {
+  MARGIN_LONG_SELF_RATIO,
+  MARGIN_LONG_LOAN_RATIO,
+  MARGIN_SHORT_DEPOSIT_RATIO,
+} from './pnlCalculator';
+
 const EPSILON = 1e-10;
 const TRADE_EPSILON = 1e-6;
 
@@ -22,9 +33,11 @@ const TRADE_EPSILON = 1e-6;
 
 /**
  * 從交易明細自動識別「外部入金」。
- * 掃描所有 BUY/SELL（時間升序），維護 cashBalance：
- *   BUY：cashBalance < cost → 缺口視為外部入金
- *   SELL：proceeds 加回 cashBalance
+ * 掃描所有 BUY/SELL（時間升序），用「真實現金流」維護 cashBalance：
+ *   - cashDelta < 0（出金）且現金不足 → 缺口視為外部入金
+ *   - cashDelta > 0（入金）→ 加回 cashBalance
+ * 各交易型態的 cashDelta 依融資／融券自付比例計算（見檔頭說明），
+ * 並維護各標的的融資／融券未平倉池，平倉時才知道要償還的借款／釋放的保證金。
  *
  * @param {Array} entries 交易日誌 entries（同 Firestore 格式）
  * @returns {{ id, date, amount, type: 'deposit' }[]}  自動識別的入金清單
@@ -37,6 +50,10 @@ export function autoDetectCashFlows(entries) {
     return (a.timeId || 0) - (b.timeId || 0);
   });
 
+  // 各標的未平倉池（僅融資多頭與融券空頭需要，現股全額進出不必追蹤成本）
+  const pools = {}; // code -> { mlq, mlc, msq, msc, msDeposit }
+  const getPool = (code) => (pools[code] || (pools[code] = { mlq: 0, mlc: 0, msq: 0, msc: 0, msDeposit: 0 }));
+
   let cashBalance = 0;
   const deposits = [];
 
@@ -46,12 +63,64 @@ export function autoDetectCashFlows(entries) {
     const price = Number(e.price);
     if (isNaN(qty) || qty <= TRADE_EPSILON || isNaN(price) || price < 0.5) continue;
 
+    const tradeType = e.tradeType || 'STOCK';
     const amount = qty * price;
+    const p = getPool(e.code);
+
+    // ── 計算此筆交易的真實現金流（負 = 出金，正 = 入金） ──
+    let cashDelta = 0;
+    if (tradeType === 'MARGIN_LONG') {
+      if (e.direction === 'BUY') {
+        // 開融資多頭：只出自付部分，借款 60% 進池
+        p.mlq += qty;
+        p.mlc += amount;
+        cashDelta = -amount * MARGIN_LONG_SELF_RATIO;
+      } else {
+        // 融資平多：收價金、償還對應借款本金（按池內均價）
+        const closedQty = Math.min(qty, p.mlq);
+        if (closedQty > TRADE_EPSILON) {
+          const avgFullCost = p.mlc / p.mlq;
+          const loanRepaid = avgFullCost * closedQty * MARGIN_LONG_LOAN_RATIO;
+          cashDelta = price * closedQty - loanRepaid;
+          p.mlc -= avgFullCost * closedQty;
+          p.mlq -= closedQty;
+          if (p.mlq < TRADE_EPSILON) { p.mlq = 0; p.mlc = 0; }
+        }
+      }
+    } else if (tradeType === 'MARGIN_SHORT') {
+      if (e.direction === 'SELL') {
+        // 開融券空頭：出保證金（賣出價金被鎖為擔保，非可用現金）
+        p.msq += qty;
+        p.msc += amount;
+        p.msDeposit += amount * MARGIN_SHORT_DEPOSIT_RATIO;
+        cashDelta = -amount * MARGIN_SHORT_DEPOSIT_RATIO;
+      } else {
+        // 融券回補：釋放保證金 + 已實現損益
+        const closedQty = Math.min(qty, p.msq);
+        if (closedQty > TRADE_EPSILON) {
+          const avgShortPrice = p.msc / p.msq;
+          const avgDeposit = p.msDeposit / p.msq;
+          const depositReleased = avgDeposit * closedQty;
+          const realizedPnl = (avgShortPrice - price) * closedQty;
+          cashDelta = depositReleased + realizedPnl;
+          p.msc -= avgShortPrice * closedQty;
+          p.msDeposit -= avgDeposit * closedQty;
+          p.msq -= closedQty;
+          if (p.msq < TRADE_EPSILON) { p.msq = 0; p.msc = 0; p.msDeposit = 0; }
+        }
+      }
+    } else {
+      // 現股：全額換部位
+      cashDelta = e.direction === 'BUY' ? -amount : amount;
+    }
+
     const dateStr = (e.date || '').slice(0, 10);
 
-    if (e.direction === 'BUY') {
-      if (cashBalance < amount - TRADE_EPSILON) {
-        const missing = amount - cashBalance;
+    // 出金且現金不足 → 缺口記為外部入金
+    if (cashDelta < -TRADE_EPSILON) {
+      const need = -cashDelta;
+      if (cashBalance < need - TRADE_EPSILON) {
+        const missing = need - cashBalance;
         deposits.push({
           id: `auto-${dateStr}-${deposits.length}`,
           date: dateStr,
@@ -60,12 +129,9 @@ export function autoDetectCashFlows(entries) {
         });
         cashBalance += missing;
       }
-      cashBalance -= amount;
-      cashBalance = Math.max(0, cashBalance); // 浮點數保護
-    } else {
-      // SELL（含做空開倉）：現金流入
-      cashBalance += amount;
     }
+    cashBalance += cashDelta;
+    cashBalance = Math.max(0, cashBalance); // 浮點數保護
   }
 
   return deposits;

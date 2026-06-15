@@ -5,7 +5,15 @@
  * 2. 每日狀態：Cash + Holdings；有交易則更新，無交易則承襲前一日。
  * 3. 按日盯市：每日總資產 = Cash + Sum(持股數量 × 當日收盤價)；非交易日用最後一個交易日收盤價（forward-fill）。
  * 4. 單位化：起始 NAV=100, Total_Units=0。入金或資金不足買入時 New_Units = Deposit / Current_NAV，Total_Units += New_Units（不改變當下 NAV）。每日結算 NAV = 當日總資產 / Total_Units。
+ * 5. 槓桿：融資只出自付 40%（借款 60% 不計入入金），盯市時市值需扣除未償還借款本金；
+ *    融券只出保證金 90%，盯市時權益 = 保證金 + 方向損益。⇒ 總資產 = 真實權益，NAV 正確反映槓桿放大。
  */
+
+import {
+  MARGIN_LONG_SELF_RATIO,
+  MARGIN_LONG_LOAN_RATIO,
+  MARGIN_SHORT_DEPOSIT_RATIO,
+} from './pnlCalculator';
 
 const EPSILON = 1e-10;
 const TRADE_EPSILON = 1e-6;
@@ -50,6 +58,7 @@ function getTradesByDate(entries) {
       date: (e.date || '').slice(0, 10),
       timeId: e.timeId || 0,
       direction: e.direction,
+      tradeType: e.tradeType || 'STOCK',
       code: e.code,
       name: e.name,
       quantity: Number(e.quantity),
@@ -74,7 +83,9 @@ function runDailySimulation(entries, timeline) {
   const tradesByDate = getTradesByDate(entries);
   const result = [];
   let cash = 0;
-  const holdings = {}; // code -> { qty, positionCost }
+  const stock = {}; // code -> { qty, positionCost }    現股（qty 可負 = 現股空單）
+  const mlong = {}; // code -> { qty, cost }             融資多頭（qty >= 0）
+  const short = {}; // code -> { qty, cost, deposit }    融券空頭（qty >= 0）
   let totalUnits = 0;
   let nav = INITIAL_NAV;
 
@@ -83,55 +94,107 @@ function runDailySimulation(entries, timeline) {
 
     for (const t of trades) {
       const amount = t.quantity * t.price;
-      if (t.direction === 'BUY') {
-        if (cash < amount - TRADE_EPSILON) {
-          const deposit = amount - cash;
-          cash += deposit;
+
+      // ── 計算此筆真實現金流（負 = 出金）並更新對應部位池 ──
+      let cashDelta = 0;
+      if (t.tradeType === 'MARGIN_LONG') {
+        if (!mlong[t.code]) mlong[t.code] = { qty: 0, cost: 0 };
+        const m = mlong[t.code];
+        if (t.direction === 'BUY') {
+          m.qty += t.quantity;
+          m.cost += amount;
+          cashDelta = -amount * MARGIN_LONG_SELF_RATIO; // 只出自付，借款 60% 非自有資金
+        } else {
+          const closeQty = Math.min(t.quantity, m.qty);
+          if (closeQty > EPSILON) {
+            const avgFullCost = m.cost / m.qty;
+            const loanRepaid = avgFullCost * closeQty * MARGIN_LONG_LOAN_RATIO;
+            cashDelta = t.price * closeQty - loanRepaid; // 收價金、償還對應借款本金
+            m.cost -= avgFullCost * closeQty;
+            m.qty -= closeQty;
+          }
+        }
+        if (m.qty < EPSILON) delete mlong[t.code];
+      } else if (t.tradeType === 'MARGIN_SHORT') {
+        if (!short[t.code]) short[t.code] = { qty: 0, cost: 0, deposit: 0 };
+        const sh = short[t.code];
+        if (t.direction === 'SELL') {
+          sh.qty += t.quantity;
+          sh.cost += amount;
+          sh.deposit += amount * MARGIN_SHORT_DEPOSIT_RATIO;
+          cashDelta = -amount * MARGIN_SHORT_DEPOSIT_RATIO; // 出保證金（賣出價金被鎖）
+        } else {
+          const closeQty = Math.min(t.quantity, sh.qty);
+          if (closeQty > EPSILON) {
+            const avgShort = sh.cost / sh.qty;
+            const avgDeposit = sh.deposit / sh.qty;
+            cashDelta = avgDeposit * closeQty + (avgShort - t.price) * closeQty; // 釋放保證金 + 損益
+            sh.cost -= avgShort * closeQty;
+            sh.deposit -= avgDeposit * closeQty;
+            sh.qty -= closeQty;
+          }
+        }
+        if (sh.qty < EPSILON) delete short[t.code];
+      } else {
+        // ── 現股：全額換部位（維持原有淨部位邏輯） ──
+        cashDelta = t.direction === 'BUY' ? -amount : amount;
+        if (!stock[t.code]) stock[t.code] = { qty: 0, positionCost: 0 };
+        const h = stock[t.code];
+        if (t.direction === 'BUY') {
+          if (h.qty < 0) {
+            const closeQty = Math.min(t.quantity, Math.abs(h.qty));
+            const avgShort = Math.abs(h.qty) > EPSILON ? h.positionCost / Math.abs(h.qty) : 0;
+            h.positionCost -= avgShort * closeQty;
+            h.qty += closeQty;
+            const remain = t.quantity - closeQty;
+            if (remain > EPSILON) {
+              h.qty = remain;
+              h.positionCost = t.price * remain;
+            }
+          } else {
+            h.qty += t.quantity;
+            h.positionCost += amount;
+          }
+        } else {
+          if (h.qty > 0) {
+            const closeQty = Math.min(t.quantity, h.qty);
+            const avgCost = h.qty > EPSILON ? h.positionCost / h.qty : 0;
+            h.positionCost -= avgCost * closeQty;
+            h.qty -= closeQty;
+            const remain = t.quantity - closeQty;
+            if (remain > EPSILON) {
+              h.qty = -remain;
+              h.positionCost = t.price * remain;
+            }
+          } else {
+            h.qty -= t.quantity;
+            h.positionCost += amount;
+          }
+        }
+        if (Math.abs(h.qty) < EPSILON) delete stock[t.code];
+      }
+
+      // ── 出金且現金不足 → 缺口視為外部入金，按當下 NAV 發行單位 ──
+      if (cashDelta < -TRADE_EPSILON) {
+        const need = -cashDelta;
+        if (cash < need - TRADE_EPSILON) {
+          const deposit = need - cash;
           const currentNAV = totalUnits > EPSILON ? (result.length > 0 ? result[result.length - 1].nav : nav) : INITIAL_NAV;
+          cash += deposit;
           totalUnits += deposit / currentNAV;
         }
-        cash -= amount;
-        if (!holdings[t.code]) holdings[t.code] = { qty: 0, positionCost: 0 };
-        const h = holdings[t.code];
-        if (h.qty < 0) {
-          const closeQty = Math.min(t.quantity, Math.abs(h.qty));
-          const avgShort = Math.abs(h.qty) > EPSILON ? h.positionCost / Math.abs(h.qty) : 0;
-          h.positionCost -= avgShort * closeQty;
-          h.qty += closeQty;
-          const remain = t.quantity - closeQty;
-          if (remain > EPSILON) {
-            h.qty = remain;
-            h.positionCost = t.price * remain;
-          }
-        } else {
-          h.qty += t.quantity;
-          h.positionCost += amount;
-        }
-        if (Math.abs(h.qty) < EPSILON) delete holdings[t.code];
-      } else {
-        cash += amount;
-        if (!holdings[t.code]) holdings[t.code] = { qty: 0, positionCost: 0 };
-        const h = holdings[t.code];
-        if (h.qty > 0) {
-          const closeQty = Math.min(t.quantity, h.qty);
-          const avgCost = h.qty > EPSILON ? h.positionCost / h.qty : 0;
-          h.positionCost -= avgCost * closeQty;
-          h.qty -= closeQty;
-          const remain = t.quantity - closeQty;
-          if (remain > EPSILON) {
-            h.qty = -remain;
-            h.positionCost = t.price * remain;
-          }
-        } else {
-          h.qty -= t.quantity;
-          h.positionCost += amount;
-        }
-        if (Math.abs(h.qty) < EPSILON) delete holdings[t.code];
       }
+      cash += cashDelta;
     }
 
-    const positionCost = Object.values(holdings).reduce((s, h) => s + h.positionCost, 0);
-    const totalAssetsAtCost = cash + positionCost;
+    // ── 以成本估計的權益（供單位初始化與無價時 fallback）：
+    //    現股=成本、融資=自付部分、融券=保證金 ──
+    let positionCostEquity = 0;
+    for (const h of Object.values(stock)) positionCostEquity += h.positionCost;
+    for (const m of Object.values(mlong)) positionCostEquity += m.cost * MARGIN_LONG_SELF_RATIO;
+    for (const sh of Object.values(short)) positionCostEquity += sh.deposit;
+    const totalAssetsAtCost = cash + positionCostEquity;
+
     if (totalUnits < EPSILON && totalAssetsAtCost > EPSILON) {
       totalUnits = totalAssetsAtCost / INITIAL_NAV;
       nav = INITIAL_NAV;
@@ -145,8 +208,16 @@ function runDailySimulation(entries, timeline) {
       totalAssets: totalAssetsAtCost,
       totalUnits,
       cash,
-      holdings: Object.entries(holdings).reduce((acc, [k, v]) => {
+      holdings: Object.entries(stock).reduce((acc, [k, v]) => {
         acc[k] = { qty: v.qty, positionCost: v.positionCost };
+        return acc;
+      }, {}),
+      mlong: Object.entries(mlong).reduce((acc, [k, v]) => {
+        acc[k] = { qty: v.qty, cost: v.cost };
+        return acc;
+      }, {}),
+      short: Object.entries(short).reduce((acc, [k, v]) => {
+        acc[k] = { qty: v.qty, cost: v.cost, deposit: v.deposit };
         return acc;
       }, {}),
     });
@@ -167,6 +238,7 @@ export function applyMarkToMarket(dailyRows, priceMapByCode) {
     const row = dailyRows[i];
     const dateStr = row.date;
     let totalMarketValue = row.cash;
+    // 現股（多單盯市；空單 = 成本 + price×qty，qty 為負）
     for (const [code, h] of Object.entries(row.holdings)) {
       const price = getPriceOnDate(priceMapByCode, code, dateStr);
       const qty = h.qty;
@@ -175,6 +247,25 @@ export function applyMarkToMarket(dailyRows, priceMapByCode) {
         totalMarketValue += qty > 0 ? price * qty : cost + price * qty;
       } else {
         totalMarketValue += cost;
+      }
+    }
+    // 融資多頭：權益 = 市值 − 未償還借款本金（借款按成本固定，不隨股價變動）
+    for (const [code, m] of Object.entries(row.mlong || {})) {
+      const price = getPriceOnDate(priceMapByCode, code, dateStr);
+      const loan = m.cost * MARGIN_LONG_LOAN_RATIO;
+      if (price != null && price > 0) {
+        totalMarketValue += price * m.qty - loan;
+      } else {
+        totalMarketValue += m.cost - loan; // = 自付部分
+      }
+    }
+    // 融券空頭：權益 = 保證金 + 方向損益（放空獲利 = 賣出成本 − 現價市值）
+    for (const [code, sh] of Object.entries(row.short || {})) {
+      const price = getPriceOnDate(priceMapByCode, code, dateStr);
+      if (price != null && price > 0) {
+        totalMarketValue += sh.deposit + (sh.cost - price * sh.qty);
+      } else {
+        totalMarketValue += sh.deposit;
       }
     }
     const totalAssets = totalMarketValue;
