@@ -778,36 +778,58 @@ function parseTWSEInstRow(row) {
   };
 }
 
+/** TWSE 尖峰回應極慢；超過此秒數即放棄該日，快速 fail 轉 FinMind，避免乾等到 proxy 524（~100s） */
+const TWSE_INST_FETCH_TIMEOUT_MS = 7000;
+/** 限流：一次最多並發幾日請求，避免數十發全市場 T86 同時打觸發 TWSE 限流 */
+const TWSE_INST_CONCURRENCY = 5;
+/** 單日結果哨符：逾時／proxy 錯／網路錯（與「合法無資料的 null」區分，用來決定是否整段轉 FinMind） */
+const TWSE_INST_FAIL = Symbol('twse-inst-fail');
+
 async function fetchTWSEInstOneDay(stockId, dateStr) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TWSE_INST_FETCH_TIMEOUT_MS);
   try {
     const d = dateStr.replace(/-/g, '');
     const url = `${TWSE_INST_URL}?response=json&date=${d}&selectType=ALL`;
-    const res = await fetch(`${PROXY_BASE}${encodeURIComponent(url)}`);
-    if (!res.ok) return null;
+    const res = await fetch(`${PROXY_BASE}${encodeURIComponent(url)}`, { signal: controller.signal });
+    if (!res.ok) return TWSE_INST_FAIL; // 429/502/524… proxy 或 TWSE 端失敗
     const json = await res.json();
-    if (json?.stat !== 'OK' || !Array.isArray(json.data)) return null;
+    if (json?.stat !== 'OK' || !Array.isArray(json.data)) return null; // 假日／盤前：合法無資料
     const row = json.data.find((r) => r[0] === stockId);
-    if (!row) return null;
+    if (!row) return null; // 當日查無此股（如上櫃股）：合法無資料
     return { date: dateStr, ...parseTWSEInstRow(row) };
   } catch {
-    return null;
+    return TWSE_INST_FAIL; // 含 AbortError（逾時 7s）／網路錯 → 失敗，觸發 FinMind
+  } finally {
+    clearTimeout(timer);
   }
 }
 
+/** 回傳 { dateMap, failed }；failed=true 代表至少一日逾時/失敗，上層應整段改用 FinMind */
 async function fetchInstRangeFromTWSE(stockId, startDate) {
   const today = new Date();
   const start = new Date(startDate);
   const dates = [];
   for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+    const wd = d.getUTCDay();
+    if (wd === 0 || wd === 6) continue; // 跳過週末：無交易資料，省去注定落空的請求
     dates.push(d.toISOString().slice(0, 10));
   }
-  if (!dates.length) return {};
-  const results = await Promise.all(dates.map((ds) => fetchTWSEInstOneDay(stockId, ds)));
+  if (!dates.length) return { dateMap: {}, failed: false };
   const dateMap = {};
-  for (const r of results) {
-    if (r) dateMap[r.date] = { foreign: r.foreign, trust: r.trust, dealer: r.dealer };
+  let failed = false;
+  // 分批並發（每批 TWSE_INST_CONCURRENCY 日），降低瞬間並發，避開 TWSE 限流／proxy 524
+  for (let i = 0; i < dates.length; i += TWSE_INST_CONCURRENCY) {
+    const batch = dates.slice(i, i + TWSE_INST_CONCURRENCY);
+    const results = await Promise.all(batch.map((ds) => fetchTWSEInstOneDay(stockId, ds)));
+    for (const r of results) {
+      if (r === TWSE_INST_FAIL) { failed = true; continue; }
+      if (r) dateMap[r.date] = { foreign: r.foreign, trust: r.trust, dealer: r.dealer };
+    }
+    // 一旦該批有逾時/失敗，TWSE 顯然在塞車：立刻中止剩餘批次，整段改走 FinMind（避免逐批各等 7s）
+    if (failed) break;
   }
-  return dateMap;
+  return { dateMap, failed };
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -820,9 +842,10 @@ export const fetchInstitutionalInvestorsSeries = async (stockId, startDate) => {
   try {
     const daysDiff = (Date.now() - new Date(startDate).getTime()) / 86400000;
     if (daysDiff <= 60) {
-      const twseMap = await fetchInstRangeFromTWSE(stockId, startDate);
-      if (twseMap && Object.keys(twseMap).length > 0) return twseMap;
-      // TWSE 無資料（可能是上櫃股）→ fall through to FinMind
+      const { dateMap: twseMap, failed } = await fetchInstRangeFromTWSE(stockId, startDate);
+      // 任一日逾時/失敗 → 整段改走 FinMind（一次請求拿乾淨範圍）；
+      // 未失敗但無資料（上櫃股/假日）→ 同樣 fall through to FinMind。
+      if (!failed && Object.keys(twseMap).length > 0) return twseMap;
     }
     // FinMind 備用（大範圍歷史 or 上櫃股）
     const params = new URLSearchParams({
