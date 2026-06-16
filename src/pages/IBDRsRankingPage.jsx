@@ -595,7 +595,7 @@ function thinSwingIndicesEvenly(indices, maxKeep) {
  * - X 軸：每筆資料等寬 slot，K 棒中心 = RS/大盤折線點位，完全一致
  * - Y 軸左：RS 固定 1-99；Y 軸右：大盤指數 auto；K 棒獨立 Y（不影響其他 Y 軸）
  */
-function IbdRsComboChart({ data, showMA = true }) {
+function IbdRsComboChart({ data, showMA = true, showRs = true }) {
   const wrapRef = useRef(null);
   const [size, setSize] = useState({ w: 640, h: 320 });
   const [hoverIdx, setHoverIdx] = useState(null);
@@ -674,8 +674,11 @@ function IbdRsComboChart({ data, showMA = true }) {
 
   /* 均線 MA：由 chartData 預先在「含暖身段」序列上算好（d.ma10/d.ma20），這裡只負責畫，
      所以 MA 能從第一根 K 棒就有值，不再因暖身不足而從中間才出現（價格刻度） */
-  const ma10Segs = hasOhlc ? buildSegs((d) => (Number.isFinite(d.ma10) ? yPrice(d.ma10) : null)) : [];
-  const ma20Segs = hasOhlc ? buildSegs((d) => (Number.isFinite(d.ma20) ? yPrice(d.ma20) : null)) : [];
+  // 超出可見價格域（pMin~pMax，已含 5% padding）的 MA 點視為斷點不畫，避免溢出格子，
+  // 同時不擴張刻度 → 切換 MA 開關時 K 棒不會跳動
+  const inBand = (v) => Number.isFinite(v) && v >= pMin && v <= pMax;
+  const ma10Segs = hasOhlc ? buildSegs((d) => (inBand(d.ma10) ? yPrice(d.ma10) : null)) : [];
+  const ma20Segs = hasOhlc ? buildSegs((d) => (inBand(d.ma20) ? yPrice(d.ma20) : null)) : [];
 
   /* X ticks：最多 7 筆 */
   const MAX_X_TICKS = 7;
@@ -777,14 +780,14 @@ function IbdRsComboChart({ data, showMA = true }) {
           const up = (d.open !== d.close)
             ? d.close >= d.open
             : prevClose != null ? d.close >= prevClose : true;
-          const fill   = up ? '#e53935' : '#2e7d32';
-          const stroke = up ? '#c62828' : '#1b5e20';
+          const fill   = up ? '#e53935' : '#1a8a30';
+          const stroke = up ? '#c62828' : '#0f5c1e';
           const yH = yPrice(d.high); const yL = yPrice(d.low);
           const yO = yPrice(d.open); const yC = yPrice(d.close);
           const bodyTop = Math.min(yO, yC);
           const bodyH   = Math.max(Math.abs(yC - yO), 1);
           return (
-            <g key={`k-${d.dateKey}`} opacity={0.65}>
+            <g key={`k-${d.dateKey}`} opacity={0.85}>
               <line x1={xc} y1={yH} x2={xc} y2={yL} stroke={stroke} strokeWidth={0.9} />
               <rect x={xc - barW / 2} y={bodyTop} width={barW} height={bodyH} fill={fill} stroke={stroke} strokeWidth={0.8} />
             </g>
@@ -801,12 +804,12 @@ function IbdRsComboChart({ data, showMA = true }) {
 
         {/* 大盤折線 */}
         {idxSegs.map((pts, i) => (
-          <polyline key={`idx-${i}`} points={pts} fill="none" stroke="#1565c0" strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
+          <polyline key={`idx-${i}`} points={pts} fill="none" stroke="#1565c0" strokeWidth={1.55} strokeLinejoin="round" strokeLinecap="round" />
         ))}
 
-        {/* RS 折線 */}
-        {rsSegs.map((pts, i) => (
-          <polyline key={`rs-${i}`} points={pts} fill="none" stroke="#c0392b" strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
+        {/* RS 折線（週線模式不顯示） */}
+        {showRs && rsSegs.map((pts, i) => (
+          <polyline key={`rs-${i}`} points={pts} fill="none" stroke="#c0392b" strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />
         ))}
 
         {/* 量能柱（疊在主圖底部，TradingView 風格） */}
@@ -835,8 +838,8 @@ function IbdRsComboChart({ data, showMA = true }) {
           <line x1={xAt(hoverIdx)} y1={PAD_T} x2={xAt(hoverIdx)} y2={PAD_T + innerH} stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 3" />
         )}
 
-        {/* 左軸 RS */}
-        {rsTicks.map((v) => (
+        {/* 左軸 RS（週線模式不顯示） */}
+        {showRs && rsTicks.map((v) => (
           <text key={`rl-${v}`} x={PAD_L - 3} y={yRs(v) + 4} textAnchor="end" fontSize={10} fill="#c0392b" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</text>
         ))}
 
@@ -880,7 +883,7 @@ function IbdRsComboChart({ data, showMA = true }) {
           <div style={{ color: '#64748b', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid #e2e8f0', paddingBottom: 6 }}>
             {hd.dateKey}
           </div>
-          {hd.rs != null && (
+          {showRs && hd.rs != null && (
             <div style={{ color: '#c0392b', fontWeight: 600, paddingBottom: 2 }}>RS：{hd.rs}</div>
           )}
           {hd.idx != null && (
@@ -964,8 +967,8 @@ function IbdRsOhlcChart({ series, height = 232, fillHeight = false, variant = 'd
       const yO = yAt(o.open);
       const yC = yAt(o.close);
       const up = o.close >= o.open;
-      const fill = up ? '#e53935' : '#2e7d32';
-      const stroke = up ? '#c62828' : '#1b5e20';
+      const fill = up ? 'rgba(229,57,53,0.25)' : 'rgba(26,138,48,0.25)';
+      const stroke = up ? '#c62828' : '#0f5c1e';
       const bodyTop = Math.min(yO, yC);
       const bodyBot = Math.max(yO, yC);
       const bodyH = Math.max(bodyBot - bodyTop, 1);
@@ -1381,11 +1384,11 @@ function ForeignChipChart({ data, allHoldings }) {
           const xc = xAt(i);
           const prevClose = i > 0 && Number.isFinite(data[i - 1]?.close) ? data[i - 1].close : null;
           const up = d.open !== d.close ? d.close >= d.open : prevClose != null ? d.close >= prevClose : true;
-          const fill = up ? '#e53935' : '#2e7d32'; const stroke = up ? '#c62828' : '#1b5e20';
+          const fill = up ? '#e53935' : '#1a8a30'; const stroke = up ? '#c62828' : '#0f5c1e';
           const yH = yPrice(d.high); const yL = yPrice(d.low);
           const yO = yPrice(d.open); const yC = yPrice(d.close);
           return (
-            <g key={`k-${d.dateKey}`} opacity={0.72}>
+            <g key={`k-${d.dateKey}`} opacity={0.65}>
               <line x1={xc} y1={yH} x2={xc} y2={yL} stroke={stroke} strokeWidth={0.9} />
               <rect x={xc - barW / 2} y={Math.min(yO, yC)} width={barW} height={Math.max(Math.abs(yC - yO), 1)} fill={fill} stroke={stroke} strokeWidth={0.8} />
             </g>
@@ -1394,12 +1397,12 @@ function ForeignChipChart({ data, allHoldings }) {
 
         {/* 外資持股折線（藍色，右軸） */}
         {holdingSegs.map((pts, i) => (
-          <polyline key={`h-${i}`} points={pts} fill="none" stroke="#1565c0" strokeWidth={2.0} strokeLinejoin="round" strokeLinecap="round" />
+          <polyline key={`h-${i}`} points={pts} fill="none" stroke="#1565c0" strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />
         ))}
 
         {/* 投信累積持股折線（綠色實線，獨立 Y 軸） */}
         {hasTrustCum && trustCumSegs.map((pts, i) => (
-          <polyline key={`tc-${i}`} points={pts} fill="none" stroke="#16a34a" strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" opacity={0.9} />
+          <polyline key={`tc-${i}`} points={pts} fill="none" stroke="#16a34a" strokeWidth={1.55} strokeLinejoin="round" strokeLinecap="round" opacity={0.9} />
         ))}
 
 
@@ -1652,10 +1655,10 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     const quoteStartBuf = new Date();
     quoteStartBuf.setDate(quoteStartBuf.getDate() - 120);
     const quoteStart = quoteStartBuf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-    // K 線/MA 用：往前多抓 ~45 曆日（≈30 交易日）暖身段，讓 MA20 從第一根顯示 K 棒就有值；
-    // 暖身段只用於算 MA，chartData 會把它裁掉不畫
+    // K 線/MA 用：顯示視窗 165 曆日，再往前多抓 ~45 曆日（≈30 交易日）暖身段 → 共 210 曆日，
+    // 讓 MA20 從第一根顯示 K 棒就有值；暖身段只用於算 MA，chartData 會把它裁掉不畫
     const quoteBufStartD = new Date();
-    quoteBufStartD.setDate(quoteBufStartD.getDate() - 165);
+    quoteBufStartD.setDate(quoteBufStartD.getDate() - 210);
     const quoteBufStart = quoteBufStartD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 
     // 優先用 Firestore 已存的 highMap/lowMap，避免 Yahoo proxy 快取問題
@@ -1732,10 +1735,10 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         });
     }
 
-    // 大盤起始日：取各來源最早者；並至少回溯 ~760 天，讓週線圖的加權線能覆蓋整個週 K 範圍。
+    // 大盤起始日：取各來源最早者；並至少回溯 ~930 天，讓週線圖的加權線能覆蓋整個週 K 範圍（顯示 ~770 天）。
     // 加權只是單一 ^TWII 序列且有快取，日線模式多抓的舊段不影響顯示與 Y 軸刻度（刻度只用可見點算）。
     const indexFloorD = new Date();
-    indexFloorD.setDate(indexFloorD.getDate() - 760);
+    indexFloorD.setDate(indexFloorD.getDate() - 930);
     const indexFloor = indexFloorD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     const startStr = [earliestHistoryDate, quoteStart, fallbackStart, indexFloor].filter(Boolean).sort()[0];
 
@@ -1928,8 +1931,16 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     const holdingDates = effectiveHoldings?.holdingDates;   // newest-first，與 holdings 等長
     const latestHoldingsDate = effectiveHoldings?.latestDate;
 
-    // 建立 OHLC 日期序列（由舊到新）
-    const sortedOhlc = [...ohlcSeries].sort((a, b) => a.dateStr < b.dateStr ? -1 : 1);
+    // 與 RS K 線一致：顯示近 165 曆日（含原暖身段）。前段沒有更早資料暖身，
+    // 故最前面約 20 根的 MA20、約 10 根的 MA10 會是空值。
+    const dispStartD = new Date();
+    dispStartD.setDate(dispStartD.getDate() - 165);
+    const displayStart = dispStartD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+
+    // 建立 OHLC 日期序列（由舊到新），並裁到顯示視窗起點
+    const sortedOhlc = [...ohlcSeries]
+      .filter((o) => o.dateStr >= displayStart)
+      .sort((a, b) => a.dateStr < b.dateStr ? -1 : 1);
 
     // ── 新路徑：有日期陣列 → 用 date-based lookup（forward-fill），不用 index 偏移 ──
     const hasDates = Array.isArray(holdingDates)
@@ -2021,11 +2032,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     }
 
     if (baseOhlc.length > 0) {
-      // 在含暖身段的完整序列上算 MA，再裁掉暖身段 → MA 從第一根顯示 K 棒就有值
+      // 在完整序列上算 MA（前段無更早資料暖身時，最前面數根 MA 為空值）
       const ma10Arr = computeMaSeries(baseOhlc, 10);
       const ma20Arr = computeMaSeries(baseOhlc, 20);
-      // 顯示視窗起點：日線近 120 曆日、週線近 600 曆日（暖身段在此之前，不顯示）
-      const dispDays = chartTf === 'W' ? 600 : 120;
+      // 顯示視窗起點：日線近 165 曆日（~110 交易日）、週線近 770 曆日（~110 週，與日線 K 棒數相當）
+      const dispDays = chartTf === 'W' ? 770 : 165;
       const dispStartD = new Date();
       dispStartD.setDate(dispStartD.getDate() - dispDays);
       const displayStart = dispStartD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
@@ -2140,7 +2151,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     let cancelled = false;
     const end = getTaiwanYmd();
     const buf = new Date();
-    buf.setDate(buf.getDate() - 760); // ~108 週：顯示 ~85 週 + 約 22 週 MA 暖身段
+    buf.setDate(buf.getDate() - 930); // ~133 週：顯示 ~110 週 + 約 23 週 MA 暖身段（Yahoo range → 5y）
     const start = buf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     fetchYahooHistoricalPriceVolumeMaps(stock.id, start, end, { market: stock.market })
       .then(({ ohlcSeries: ohlc }) => {
@@ -2160,7 +2171,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     if (idx < 0) return;
     const quoteEnd = getTaiwanYmd();
     const buf = new Date();
-    buf.setDate(buf.getDate() - 165); // 與開窗抓取一致（含 MA 暖身段），讓預取命中快取
+    buf.setDate(buf.getDate() - 210); // 與開窗抓取一致（165 顯示 + 45 MA 暖身段），讓預取命中快取
     const quoteStart = buf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     const neighbours = [
       idx > 0 ? navigationList[idx - 1] : null,
@@ -2709,7 +2720,7 @@ style={{
                 }}
               >
                 {activeView === 'rs' ? (
-                  <IbdRsComboChart data={chartData} showMA={showMA} />
+                  <IbdRsComboChart data={chartData} showMA={showMA} showRs={chartTf !== 'W'} />
                 ) : (
                   <ForeignChipChart data={foreignChartData} allHoldings={effectiveHoldings?.holdings} />
                 )}
