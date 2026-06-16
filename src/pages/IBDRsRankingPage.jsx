@@ -672,23 +672,10 @@ function IbdRsComboChart({ data, showMA = true }) {
   const rsSegs  = buildSegs((d) => (Number.isFinite(d.rs)  ? yRs(d.rs)   : null));
   const idxSegs = buildSegs((d) => (Number.isFinite(d.idx) ? yIdx(d.idx) : null));
 
-  /* 均線 MA：以收盤價滾動平均；資料不足或遇缺口則該點為 null（價格刻度） */
-  const computeMA = (period) => {
-    const out = new Array(n).fill(null);
-    const q = []; let sum = 0;
-    for (let i = 0; i < n; i++) {
-      const c = Number.isFinite(data[i]?.close) ? data[i].close : null;
-      if (c == null) { q.length = 0; sum = 0; continue; }
-      q.push(c); sum += c;
-      if (q.length > period) sum -= q.shift();
-      if (q.length === period) out[i] = sum / period;
-    }
-    return out;
-  };
-  const ma10 = hasOhlc ? computeMA(10) : [];
-  const ma20 = hasOhlc ? computeMA(20) : [];
-  const ma10Segs = hasOhlc ? buildSegs((_, i) => (Number.isFinite(ma10[i]) ? yPrice(ma10[i]) : null)) : [];
-  const ma20Segs = hasOhlc ? buildSegs((_, i) => (Number.isFinite(ma20[i]) ? yPrice(ma20[i]) : null)) : [];
+  /* 均線 MA：由 chartData 預先在「含暖身段」序列上算好（d.ma10/d.ma20），這裡只負責畫，
+     所以 MA 能從第一根 K 棒就有值，不再因暖身不足而從中間才出現（價格刻度） */
+  const ma10Segs = hasOhlc ? buildSegs((d) => (Number.isFinite(d.ma10) ? yPrice(d.ma10) : null)) : [];
+  const ma20Segs = hasOhlc ? buildSegs((d) => (Number.isFinite(d.ma20) ? yPrice(d.ma20) : null)) : [];
 
   /* X ticks：最多 7 筆 */
   const MAX_X_TICKS = 7;
@@ -1518,6 +1505,76 @@ function ForeignChipChart({ data, allHoldings }) {
   );
 }
 
+/** 某曆日所屬「ISO 週」的週一 YYYY-MM-DD（用來把日 K 分組成週 K） */
+function startOfIsoWeekYmd(ymd) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return ymd;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = dt.getUTCDay(); // 0=日 .. 6=六
+  const diff = dow === 0 ? -6 : 1 - dow; // 退回該週週一
+  dt.setUTCDate(dt.getUTCDate() + diff);
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * 日 K → 週 K 聚合。
+ * 週開盤＝該週首交易日 open，週最高＝high 之 max，週最低＝low 之 min，
+ * 週收盤＝該週末交易日 close，週量＝volume 加總。dateStr 用該週最後交易日，
+ * 方便與 RS / 加權指數（皆以日對齊）取值。
+ */
+function aggregateDailyToWeekly(daily) {
+  if (!Array.isArray(daily) || daily.length === 0) return [];
+  const sorted = [...daily].filter((b) => b && b.dateStr).sort((a, b) => (a.dateStr < b.dateStr ? -1 : 1));
+  const groups = new Map();
+  for (const bar of sorted) {
+    const wk = startOfIsoWeekYmd(bar.dateStr);
+    if (!groups.has(wk)) groups.set(wk, []);
+    groups.get(wk).push(bar);
+  }
+  const out = [];
+  for (const wk of [...groups.keys()].sort()) {
+    const bars = groups.get(wk);
+    const first = bars[0];
+    const last = bars[bars.length - 1];
+    let high = -Infinity;
+    let low = Infinity;
+    let vol = 0;
+    for (const b of bars) {
+      if (Number.isFinite(b.high)) high = Math.max(high, b.high);
+      if (Number.isFinite(b.low)) low = Math.min(low, b.low);
+      if (Number.isFinite(b.volume)) vol += b.volume;
+    }
+    out.push({
+      dateStr: last.dateStr,
+      open: Number.isFinite(first.open) ? first.open : first.close,
+      high: Number.isFinite(high) ? high : last.close,
+      low: Number.isFinite(low) ? low : last.close,
+      close: last.close,
+      volume: vol,
+    });
+  }
+  return out;
+}
+
+/**
+ * 收盤價滾動均線序列（與圖表內舊邏輯一致：遇缺口 reset，未滿 period 給 null）。
+ * 在「含暖身段」的完整序列上計算，之後再裁掉暖身段，MA 才能從第一根顯示 K 棒就有值。
+ */
+function computeMaSeries(bars, period) {
+  const out = new Array(bars.length).fill(null);
+  const q = [];
+  let sum = 0;
+  for (let i = 0; i < bars.length; i++) {
+    const c = Number.isFinite(bars[i]?.close) ? bars[i].close : null;
+    if (c == null) { q.length = 0; sum = 0; continue; }
+    q.push(c);
+    sum += c;
+    if (q.length > period) sum -= q.shift();
+    if (q.length === period) out[i] = sum / period;
+  }
+  return out;
+}
+
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal（觀察列表頁亦共用） */
 export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist, watchlistPriority, onSetPriority, signalNote, initialView }) {
   const [watchlistBusy, setWatchlistBusy] = useState(false);
@@ -1533,8 +1590,12 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const [ohlcSeries, setOhlcSeries] = useState([]);
   /** 視窗切換：'rs' = 預設，'foreign' = 外資籌碼視窗（A 鍵切換） */
   const [activeView, setActiveView] = useState(initialView ?? 'rs');
-  /** RS K 線是否顯示均線（MA10/MA20）；按鈕或 Shift 鍵切換，預設顯示 */
-  const [showMA, setShowMA] = useState(true);
+  /** RS K 線是否顯示均線（MA10/MA20）；按鈕或 Shift 鍵切換，預設不顯示 */
+  const [showMA, setShowMA] = useState(false);
+  /** K 線週期：'D'=日線（預設，用既有 120 天資料）、'W'=週線（按鍵盤 W 切換，臨時抓 ~2 年聚合） */
+  const [chartTf, setChartTf] = useState('D');
+  /** 週線聚合資料：null=尚未抓、[]=抓取失敗/無資料、[...]=已聚合的週 K */
+  const [weeklyOhlc, setWeeklyOhlc] = useState(null);
   /** 三大法人每日買賣超：{ [dateStr]: { foreign, trust, dealer } }，懶載入 */
   const [institutionalData, setInstitutionalData] = useState(null);
   const [institutionalLoading, setInstitutionalLoading] = useState(false);
@@ -1591,6 +1652,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     const quoteStartBuf = new Date();
     quoteStartBuf.setDate(quoteStartBuf.getDate() - 120);
     const quoteStart = quoteStartBuf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    // K 線/MA 用：往前多抓 ~45 曆日（≈30 交易日）暖身段，讓 MA20 從第一根顯示 K 棒就有值；
+    // 暖身段只用於算 MA，chartData 會把它裁掉不畫
+    const quoteBufStartD = new Date();
+    quoteBufStartD.setDate(quoteBufStartD.getDate() - 165);
+    const quoteBufStart = quoteBufStartD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 
     // 優先用 Firestore 已存的 highMap/lowMap，避免 Yahoo proxy 快取問題
     const storedPM = stock.priceMap && typeof stock.priceMap === 'object' ? stock.priceMap : null;
@@ -1616,7 +1682,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       && _storedPMLatest >= _storedExpectedDay;
 
     if (hasStoredMaps) {
-      const dates = Object.keys(storedPM).filter((d) => d >= quoteStart && d <= quoteEnd).sort();
+      const dates = Object.keys(storedPM).filter((d) => d >= quoteBufStart && d <= quoteEnd).sort();
       setOhlcSeries(dates.map((d) => {
         const close = storedPM[d];
         return {
@@ -1635,7 +1701,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       const vr = calcVcpVolumeRatioFromVolumeMap(storedVM || {}, quoteEnd);
       setVcpSnapshot({ composite: calcCompositeVcp(pr, vr), priceRatio: pr, volRatio: vr });
     } else {
-      void (getYahooKlineFromCache(stock.id, quoteStart, quoteEnd) ?? fetchYahooHistoricalPriceVolumeMaps(stock.id, quoteStart, quoteEnd, { market: stock.market }))
+      void (getYahooKlineFromCache(stock.id, quoteBufStart, quoteEnd) ?? fetchYahooHistoricalPriceVolumeMaps(stock.id, quoteBufStart, quoteEnd, { market: stock.market }))
         .then(({ priceMap, highMap, lowMap, volumeMap, ohlcSeries: ohlc }) => {
           if (cancelled) return;
           setOhlcSeries(Array.isArray(ohlc) ? ohlc : []);
@@ -1666,8 +1732,12 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         });
     }
 
-    // 大盤起始日：取 RS history 最早日 與 K 棒起始日（quoteStart）較早者
-    const startStr = [earliestHistoryDate, quoteStart, fallbackStart].filter(Boolean).sort()[0];
+    // 大盤起始日：取各來源最早者；並至少回溯 ~760 天，讓週線圖的加權線能覆蓋整個週 K 範圍。
+    // 加權只是單一 ^TWII 序列且有快取，日線模式多抓的舊段不影響顯示與 Y 軸刻度（刻度只用可見點算）。
+    const indexFloorD = new Date();
+    indexFloorD.setDate(indexFloorD.getDate() - 760);
+    const indexFloor = indexFloorD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    const startStr = [earliestHistoryDate, quoteStart, fallbackStart, indexFloor].filter(Boolean).sort()[0];
 
     fetchIndexPriceMap(startStr, endStr)
       .then((im) => {
@@ -1940,8 +2010,30 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     const indexDates = Object.keys(indexMap).sort();
     const rsMap = new Map(history.map((h) => [h.d, h.r]));
 
-    if (ohlcSeries.length > 0) {
-      return ohlcSeries.map((o) => {
+    // 週線模式：用週 K。換股後週 K 尚未抓到（weeklyOhlc === null）時不要退回日 K，
+    // 否則切股票會先閃一下日線再跳週線；回傳 [] 維持空圖直到週 K 到位。
+    let baseOhlc;
+    if (chartTf === 'W') {
+      if (weeklyOhlc === null) return [];
+      baseOhlc = Array.isArray(weeklyOhlc) ? weeklyOhlc : [];
+    } else {
+      baseOhlc = ohlcSeries;
+    }
+
+    if (baseOhlc.length > 0) {
+      // 在含暖身段的完整序列上算 MA，再裁掉暖身段 → MA 從第一根顯示 K 棒就有值
+      const ma10Arr = computeMaSeries(baseOhlc, 10);
+      const ma20Arr = computeMaSeries(baseOhlc, 20);
+      // 顯示視窗起點：日線近 120 曆日、週線近 600 曆日（暖身段在此之前，不顯示）
+      const dispDays = chartTf === 'W' ? 600 : 120;
+      const dispStartD = new Date();
+      dispStartD.setDate(dispStartD.getDate() - dispDays);
+      const displayStart = dispStartD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+
+      const points = [];
+      for (let i = 0; i < baseOhlc.length; i++) {
+        const o = baseOhlc[i];
+        if (o.dateStr < displayStart) continue; // 暖身段：只用於算 MA，不畫
         const ymd = o.dateStr;
         const r = rsMap.get(ymd);
         let closestIdx = null;
@@ -1949,7 +2041,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           if (id <= ymd) closestIdx = indexMap[id];
           else break;
         }
-        return {
+        points.push({
           dateKey: ymd,
           date: ymd.slice(5),
           rs: r != null && Number.isFinite(r) ? r : null,
@@ -1959,8 +2051,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           low: Number.isFinite(o.low) ? o.low : null,
           close: Number.isFinite(o.close) ? o.close : null,
           volume: Number.isFinite(o.volume) && o.volume > 0 ? o.volume : null,
-        };
-      });
+          ma10: Number.isFinite(ma10Arr[i]) ? ma10Arr[i] : null,
+          ma20: Number.isFinite(ma20Arr[i]) ? ma20Arr[i] : null,
+        });
+      }
+      return points;
     }
 
     if (history.length === 0) return [];
@@ -1977,11 +2072,13 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         idx: closestIdx != null ? Math.round(closestIdx) : null,
       };
     });
-  }, [ohlcSeries, history, indexMap]);
+  }, [ohlcSeries, history, indexMap, chartTf, weeklyOhlc]);
 
   const noHistory = history.length === 0;
   const indexEmpty = indexMap != null && Object.keys(indexMap).length === 0;
-  const isEmpty = !loading && !error && chartData.length === 0;
+  // 週線模式但該檔週 K 還沒抓回來（換股時會短暫如此）→ 顯示載入態，而非閃日線或「無資料」
+  const weeklyPending = activeView === 'rs' && chartTf === 'W' && weeklyOhlc === null;
+  const isEmpty = !loading && !error && !weeklyPending && chartData.length === 0;
   const marketBadge = formatIbdMarketLabel(stock?.market);
   const tradingViewUrl = stock ? getTradingViewChartUrl(stock) : null;
   const moneyDjSearchUrl = stock ? getMoneyDjSearchUrl(stock) : null;
@@ -2019,6 +2116,43 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [stock, stock?.id, activeView]);
 
+  // W 鍵切換日線↔週線（僅 RS 視圖、開窗時；忽略長按重複與輸入框）
+  // 用 e.code 判實體鍵位，避免中文等輸入法把 'w' 吃成組字而比對不到 e.key。
+  useEffect(() => {
+    if (!stock || activeView !== 'rs') return;
+    const handleKey = (e) => {
+      if (e.code !== 'KeyW' || e.repeat) return;
+      if (isDomTypingTarget(e.target)) return;
+      setChartTf((v) => (v === 'D' ? 'W' : 'D'));
+    };
+    window.addEventListener('keydown', handleKey, true);
+    return () => window.removeEventListener('keydown', handleKey, true);
+  }, [stock, stock?.id, activeView]);
+
+  // 換股時清掉週線快取，下次切到 W 會重抓該檔
+  useEffect(() => {
+    setWeeklyOhlc(null);
+  }, [stock?.id]);
+
+  // 切到週線且尚未抓過 → 臨時抓 ~2 年日 K（Yahoo range 自動選 2y）聚合成週 K
+  useEffect(() => {
+    if (!stock || chartTf !== 'W' || weeklyOhlc !== null) return;
+    let cancelled = false;
+    const end = getTaiwanYmd();
+    const buf = new Date();
+    buf.setDate(buf.getDate() - 760); // ~108 週：顯示 ~85 週 + 約 22 週 MA 暖身段
+    const start = buf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    fetchYahooHistoricalPriceVolumeMaps(stock.id, start, end, { market: stock.market })
+      .then(({ ohlcSeries: ohlc }) => {
+        if (cancelled) return;
+        setWeeklyOhlc(aggregateDailyToWeekly(Array.isArray(ohlc) ? ohlc : []));
+      })
+      .catch(() => {
+        if (!cancelled) setWeeklyOhlc([]);
+      });
+    return () => { cancelled = true; };
+  }, [stock, stock?.id, chartTf, weeklyOhlc]);
+
   // 預取前後各一檔的 K 線，避免切換時等待
   useEffect(() => {
     if (!stock || !Array.isArray(navigationList) || navigationList.length < 2) return;
@@ -2026,7 +2160,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     if (idx < 0) return;
     const quoteEnd = getTaiwanYmd();
     const buf = new Date();
-    buf.setDate(buf.getDate() - 120);
+    buf.setDate(buf.getDate() - 165); // 與開窗抓取一致（含 MA 暖身段），讓預取命中快取
     const quoteStart = buf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     const neighbours = [
       idx > 0 ? navigationList[idx - 1] : null,
@@ -2369,7 +2503,7 @@ style={{
           </button>
         </div>
 
-        {loading ? (
+        {loading || weeklyPending ? (
           <div
             style={{
               flex: '1 1 0px',
@@ -2382,7 +2516,7 @@ style={{
               fontSize: 13,
             }}
           >
-            載入近半年資料…
+            {weeklyPending ? '載入週線…' : '載入近半年資料…'}
           </div>
         ) : error ? (
           <div
@@ -2528,9 +2662,16 @@ style={{
                         className="ibd-rs-chart-legend-text ibd-rs-chart-legend-text--full"
                         style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
                       >
-                        <strong style={{ color: '#c0392b' }}>紅</strong>＝RS（左）
-                        <strong style={{ color: '#1565c0' }}>藍</strong>＝加權（右）
-                        　<span
+                        <span
+                          role="button"
+                          onClick={() => setChartTf((v) => (v === 'D' ? 'W' : 'D'))}
+                          title="點擊切換日線(D)／週線(W)（也可按 W 鍵）"
+                          style={{ cursor: 'pointer', userSelect: 'none', color: '#1565c0', fontWeight: 700 }}
+                        >
+                          {chartTf === 'W' ? 'W' : 'D'}
+                        </span>
+                        {'　'}
+                        <span
                           role="button"
                           onClick={() => setShowMA((v) => !v)}
                           title="點擊切換均線顯示（也可按 Shift 鍵）"
