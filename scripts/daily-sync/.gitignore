@@ -1,0 +1,2 @@
+# esbuild 在 CI／本地產生的打包輸出，不需進版控
+_bundle*.mjs

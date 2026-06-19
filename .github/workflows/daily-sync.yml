@@ -1,0 +1,70 @@
+name: 每日追蹤表自動同步
+
+# 排程時間為 UTC；台灣 = UTC+8
+#   台灣 16:00 → UTC 08:00（股價/成交量，Yahoo）
+#   台灣 21:30 → UTC 13:30（籌碼/外資/營收）
+# 1-5 = 週一到週五（台股交易日；國定假日仍會跑，抓不到新資料但無害）
+on:
+  schedule:
+    - cron: '0 8 * * 1-5'
+    - cron: '30 13 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '同步模式'
+        required: true
+        default: 'DRY'
+        type: choice
+        options:
+          - DRY
+          - rs
+          - priceVolume
+          - holdingsRevenue
+      limit:
+        description: '限制檔數（0=全部，測試可填 3）'
+        required: false
+        default: '0'
+
+# 避免兩個排程或手動觸發同時跑、互相覆寫
+concurrency:
+  group: daily-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: 取出程式碼
+        uses: actions/checkout@v4
+
+      - name: 安裝 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 安裝相依套件
+        run: npm ci
+
+      - name: 打包同步腳本
+        run: |
+          npx --yes esbuild scripts/daily-sync/sync-entry.mjs \
+            --bundle --platform=node --format=esm --packages=external \
+            --alias:@docusaurus/ExecutionEnvironment=./scripts/daily-sync/docusaurus-execenv-stub.mjs \
+            --outfile=scripts/daily-sync/_bundle.mjs
+
+      - name: 執行同步
+        run: |
+          B=scripts/daily-sync/_bundle.mjs
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "== 手動觸發：mode=${{ github.event.inputs.mode }} limit=${{ github.event.inputs.limit }} =="
+            SYNC_MODE="${{ github.event.inputs.mode }}" SYNC_LIMIT="${{ github.event.inputs.limit }}" node "$B"
+          elif [ "${{ github.event.schedule }}" = "0 8 * * 1-5" ]; then
+            echo "== 16:00 時段：先 RS 全市場，再追蹤表價量（沿用 RS、不重抓 Yahoo）=="
+            SYNC_MODE=rs node "$B"
+            SYNC_MODE=priceVolume node "$B"
+          else
+            echo "== 21:30 時段：追蹤表籌碼/外資/營收 =="
+            SYNC_MODE=holdingsRevenue node "$B"
+          fi
