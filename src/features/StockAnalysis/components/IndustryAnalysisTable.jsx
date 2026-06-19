@@ -51,25 +51,28 @@ const getVolumeHeatmapBg = (ratio) => {
     return `rgb(255, ${Math.round(255 - 20 * t)}, ${Math.round(255 - 196 * t)})`;
 };
 
-// Google Sheets 熱力色階：漲跌背景（黑字），紅漲綠跌、依絕對值插值
-const getChangeHeatmapBg = (changePercent) => {
+// 漲跌熱力色階（方案A 鮮明）：HSL 插值避免中段發灰，gamma 0.62 讓小漲跌也可見
+// 台股慣例：紅漲綠跌。回傳 { bg, fg }，fg 為對應文字色。
+const getChangeHeatmap = (changePercent) => {
     const v = Number(changePercent) || 0;
-    if (v === 0) return 'transparent';
+    if (v === 0) return { bg: 'transparent', fg: null };
+    const lerp = (a, b, t) => a + (b - a) * t;
     const abs = Math.min(Math.abs(v), 10);
-    const t = abs / 10; // 0~1
-    if (v > 0) {
-        // 紅：淺 #FFCCC7 → 深 #D32F2F（比原本更深）
-        const r = Math.round(255 - 44 * t);
-        const g = Math.round(204 - 157 * t);
-        const b = Math.round(199 - 152 * t);
-        return `rgb(${r}, ${g}, ${b})`;
-    }
-    // 綠：淺 #C8E6C9 → 深 #43A047
-    const r = Math.round(200 - 133 * t);
-    const g = Math.round(230 - 70 * t);
-    const b = Math.round(201 - 130 * t);
-    return `rgb(${r}, ${g}, ${b})`;
+    const t = Math.pow(abs / 10, 0.62);
+    // 漲（紅）h 354→352, s 80→66, l 96→47 ; 跌（綠）h 145→150, s 46→52, l 95→36
+    const c = v > 0
+        ? { h0: 354, h1: 352, s0: 80, s1: 66, l0: 96, l1: 47 }
+        : { h0: 145, h1: 150, s0: 46, s1: 52, l0: 95, l1: 36 };
+    const h = lerp(c.h0, c.h1, t);
+    const s = lerp(c.s0, c.s1, t);
+    const l = lerp(c.l0, c.l1, t);
+    const bg = `hsl(${h.toFixed(1)}, ${s.toFixed(1)}%, ${l.toFixed(1)}%)`;
+    const fg = '#1a1a1a';
+    return { bg, fg };
 };
+
+// 相容舊呼叫：只取背景色
+const getChangeHeatmapBg = (changePercent) => getChangeHeatmap(changePercent).bg;
 
 // --- 輔助函式：可編輯儲存格 ---
 const EditableCell = ({ initialValue, onSave, type = "text", style = {} }) => {
@@ -142,7 +145,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
         if (b === '自選') return 1;
         return a.localeCompare(b, 'zh-TW');
     });
-    const ROW_H = 25;
+    const ROW_H = 22;
     const rowH = `${ROW_H}px`;
     const trStyle = { height: rowH, maxHeight: rowH };
     const NUM_BIG_COLUMNS = 8;
@@ -170,11 +173,11 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
     const columnItems = getColumnItems();
     const maxRows = Math.max(1, ...columnItems.map(arr => arr.length));
 
-    const thStyle = (extra = {}) => ({ height: rowH, maxHeight: rowH, padding: '2px 4px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden', ...extra });
-    const tdBase = { height: rowH, maxHeight: rowH, padding: '1px 4px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden' };
+    const thStyle = (extra = {}) => ({ height: rowH, maxHeight: rowH, padding: '2px 4px', border: '1px solid #eef0f2', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden', ...extra });
+    const tdBase = { height: rowH, maxHeight: rowH, padding: '1px 4px', border: '1px solid #eef0f2', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden' };
 
-    // 44+44+50+52+42+42+56+40 = 370px per big column
-    const SUB_COL_WIDTHS_PX = [44, 44, 50, 52, 42, 42, 56, 40];
+    // 44+44+50+52+42+42+50+40 = 364px per big column
+    const SUB_COL_WIDTHS_PX = [44, 44, 50, 52, 42, 42, 50, 40];
     const SUB_COL_WIDTHS = SUB_COL_WIDTHS_PX.map(w => `${w}px`);
     const BIG_COL_WIDTH_PX = SUB_COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
     const TABLE_TOTAL_WIDTH = NUM_BIG_COLUMNS * BIG_COL_WIDTH_PX;
@@ -190,6 +193,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
         return `${sign}${abs}`;
     };
 
+    const GROUP_BORDER = '2px solid #b8b8b8';
     const renderMainCellBlock = (item, blockIndex) => {
         if (!item) {
             return (
@@ -201,7 +205,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
         if (item._isHeader) {
             return (
                 <React.Fragment key={blockIndex}>
-                    <td colSpan={SUB_COL_WIDTHS.length} style={{ ...tdBase, width: `${BIG_COL_WIDTH_PX}px`, maxWidth: `${BIG_COL_WIDTH_PX}px`, padding: '1px 6px', background: '#e8f0fe', fontWeight: 'bold', fontSize: '10px', color: '#1a3a6e', letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <td colSpan={SUB_COL_WIDTHS.length} style={{ ...tdBase, height: '32px', maxHeight: '32px', verticalAlign: 'middle', width: `${BIG_COL_WIDTH_PX}px`, maxWidth: `${BIG_COL_WIDTH_PX}px`, padding: '2px 6px', background: '#ffffff', border: 'none', borderTop: GROUP_BORDER, borderBottom: '1px solid #e3e3e3', fontWeight: 'bold', fontSize: '12.5px', color: '#1a1a1a', letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {item.cat}
                     </td>
                 </React.Fragment>
@@ -214,7 +218,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 <td
                     style={{
                         ...tdBase,
-                        width: SUB_COL_WIDTHS[1],
+                                                width: SUB_COL_WIDTHS[1],
                         minWidth: SUB_COL_WIDTHS[1],
                         maxWidth: SUB_COL_WIDTHS[1],
                         padding: '1px 3px',
@@ -228,16 +232,18 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 >
                     {stock.name}
                 </td>
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2], textAlign: 'right' }}>{stock.displayPrice}</td>
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3], textAlign: 'center', color: '#000', whiteSpace: 'nowrap', backgroundColor: getChangeHeatmapBg(stock.DailyChange) }}>{stock.DailyChange != null ? Number(stock.DailyChange).toFixed(1) : '--'}%</td>
+                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2], textAlign: 'right', whiteSpace: 'nowrap' }}>{stock.displayPrice}</td>
+                {(() => { const hm = getChangeHeatmap(stock.DailyChange); return (
+                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3], textAlign: 'center', color: hm.fg ?? '#888', whiteSpace: 'nowrap', backgroundColor: hm.bg }}>{stock.DailyChange != null ? Number(stock.DailyChange).toFixed(1) : '--'}%</td>
+                ); })()}
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4], textAlign: 'center', backgroundColor: getVolumeHeatmapBg(stock.VolumeRatio) }}>{stock.VolumeRatio != null ? stock.VolumeRatio.toFixed(1) : '--'}</td>
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5], textAlign: 'center', fontWeight: 'bold', padding: 0, ...(stock.foreignSignal === 'B' ? (() => { const n = Math.min(Math.max(1, Number(stock.foreignBCount) || 1), 5); const bg = ['#E53935', '#EF5350', '#EF9A9A', '#FFCDD2', '#FFEBEE'][n - 1]; return { backgroundColor: bg, color: n <= 2 ? 'white' : '#333' }; })() : { backgroundColor: 'transparent', color: '#636e72' }) }}>
+                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5], textAlign: 'center', fontWeight: 'bold', padding: 0, ...(stock.foreignSignal === 'B' ? (() => { const n = Math.min(Math.max(1, Number(stock.foreignBCount) || 1), 5); const l = [46, 56, 68, 81, 90][n - 1]; const s = [68, 66, 62, 58, 55][n - 1]; return { backgroundColor: `hsl(354, ${s}%, ${l}%)`, color: l < 58 ? '#fff' : 'hsl(354, 50%, 30%)' }; })() : { backgroundColor: 'transparent', color: '#636e72' }) }}>
                     <div style={{ height: rowH, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 }}>
                         <div style={{ fontSize: '12px' }}>{stock.foreignSignal === 'B' ? `B${stock.foreignBCount}` : 'N'}</div>
                         {stock.foreignSignal === 'B' && <div style={{ fontSize: '7px', fontWeight: 'normal', opacity: 0.85 }}>{stock.zScore}x</div>}
                     </div>
                 </td>
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6], textAlign: 'center', color: stock.HoldingGrowth_M > 0 ? 'red' : 'green' }}>{stock.HoldingGrowth_M != null ? Number(stock.HoldingGrowth_M).toFixed(1) : '0'}%</td>
+                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6], textAlign: 'center', color: stock.HoldingGrowth_M > 0 ? 'hsl(8, 76%, 48%)' : 'hsl(150, 52%, 34%)' }}>{stock.HoldingGrowth_M != null ? Number(stock.HoldingGrowth_M).toFixed(0) : '0'}%</td>
                 {/* 流量預警（外資 🟠 + 投信 🟣 合併欄，hover 看細節） */}
                 {(() => {
                     // active=實色大點，persist=訊號消退仍持續實色，day1=空心小點，無訊號=不渲染
@@ -327,125 +333,104 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
             </div>
             )}
 
-            <div style={{ position: 'relative', display: 'inline-block' }}>
-                {!isChipMode && Array.from({ length: NUM_BIG_COLUMNS - 1 }, (_, i) => (
-                    <div
-                        key={i}
-                        style={{
-                            position: 'absolute',
-                            left: `${(i + 1) * BIG_COL_WIDTH_PX - SEP_LINE_WIDTH / 2}px`,
-                            top: 0,
-                            bottom: 0,
-                            width: `${SEP_LINE_WIDTH}px`,
-                            background: '#000',
-                            pointerEvents: 'none',
-                        }}
-                    />
-                ))}
-            <table style={{ width: `${TABLE_TOTAL_WIDTH}px`, borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600, display: 'table', overflow: 'visible' }}>
-                {!isChipMode && (
-                    <colgroup>
-                        {Array.from({ length: NUM_BIG_COLUMNS }, (_, blockIndex) => (
-                            <React.Fragment key={blockIndex}>
-                                {SUB_COL_WIDTHS_PX.map((w, i) => <col key={`${blockIndex}-${i}`} style={{ width: `${w}px`, minWidth: `${w}px` }} />)}
-                            </React.Fragment>
-                        ))}
-                    </colgroup>
-                )}
-                <thead>
-                    {!isChipMode && (
-                        <tr style={trStyle}>
-                            {Array.from({ length: NUM_BIG_COLUMNS }, (_, i) => (
-                                <th key={i} colSpan={SUB_COL_WIDTHS.length} style={{ height: rowH, maxHeight: rowH, padding: '1px 4px', border: '1px solid #b0c4de', background: '#dce8f8', boxSizing: 'border-box', fontWeight: 700, fontSize: '12px', color: '#1a3a6e', textAlign: 'center', overflow: 'hidden' }}>
-                                    <input
-                                        value={columnLabels[i] ?? ''}
-                                        onChange={e => onColumnLabelChange?.(i, e.target.value)}
-                                        placeholder={`第 ${i + 1} 欄`}
-                                        style={{ width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: '12px', fontWeight: 900, color: '#000', padding: 0, textAlign: 'center', cursor: 'text', boxSizing: 'border-box' }}
-                                    />
-                                </th>
-                            ))}
-                        </tr>
-                    )}
-                    <tr style={{ backgroundColor: '#739fe6ff', ...trStyle }}>
-                        {!isChipMode && Array.from({ length: NUM_BIG_COLUMNS }, (_, blockIndex) => (
-                            <React.Fragment key={blockIndex}>
-                                <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[0], minWidth: SUB_COL_WIDTHS[0], maxWidth: SUB_COL_WIDTHS[0] }) }}>代號</th>
-                                <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[1], minWidth: SUB_COL_WIDTHS[1], maxWidth: SUB_COL_WIDTHS[1], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>名稱</th>
-                                <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2] }) }}>現價</th>
-                                <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3] }) }}>漲跌</th>
-                                <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4] }) }}>量</th>
-                                <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5] }) }}>外資</th>
-                                <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6] }) }}>月增</th>
-                                <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7] }) }}>法人</th>
-                            </React.Fragment>
-                        ))}
-                        {isChipMode && (
-                            <>
+            {!isChipMode ? (
+                <div style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 0 }}>
+                    {columnItems.map((items, c) => (
+                        <div key={c} style={{ flex: '0 0 auto', marginLeft: c > 0 ? '-2px' : 0, border: '2px solid #b8b8b8' }}>
+                            <table style={{ width: `${BIG_COL_WIDTH_PX}px`, borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600, display: 'table', overflow: 'visible', margin: 0 }}>
+                                <colgroup>
+                                    {SUB_COL_WIDTHS_PX.map((w, i) => <col key={i} style={{ width: `${w}px`, minWidth: `${w}px` }} />)}
+                                </colgroup>
+                                <thead>
+                                    <tr style={{ ...trStyle, height: '36px', maxHeight: '36px' }}>
+                                        <th colSpan={SUB_COL_WIDTHS.length} style={{ height: '36px', maxHeight: '36px', padding: '2px 8px', border: 'none', borderBottom: '2px solid #e3e3e3', background: '#ffffff', boxSizing: 'border-box', fontWeight: 700, fontSize: '15px', color: '#1a1a1a', textAlign: 'left', overflow: 'hidden' }}>
+                                            <input
+                                                value={columnLabels[c] ?? ''}
+                                                onChange={e => onColumnLabelChange?.(c, e.target.value)}
+                                                placeholder={`第 ${c + 1} 欄`}
+                                                style={{ width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: '15px', fontWeight: 700, color: '#1a1a1a', padding: 0, textAlign: 'left', cursor: 'text', boxSizing: 'border-box' }}
+                                            />
+                                        </th>
+                                    </tr>
+                                    <tr style={{ backgroundColor: '#ffffff', color: '#8a8a8a', fontWeight: 500, ...trStyle }}>
+                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[0], minWidth: SUB_COL_WIDTHS[0], maxWidth: SUB_COL_WIDTHS[0] }) }}>代號</th>
+                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[1], minWidth: SUB_COL_WIDTHS[1], maxWidth: SUB_COL_WIDTHS[1], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>名稱</th>
+                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2] }) }}>現價</th>
+                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3] }) }}>漲跌</th>
+                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4] }) }}>量</th>
+                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5] }) }}>外資</th>
+                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6] }) }}>月增</th>
+                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7] }) }}>法人</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {items.map((item, r) => (
+                                        <tr key={r} style={item._isHeader ? { ...trStyle, height: '32px', maxHeight: '32px' } : trStyle}>
+                                            {renderMainCellBlock(item, c)}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <table style={{ borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600, display: 'table', overflow: 'visible' }}>
+                        <thead>
+                            <tr style={{ backgroundColor: '#ffffff', color: '#8a8a8a', fontWeight: 500, ...trStyle }}>
                                 <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'38px', boxSizing: 'border-box', verticalAlign: 'middle'}}>PE</th>
                                 <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'48px', boxSizing: 'border-box', verticalAlign: 'middle', backgroundColor: '#f8bc43ff'}}>估EPS</th>
                                 <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'52px', boxSizing: 'border-box', verticalAlign: 'middle', backgroundColor: '#f8bc43ff'}}>目標價</th>
                                 <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'52px', boxSizing: 'border-box', verticalAlign: 'middle' }}>潛在漲幅</th>
                                 <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'48px', boxSizing: 'border-box', verticalAlign: 'middle' }}>前瞻PE</th>
                                 <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', minWidth: '60px', boxSizing: 'border-box', verticalAlign: 'middle'}}>備註</th>
-                            </>
-                        )}
-                    </tr>
-                </thead>
-                {!isChipMode ? (
-                    <tbody>
-                        {Array.from({ length: maxRows }, (_, r) => (
-                            <tr key={r} style={trStyle}>
-                                {Array.from({ length: NUM_BIG_COLUMNS }, (_, c) => renderMainCellBlock(columnItems[c][r], c))}
                             </tr>
-                        ))}
-                    </tbody>
-
-                ) : (
-                    categories.map(cat => (
-                        <tbody key={cat}>
-                            <tr id={`cat-${cat}`} style={{ backgroundColor: '#afd2f5b0', scrollMarginTop: '80px', WebkitScrollMarginTop: '80px'}}>
-                                <td colSpan={9} style={{ minHeight: rowH, height: rowH, padding: '2px 8px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #37c5e4ff', fontSize: '10.5px', boxSizing: 'border-box', verticalAlign: 'middle' }}>
-                                    {cat} (共 {groupedData[cat].length} 檔)
-                                </td>
-                            </tr>
-                            {groupedData[cat].map(stock => (
-                                <tr key={stock.id}>
-                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 3px', border: '1px solid #ddd', fontWeight: 'bold', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.code ?? stock.id}</td>
-                                    <td
-                                        style={{
-                                            minHeight: rowH,
-                                            height: rowH,
-                                            padding: '1px 3px',
-                                            border: '1px solid #ddd',
-                                            width:'50px',
-                                            maxWidth:'50px',
-                                            boxSizing: 'border-box',
-                                            verticalAlign: 'middle',
-                                            whiteSpace: 'nowrap',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            cursor: onStockNameClick ? 'pointer' : undefined,
-                                        }}
-                                        onClick={() => onStockNameClick?.(stock)}
-                                        title={stock.name || undefined}
-                                    >
-                                        {stock.name}
+                        </thead>
+                        {categories.map(cat => (
+                            <tbody key={cat}>
+                                <tr id={`cat-${cat}`} style={{ backgroundColor: '#afd2f5b0', scrollMarginTop: '80px', WebkitScrollMarginTop: '80px'}}>
+                                    <td colSpan={9} style={{ minHeight: rowH, height: rowH, padding: '2px 8px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #37c5e4ff', fontSize: '10.5px', boxSizing: 'border-box', verticalAlign: 'middle' }}>
+                                        {cat} (共 {groupedData[cat].length} 檔)
                                     </td>
-                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'right', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.displayPrice}</td>
-                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle'}}>{stock.realTimePE}</td>
-                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} /></td>
-                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} /></td>
-                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.potentialUpside}%</td>
-                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.forwardPE}</td>
-                                    <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle' }}><EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left'}} /></td>
                                 </tr>
-                            ))}
-                        </tbody>
-                    ))
-                )}
-            </table>
-            </div>
+                                {groupedData[cat].map(stock => (
+                                    <tr key={stock.id}>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 3px', border: '1px solid #ddd', fontWeight: 'bold', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.code ?? stock.id}</td>
+                                        <td
+                                            style={{
+                                                minHeight: rowH,
+                                                height: rowH,
+                                                padding: '1px 3px',
+                                                border: '1px solid #ddd',
+                                                width:'50px',
+                                                maxWidth:'50px',
+                                                boxSizing: 'border-box',
+                                                verticalAlign: 'middle',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                cursor: onStockNameClick ? 'pointer' : undefined,
+                                            }}
+                                            onClick={() => onStockNameClick?.(stock)}
+                                            title={stock.name || undefined}
+                                        >
+                                            {stock.name}
+                                        </td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'right', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.displayPrice}</td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle'}}>{stock.realTimePE}</td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} /></td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} /></td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.potentialUpside}%</td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.forwardPE}</td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle' }}><EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left'}} /></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        ))}
+                    </table>
+                </div>
+            )}
         </div>
     );
 };

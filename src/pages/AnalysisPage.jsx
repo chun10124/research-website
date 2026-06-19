@@ -340,11 +340,11 @@ const AnalysisPage = () => {
 
     return (
         <Layout title="量化分析追蹤表">
-            <main style={{ padding: '20px 0', overflowX: 'hidden' }}>
+            <main style={{ padding: '8px 0 20px', overflowX: 'hidden' }}>
                 <div style={{ padding: '0 0 0 20px', maxWidth: '1650px', margin: '0 auto' }}>
 
                     {/*  1. 表格 */}
-                    <div style={{ 
+                    <div className="ia-table-scroll" style={{
                         overflowX: 'auto',
                         backgroundColor: '#fff', 
                         borderRadius: '8px',
