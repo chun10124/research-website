@@ -51,6 +51,8 @@ const AnalysisPage = () => {
     const [openWithChipView, setOpenWithChipView] = useState(false);
 
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
+    // 記錄上次「背景同步完成時間」，用來偵測雲端(GitHub Actions)同步完成後自動刷新追蹤表
+    const bgSyncTsRef = useRef(0);
     const { stocks: rsRatings, loading: rsLoading } = useIbdRsData();
     const { idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } = useIbdRsWatchlist();
 
@@ -137,6 +139,11 @@ const AnalysisPage = () => {
                 const sharedTs = Number(data?.analysisLastSyncAt);
                 if (Number.isFinite(sharedTs) && sharedTs > 0) {
                     setLastSyncAllAt(sharedTs);
+                    // 背景（雲端排程）同步完成 → 同步時間變新時自動刷新一次，免手動重整
+                    if (bgSyncTsRef.current && sharedTs > bgSyncTsRef.current) {
+                        void refreshData().catch(() => {});
+                    }
+                    bgSyncTsRef.current = sharedTs;
                     return;
                 }
                 try {
