@@ -12,7 +12,7 @@ import {
   fetchInstitutionalInvestorsSeries,
   fetchForeignHoldingSeries,
   instArraysToDateMap,
-  lastExpectedInstDate,
+  instFreshnessBound,
 } from './stockApi';
 
 /** 同一檔正在抓取時不重複觸發（fire-and-forget 去重） */
@@ -80,7 +80,11 @@ export async function prefetchWatchlistChipData(stockCode) {
     // 週末/盤前未到 21:00/假日皆無新資料，避免一直空補抓。
     // 需補抓時：沒資料抓 18 個月，有舊資料則自最新日+1 增量。
     const instLd = existing.latestInstDate ?? null;
-    const instFresh = hist.instDates?.length > 0 && instLd && instLd >= lastExpectedInstDate(existing.market);
+    // 新鮮度基準 = 應公告交易日，但封頂在股價最新交易日（Yahoo，可靠）：
+    // 避免端午等國定假日被誤判「應有更新」而每次空打 API（上櫃股變慢的元凶），
+    // 同時正常盤中不會因股價先於法人更新而過度重抓。沒有股價日時退回純日曆推算。
+    const instBound = instFreshnessBound(existing.market, existing.latestPriceDate);
+    const instFresh = hist.instDates?.length > 0 && instLd && instLd >= instBound;
     if (!instFresh) {
       try {
         const startDate = instLd ? dayPlusOne(instLd) : eighteenMonthsAgo();
@@ -89,7 +93,12 @@ export async function prefetchWatchlistChipData(stockCode) {
           hist.instDates?.length > 0
             ? instArraysToDateMap(hist.instDates, hist.instForeign, hist.instTrust, hist.instDealer)
             : {};
-        const merged = { ...staleMap, ...(newMap || {}) };
+        const mergedRaw = { ...staleMap, ...(newMap || {}) };
+        // 防呆：濾掉超過股價最新交易日的幽靈法人資料（端午等非交易日 FinMind 對上市股會亂給）
+        const _instBound = existing.latestPriceDate || null;
+        const merged = _instBound
+          ? Object.fromEntries(Object.entries(mergedRaw).filter(([d]) => d <= _instBound))
+          : mergedRaw;
         if (Object.keys(merged).length > 0) {
           const dates = Object.keys(merged).sort().reverse();
           await saveToFirestore(docRef, code, {

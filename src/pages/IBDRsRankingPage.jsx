@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { getDoc, onSnapshot, setDoc, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../utils/firebaseConfig';
 import Layout from '@theme/Layout';
-import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache, fetchInstitutionalInvestorsSeries, fetchForeignHoldingSeries, instArraysToDateMap, lastExpectedInstDate } from '../features/StockAnalysis/api/stockApi';
+import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache, fetchInstitutionalInvestorsSeries, fetchForeignHoldingSeries, instArraysToDateMap, instFreshnessBound } from '../features/StockAnalysis/api/stockApi';
 import { syncSingleStock, syncTestBatch } from '../features/StockAnalysis/api/rsApi';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
 import {
@@ -1811,8 +1811,10 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             if (needInst) {
               const h = d.history;
               const instLd = d.latestInstDate ?? null;
-              if (h?.instDates?.length > 0 && instLd && instLd >= lastExpectedInstDate(stock?.market)) {
-                // 快取最新日 >= 目前應已公告的最近交易日即為新鮮（週末/盤前/假日不補抓），直接用
+              // 新鮮度基準 = 應公告交易日，封頂在股價最新交易日（避免端午等假日誤判而每次空打 FinMind）
+              const instBound = instFreshnessBound(stock?.market, d.latestPriceDate || stock?.latestPriceDate);
+              if (h?.instDates?.length > 0 && instLd && instLd >= instBound) {
+                // 快取最新日 >= 最近實際交易日即為新鮮（週末/盤前/假日不補抓），直接用
                 setInstitutionalData(instArraysToDateMap(h.instDates, h.instForeign, h.instTrust, h.instDealer));
                 setInstitutionalLoading(false);
                 fsInstDone = true;
@@ -1879,9 +1881,15 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               : (() => { const d = new Date(); d.setMonth(d.getMonth() - 18); return d.toISOString().slice(0, 10); })();
             const newResult = await fetchInstitutionalInvestorsSeries(stockCode, startDate);
             // 合併舊資料 + 新增資料
-            const merged = staleInstBase
+            const mergedRaw = staleInstBase
               ? { ...staleInstBase.map, ...(newResult || {}) }
               : (newResult || {});
+            // 防呆：濾掉超過股價最新交易日的幽靈法人資料
+            // （端午等非交易日，TWSE 逾時會 fall through 到 FinMind，FinMind 對上市股會多塞一筆幽靈）
+            const _instBound = stock?.latestPriceDate || stock?.ibdRsPriceFetchedDate || null;
+            const merged = _instBound
+              ? Object.fromEntries(Object.entries(mergedRaw).filter(([d]) => d <= _instBound))
+              : mergedRaw;
             setInstitutionalData(merged);
             // 存回 Firestore
             if (Object.keys(merged).length > 0) {

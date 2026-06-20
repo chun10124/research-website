@@ -1031,6 +1031,26 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       const newParsed = parseInstRows(institutionalRes?.data);
       mergedInst = mergeInstArrays(options.existingInstitutional, newParsed);
     }
+    // 防呆：法人日期不可超過股價最新交易日（股價走 Yahoo，是可靠的交易日基準）。
+    // FinMind 在非交易日（如端午）會對上市股回傳「幽靈」法人資料（日期比實際交易日新），
+    // 用股價交易日當上界濾掉，避免污染 latestInstDate；也會清掉資料庫既有的舊幽靈。
+    if (latestPriceDate && Array.isArray(mergedInst.instDates) && mergedInst.instDates.length) {
+      const keep = [];
+      for (let i = 0; i < mergedInst.instDates.length; i++) {
+        const d = mergedInst.instDates[i];
+        if (d && d <= latestPriceDate) keep.push(i);
+      }
+      if (keep.length < mergedInst.instDates.length) {
+        const dropped = mergedInst.instDates.length - keep.length;
+        mergedInst = {
+          instDates:   keep.map((i) => mergedInst.instDates[i]),
+          instForeign: keep.map((i) => mergedInst.instForeign?.[i]),
+          instTrust:   keep.map((i) => mergedInst.instTrust?.[i]),
+          instDealer:  keep.map((i) => mergedInst.instDealer?.[i]),
+        };
+        console.log(`[${sCode}] 濾除 ${dropped} 筆超過股價最新日(${latestPriceDate})的幽靈法人資料`);
+      }
+    }
     const latestInstDate = mergedInst.instDates[0] ?? null;
 
     return {
@@ -1077,21 +1097,37 @@ const isBeforeTaiwan9PM = () => {
  * 用於三大法人快取新鮮度判定：快取的 latestInstDate >= 此日即視為新鮮、不需補抓。
  * 規則（依市場分流今日資料公告時間）：
  *   - 上市（TWSE，走 T86）約下午 17:00 公告，未到則回退一天。
- *   - 上櫃（TPEX，走 FinMind）約晚上 21:00 公告，未到則回退一天。
+ *   - 上櫃（TPEX，走 FinMind 法人表，官方更新 20:00）約晚上 20:00 公告，未到則回退一天。
  *   - 市場不明：採樂觀的 17:00（上櫃此時打 TWSE 會空、自動 fallthrough 到 FinMind 取舊資料，無害）。
  *   - 週六/週日無交易，回退到最近的平日（週五）。
  * 注意：未含國定假日表，假日當天可能仍判定為「應有資料」而觸發一次空補抓（少見、可接受）。
  * @param {'TWSE'|'TPEX'|string} [market] 股票市場別
  */
 export const lastExpectedInstDate = (market) => {
-  // 上櫃資料晚上 9 點才出；上市/未知用下午 5 點
-  const cutoffHour = market === 'TPEX' ? 21 : 17;
+  // 上櫃法人 FinMind 官方 20:00 更新（八點）；上市/未知用下午 5 點（TWSE T86）
+  const cutoffHour = market === 'TPEX' ? 20 : 17;
   // 以台灣牆鐘時間建構 Date，後續只做日期加減與格式化
   const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
   if (d.getHours() < cutoffHour) d.setDate(d.getDate() - 1); // 今日資料尚未公告
   let dow = d.getDay(); // 0=日, 6=六
   while (dow === 0 || dow === 6) { d.setDate(d.getDate() - 1); dow = d.getDay(); }
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * 三大法人新鮮度基準：取「應已公告的交易日」與「實際已有股價的最新交易日」較小者。
+ *
+ * lastExpectedInstDate 只跳週末、不含國定假日表，端午等假日（如 2026-06-19 週五）會被誤判為
+ * 交易日，使快取最新日（前一交易日 6/18）永遠 < 基準 → 每次都空打 FinMind（上櫃股變慢主因），
+ * 且 FinMind 對上市股還會回傳該假日的「幽靈」法人資料。改以股價最新交易日（Yahoo，可靠的真實
+ * 交易日基準）封頂：假日時基準退回真正的最後交易日，正常盤中又不會因股價先於法人更新而過度重抓。
+ * latestPriceDate 缺漏時退回純日曆推算，行為與舊版一致。
+ * @param {'TWSE'|'TPEX'|string} [market]
+ * @param {string|null} [latestPriceDate] YYYY-MM-DD，該檔股價最新交易日
+ */
+export const instFreshnessBound = (market, latestPriceDate) => {
+  const expected = lastExpectedInstDate(market);
+  return (latestPriceDate && latestPriceDate < expected) ? latestPriceDate : expected;
 };
 
 /**
@@ -1121,7 +1157,8 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
     const hasHoldingsData = stock.history?.foreignTotalHolding?.length > 0;
     // 加入 hasHoldingsData 判斷：即使日期夠新，若資料是空陣列也必須重抓（防止空資料卡死）
     const skipHoldingsThisSync = (isBeforeTaiwan9PM() && holdingsUpToDate && hasHoldingsData) || (stock.latestHoldingsDate === todayStr && hasHoldingsData);
-    const instUpToDate = stock.latestInstDate >= yesterdayStr;
+    // 新鮮度基準：應公告交易日，但封頂在實際股價最新交易日 → 端午等假日不會誤判而每次重抓。
+    const instUpToDate = stock.latestInstDate >= instFreshnessBound(stock.market, stock.latestPriceDate);
     const skipInstThisSync = (isBeforeTaiwan9PM() && instUpToDate) || (stock.latestInstDate === todayStr && stock.history?.instDates?.length > 0);
     const havePriceData = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
     const haveLatestPrice = havePriceData;

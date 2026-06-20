@@ -1,12 +1,14 @@
 name: 每日追蹤表自動同步
 
 # 排程時間為 UTC；台灣 = UTC+8
-#   台灣 16:00 → UTC 08:00（股價/成交量，Yahoo）
-#   台灣 21:30 → UTC 13:30（籌碼/外資/營收）
+#   台灣 15:30 → UTC 07:30（RS 全市場 + 追蹤表價量，Yahoo）
+#   台灣 20:30 → UTC 12:30（三大法人 20:00 更新後半小時就抓；外資持股 21:00 未到，留待 21:30 場次補上）
+#   台灣 21:30 → UTC 13:30（外資持股/營收；此時法人已於 20:30 抓畢、會自動判定新鮮而略過，只補持股）
 # 1-5 = 週一到週五（台股交易日；國定假日仍會跑，抓不到新資料但無害）
 on:
   schedule:
-    - cron: '0 8 * * 1-5'
+    - cron: '30 7 * * 1-5'
+    - cron: '30 12 * * 1-5'
     - cron: '30 13 * * 1-5'
   workflow_dispatch:
     inputs:
@@ -60,11 +62,11 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "== 手動觸發：mode=${{ github.event.inputs.mode }} limit=${{ github.event.inputs.limit }} =="
             SYNC_MODE="${{ github.event.inputs.mode }}" SYNC_LIMIT="${{ github.event.inputs.limit }}" node "$B"
-          elif [ "${{ github.event.schedule }}" = "0 8 * * 1-5" ]; then
-            echo "== 16:00 時段：先 RS 全市場，再追蹤表價量（沿用 RS、不重抓 Yahoo）=="
+          elif [ "${{ github.event.schedule }}" = "30 7 * * 1-5" ]; then
+            echo "== 15:30 時段：先 RS 全市場，再追蹤表價量（沿用 RS、不重抓 Yahoo）=="
             SYNC_MODE=rs node "$B"
             SYNC_MODE=priceVolume node "$B"
           else
-            echo "== 21:30 時段：追蹤表籌碼/外資/營收 =="
+            echo "== 籌碼時段（schedule=${{ github.event.schedule }}，台灣 20:30 法人／21:30 外資持股）：追蹤表籌碼/外資/營收 =="
             SYNC_MODE=holdingsRevenue node "$B"
           fi
