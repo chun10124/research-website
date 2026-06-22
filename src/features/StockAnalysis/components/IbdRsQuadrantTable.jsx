@@ -59,8 +59,8 @@ export default function IbdRsQuadrantTable({
         width: tableW,
         overflow: 'hidden',
         borderRadius: 6,
-        boxShadow: '0 0 0 1px #e8e8e8',
-        background: '#fff',
+        boxShadow: '0 0 0 1px var(--app-border)',
+        background: 'var(--app-surface)',
       }}
     >
       <table
@@ -147,7 +147,7 @@ export default function IbdRsQuadrantTable({
                   : '當日收盤價';
               const limitBg = getLimitBgColor(s.pricePct1d);
               return (
-                <tr key={s.id} style={{ borderBottom: '1px solid #f4f4f4' }}>
+                <tr key={s.id} style={{ borderBottom: '1px solid var(--app-border)' }}>
                   <td style={{ ...tdBase, textAlign: 'center', fontWeight: 700, fontSize: 9 }}>{s.id}</td>
                   <td
                     title={s.name || undefined}
@@ -173,7 +173,7 @@ export default function IbdRsQuadrantTable({
                         fontSize: 10,
                         fontVariantNumeric: 'tabular-nums',
                         paddingRight: 4,
-                        color: '#333',
+                        color: 'var(--app-text)',
                       }}
                       title={closeTitle}
                     >
@@ -230,7 +230,7 @@ export default function IbdRsQuadrantTable({
                       ...tdBase,
                       textAlign: 'center',
                       fontSize: 11,
-                      color: '#555',
+                      color: 'var(--app-text-soft)',
                       fontVariantNumeric: 'tabular-nums',
                     }}
                     title={

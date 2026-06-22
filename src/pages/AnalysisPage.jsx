@@ -353,7 +353,7 @@ const AnalysisPage = () => {
                     {/*  1. 表格 */}
                     <div className="ia-table-scroll" style={{
                         overflowX: 'auto',
-                        backgroundColor: '#fff', 
+                        backgroundColor: 'var(--app-surface)', 
                         borderRadius: '8px',
                         boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
                         marginBottom: '30px',
@@ -381,10 +381,10 @@ const AnalysisPage = () => {
                             onClick={() => setTrackingTab(TAB_MAIN)}
                             style={{
                                 padding: '6px 14px',
-                                border: `2px solid ${trackingTab === TAB_MAIN ? '#25c2a0' : '#ddd'}`,
+                                border: `2px solid ${trackingTab === TAB_MAIN ? '#25c2a0' : 'var(--app-border)'}`,
                                 borderRadius: '8px',
-                                background: trackingTab === TAB_MAIN ? '#25c2a0' : '#fff',
-                                color: trackingTab === TAB_MAIN ? '#fff' : '#333',
+                                background: trackingTab === TAB_MAIN ? '#25c2a0' : 'var(--app-surface)',
+                                color: trackingTab === TAB_MAIN ? '#fff' : 'var(--app-text)',
                                 fontWeight: 'bold',
                                 cursor: 'pointer',
                                 fontSize: '13px',
@@ -397,10 +397,10 @@ const AnalysisPage = () => {
                             onClick={() => setTrackingTab(TAB_CHIP)}
                             style={{
                                 padding: '6px 14px',
-                                border: `2px solid ${trackingTab === TAB_CHIP ? '#25c2a0' : '#ddd'}`,
+                                border: `2px solid ${trackingTab === TAB_CHIP ? '#25c2a0' : 'var(--app-border)'}`,
                                 borderRadius: '8px',
-                                background: trackingTab === TAB_CHIP ? '#25c2a0' : '#fff',
-                                color: trackingTab === TAB_CHIP ? '#fff' : '#333',
+                                background: trackingTab === TAB_CHIP ? '#25c2a0' : 'var(--app-surface)',
+                                color: trackingTab === TAB_CHIP ? '#fff' : 'var(--app-text)',
                                 fontWeight: 'bold',
                                 cursor: 'pointer',
                                 fontSize: '13px',
@@ -412,19 +412,19 @@ const AnalysisPage = () => {
 
                     {/*  2. 輸入區 */}
                     <div style={{ 
-                        borderTop: '2px solid #eee',
+                        borderTop: '2px solid var(--app-border)',
                         paddingTop: '25px',
                         marginTop: '10px'
                     }}>
                         <div style={{ 
-                            backgroundColor: '#f8f9fa', 
+                            backgroundColor: 'var(--app-surface-2)', 
                             padding: '15px 25px', 
                             borderRadius: '12px',
                             display: 'inline-flex', // 讓它跟內容一樣寬就好
                             alignItems: 'center',
                             gap: '15px'
                         }}>
-                            <strong style={{ fontSize: '1.1em', color: '#333' }}>新增股票</strong>
+                            <strong style={{ fontSize: '1.1em', color: 'var(--app-text)' }}>新增股票</strong>
                             <input
                                 type="text"
                                 value={testCode}
@@ -433,7 +433,7 @@ const AnalysisPage = () => {
                                 disabled={loading || syncingAll}
                                 style={{ 
                                     padding: '8px 12px', 
-                                    border: '1px solid #ccc',
+                                    border: '1px solid var(--app-border)',
                                     borderRadius: '6px',
                                     width: '140px',
                                     fontSize: '14px'
@@ -470,7 +470,7 @@ const AnalysisPage = () => {
 
                         <details style={{ marginTop: '12px' }}>
                             <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: '#555', fontSize: '12px' }}>設定產業</summary>
-                            <div style={{ marginTop: '6px', padding: '8px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #eee', fontSize: '11px' }}>
+                            <div style={{ marginTop: '6px', padding: '8px', background: 'var(--app-surface-2)', borderRadius: '6px', border: '1px solid var(--app-border)', fontSize: '11px' }}>
                                 {stocks.length === 0 ? (
                                     <p style={{ margin: 0, color: '#888' }}>尚無股票，請先新增。</p>
                                 ) : (
@@ -491,7 +491,7 @@ const AnalysisPage = () => {
                                                         if (v !== (s.category || '')) updateStockField(s.id, 'category', v || '未分類');
                                                     }}
                                                     placeholder="產業"
-                                                    style={{ padding: '2px 4px', width: '100px', border: '1px solid #ccc', borderRadius: '3px', fontSize: '11px' }}
+                                                    style={{ padding: '2px 4px', width: '100px', border: '1px solid var(--app-border)', borderRadius: '3px', fontSize: '11px' }}
                                                 />
                                             </li>
                                         ))}
@@ -502,7 +502,7 @@ const AnalysisPage = () => {
 
                         <details style={{ marginTop: '12px' }}>
                             <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: '#555', fontSize: '12px' }}>大欄設定</summary>
-                            <div style={{ marginTop: '8px', padding: '10px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #eee', fontSize: '11px' }}>
+                            <div style={{ marginTop: '8px', padding: '10px', background: 'var(--app-surface-2)', borderRadius: '6px', border: '1px solid var(--app-border)', fontSize: '11px' }}>
                                 <BigColumnDragBoard
                                     categories={categoriesFromStocks}
                                     bigColumnConfig={bigColumnConfig}
@@ -554,7 +554,7 @@ const AnalysisPage = () => {
                                 </span>
                             )}
                         </div>
-                        <div style={{ marginTop: '24px', padding: '16px 20px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #eee' }}>
+                        <div style={{ marginTop: '24px', padding: '16px 20px', backgroundColor: 'var(--app-surface-2)', borderRadius: '8px', border: '1px solid var(--app-border)' }}>
                             <div style={{ fontSize: '0.85em', color: '#555', marginBottom: '8px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                                 <span><strong>上一輪全體更新</strong> {mounted ? formatLastSync(lastSyncAllAt) : '—'}</span>
                                 <span><strong>此頁資料載入</strong> {mounted && lastFetchedAt ? formatLastSync(lastFetchedAt) : '—'}</span>
@@ -568,7 +568,7 @@ const AnalysisPage = () => {
                                     type="button"
                                     onClick={() => refreshData()}
                                     disabled={loading}
-                                    style={{ marginLeft: '4px', padding: '4px 10px', fontSize: '12px', cursor: loading ? 'wait' : 'pointer', border: '1px solid #ccc', borderRadius: '4px', background: '#fff' }}
+                                    style={{ marginLeft: '4px', padding: '4px 10px', fontSize: '12px', cursor: loading ? 'wait' : 'pointer', border: '1px solid var(--app-border)', borderRadius: '4px', background: 'var(--app-surface)' }}
                                 >
                                     {loading ? '載入中…' : '重新載入'}
                                 </button>

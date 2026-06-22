@@ -29,6 +29,16 @@
 
   --ifm-code-font-size: 95%;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.05);
+
+  /* ── App 主題色票（供 inline-style 頁面共用：日曆/追蹤表/RS）──
+     亮色＝原本的值，暗色於 [data-theme='dark'] 覆蓋，
+     讓寫死 #fff/灰色的卡片在暗色下自動變深而不動亮色外觀。 */
+  --app-surface: #ffffff;       /* 卡片/面板底色 */
+  --app-surface-2: #f8fafc;     /* 次級底色（表頭、淺灰區塊）*/
+  --app-border: #e5e7eb;        /* 邊框 */
+  --app-text: #111827;          /* 主要深色文字 */
+  --app-text-soft: #475569;     /* 次要灰字 */
+  --app-th-bg: #dce8f8;         /* 表頭底（淺藍）*/
 }
 
 [data-theme='dark'] {
@@ -41,6 +51,14 @@
   
   --ifm-link-color: var(--ifm-color-primary);
   --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.15);
+
+  /* App 色票暗色覆蓋：卡片底色比頁面背景(#1a1a1a)略亮以呈現層次 */
+  --app-surface: #242526;
+  --app-surface-2: #2b2d2e;
+  --app-border: #3a3c3e;
+  --app-text: #e3e3e3;
+  --app-text-soft: #b0b4b8;
+  --app-th-bg: #2b3442;
 }
 
 /* 將 footer 推到視窗底部的 CSS 修復 */

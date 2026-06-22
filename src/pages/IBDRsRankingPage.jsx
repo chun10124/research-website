@@ -288,7 +288,7 @@ function FilterSectionTitle({ children, first }) {
 /** 篩選三明治：數字欄固定寬，勿 flex:1 拉滿整列 */
 const FILTER_SANDWICH_INPUT = {
   padding: '5px 10px',
-  border: '1px solid #d0d0d0',
+  border: '1px solid var(--app-border)',
   borderRadius: 6,
   fontSize: 12,
   flex: '0 0 auto',
@@ -311,7 +311,7 @@ const FILTER_DELTA_MID_TEXT_STYLE = {
 
 const FILTER_DELTA_DAYS_INPUT = {
   padding: '5px 8px',
-  border: '1px solid #d0d0d0',
+  border: '1px solid var(--app-border)',
   borderRadius: 6,
   fontSize: 12,
   flex: '0 0 auto',
@@ -763,12 +763,12 @@ function IbdRsComboChart({ data, showMA = true, showRs = true }) {
         onWheel={handleChartWheel}
       >
         {/* 繪圖區底色 */}
-        <rect x={PAD_L} y={PAD_T} width={innerW} height={innerH} fill="#ffffff" />
+        <rect x={PAD_L} y={PAD_T} width={innerW} height={innerH} fill="var(--app-surface)" />
 
         {/* 水平 grid */}
         {rsTicks.map((v) => {
           const y = yRs(v);
-          return <line key={`g-${v}`} x1={PAD_L} y1={y} x2={PAD_L + innerW} y2={y} stroke="#eceff1" strokeWidth={1} strokeDasharray="3 3" />;
+          return <line key={`g-${v}`} x1={PAD_L} y1={y} x2={PAD_L + innerW} y2={y} stroke="var(--app-border)" strokeWidth={1} strokeDasharray="3 3" />;
         })}
 
         {/* K 棒（opacity 疊加在折線之下） */}
@@ -858,7 +858,7 @@ function IbdRsComboChart({ data, showMA = true, showRs = true }) {
         ))}
 
         {/* X 軸底線 */}
-        <line x1={PAD_L} y1={PAD_T + innerH} x2={PAD_L + innerW} y2={PAD_T + innerH} stroke="#e2e8f0" strokeWidth={1} />
+        <line x1={PAD_L} y1={PAD_T + innerH} x2={PAD_L + innerW} y2={PAD_T + innerH} stroke="var(--app-border)" strokeWidth={1} />
       </svg>
 
       {/* Tooltip */}
@@ -873,14 +873,14 @@ function IbdRsComboChart({ data, showMA = true, showRs = true }) {
             fontSize: 12,
             lineHeight: 1.5,
             borderRadius: 8,
-            border: '1px solid #cbd5e1',
-            backgroundColor: '#fff',
+            border: '1px solid var(--app-border)',
+            backgroundColor: 'var(--app-surface)',
             boxShadow: '0 8px 24px rgba(15,23,42,0.18)',
             padding: '10px 12px',
             minWidth: 148,
           }}
         >
-          <div style={{ color: '#64748b', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid #e2e8f0', paddingBottom: 6 }}>
+          <div style={{ color: '#64748b', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid var(--app-border)', paddingBottom: 6 }}>
             {hd.dateKey}
           </div>
           {showRs && hd.rs != null && (
@@ -890,7 +890,7 @@ function IbdRsComboChart({ data, showMA = true, showRs = true }) {
             <div style={{ color: '#1565c0', fontWeight: 600, paddingBottom: 2 }}>加權：{Number(hd.idx).toLocaleString()}</div>
           )}
           {Number.isFinite(hd.close) && (
-            <div style={{ color: '#374151', fontWeight: 700, paddingBottom: 2 }}>收：{Math.round(hd.close)}</div>
+            <div style={{ color: 'var(--app-text-soft)', fontWeight: 700, paddingBottom: 2 }}>收：{Math.round(hd.close)}</div>
           )}
           {Number.isFinite(hd.close) && hoverIdx > 0 && Number.isFinite(data[hoverIdx - 1]?.close) && (() => {
             const pct = (hd.close - data[hoverIdx - 1].close) / data[hoverIdx - 1].close * 100;
@@ -1372,7 +1372,7 @@ function ForeignChipChart({ data, allHoldings }) {
 
         {/* 上格 grid */}
         {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-          <line key={`pg-${t}`} x1={PAD_L} y1={PAD_T + MAIN_H * t} x2={PAD_L + innerW} y2={PAD_T + MAIN_H * t} stroke="#eceff1" strokeWidth={1} strokeDasharray="3 3" />
+          <line key={`pg-${t}`} x1={PAD_L} y1={PAD_T + MAIN_H * t} x2={PAD_L + innerW} y2={PAD_T + MAIN_H * t} stroke="var(--app-border)" strokeWidth={1} strokeDasharray="3 3" />
         ))}
 
         {/* 下格零軸 */}
@@ -1463,9 +1463,9 @@ function ForeignChipChart({ data, allHoldings }) {
         ))}
 
         {/* X 軸底線 */}
-        <line x1={PAD_L} y1={PAD_T + innerH} x2={PAD_L + innerW} y2={PAD_T + innerH} stroke="#e2e8f0" strokeWidth={1} />
+        <line x1={PAD_L} y1={PAD_T + innerH} x2={PAD_L + innerW} y2={PAD_T + innerH} stroke="var(--app-border)" strokeWidth={1} />
         {/* 上下格分隔線 */}
-        <line x1={PAD_L} y1={chipYBase} x2={PAD_L + innerW} y2={chipYBase} stroke="#e2e8f0" strokeWidth={1} />
+        <line x1={PAD_L} y1={chipYBase} x2={PAD_L + innerW} y2={chipYBase} stroke="var(--app-border)" strokeWidth={1} />
       </svg>
 
       {/* Tooltip */}
@@ -1474,15 +1474,15 @@ function ForeignChipChart({ data, allHoldings }) {
           position: 'absolute', top: tooltipTop,
           left: mousePos.x > w / 2 ? Math.max(4, mousePos.x - 190) : mousePos.x + 14,
           pointerEvents: 'none', zIndex: 20, fontSize: 12, lineHeight: 1.5,
-          borderRadius: 8, border: '1px solid #cbd5e1', backgroundColor: '#fff',
+          borderRadius: 8, border: '1px solid var(--app-border)', backgroundColor: 'var(--app-surface)',
           boxShadow: '0 8px 24px rgba(15,23,42,0.18)', padding: '10px 12px', minWidth: 160,
         }}>
-          <div style={{ color: '#64748b', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid #e2e8f0', paddingBottom: 6 }}>
+          <div style={{ color: '#64748b', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid var(--app-border)', paddingBottom: 6 }}>
             {hd.dateKey}
             {hd.bSignal === 'B' && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#ff2d87', background: '#fff0f7', borderRadius: 4, padding: '1px 5px' }}>B訊號</span>}
           </div>
           {Number.isFinite(hd.close) && (
-            <div style={{ color: '#374151', fontWeight: 700, paddingBottom: 2 }}>
+            <div style={{ color: 'var(--app-text-soft)', fontWeight: 700, paddingBottom: 2 }}>
               收：{hd.close >= 100 ? Math.round(hd.close) : hd.close?.toFixed(1)}
               {hoverIdx > 0 && Number.isFinite(data[hoverIdx - 1]?.close) && (() => {
                 const pct = (hd.close - data[hoverIdx - 1].close) / data[hoverIdx - 1].close * 100;
@@ -2318,7 +2318,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           height: 'min(90vh, 860px)',
           maxHeight: 'min(90vh, 860px)',
           overflow: 'hidden',
-          background: '#fff',
+          background: 'var(--app-surface)',
           borderRadius: 12,
           boxShadow: '0 20px 56px rgba(0,0,0,0.28)',
           padding: '12px 14px 8px',
@@ -2441,7 +2441,7 @@ style={{
                   <span style={{ fontWeight: 600, color: '#9ca3af' }}>VCP</span>{' '}
                   {vcpSnapshot.composite != null && Number.isFinite(vcpSnapshot.composite) ? (
                     <span
-                      style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}
+                      style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--app-text-soft)' }}
                     >
                       {vcpSnapshot.composite.toFixed(2)}
                     </span>
@@ -2451,7 +2451,7 @@ style={{
                   {'　'}
                   <span style={{ fontWeight: 600, color: '#9ca3af' }}>HL</span>{' '}
                   {stock?.pricePos6m != null && Number.isFinite(stock.pricePos6m) ? (
-                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
+                    <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--app-text-soft)' }}>
                       {stock.pricePos6m.toFixed(2)}
                     </span>
                   ) : (
@@ -2603,10 +2603,10 @@ style={{
                 alignSelf: 'center',
                 width: '100%',
                 maxWidth: 760,
-                border: '1px solid #e5e7eb',
+                border: '1px solid var(--app-border)',
                 borderRadius: 10,
                 padding: '8px 4px 4px',
-                background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+                background: 'linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-2) 100%)',
                 boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
               }}
               onWheel={(e) => {
@@ -2622,7 +2622,7 @@ style={{
                   gap: 8,
                   marginBottom: 4,
                   paddingBottom: 6,
-                  borderBottom: '1px solid #f1f5f9',
+                  borderBottom: '1px solid var(--app-border)',
                   flexShrink: 0,
                 }}
               >
@@ -2816,7 +2816,7 @@ style={{
                     fontWeight: 700,
                     lineHeight: 1,
                     padding: 0,
-                    color: '#1e293b',
+                    color: 'var(--app-text)',
                     pointerEvents: 'auto',
                   }}
                 >
@@ -2951,17 +2951,17 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
   }, [key, items.length, safeCardPage, onMeasure]);
   const th = {
     padding: '5px 4px',
-    borderBottom: '1px solid #e5e7eb',
-    background: '#f8fafc',
+    borderBottom: '1px solid var(--app-border)',
+    background: 'var(--app-th-bg)',
     fontSize: 10,
     fontWeight: 800,
-    color: '#334155',
+    color: 'var(--app-text)',
     textAlign: 'center',
     whiteSpace: 'nowrap',
   };
   const td = {
     padding: '5px 4px',
-    borderBottom: '1px solid #f8fafc',
+    borderBottom: '1px solid var(--app-border)',
     fontSize: 10.5,
     textAlign: 'center',
     fontVariantNumeric: 'tabular-nums',
@@ -2975,8 +2975,8 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
       ref={cardRef}
       key={key}
       style={{
-        background: '#fff',
-        border: '1px solid #e5e7eb',
+        background: 'var(--app-surface)',
+        border: '1px solid var(--app-border)',
         borderRadius: 12,
         overflow: 'hidden',
         boxShadow: '0 2px 12px rgba(15, 23, 42, 0.04)',
@@ -2986,8 +2986,8 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
       <header
         style={{
           padding: '8px 10px',
-          borderBottom: '1px solid #f1f5f9',
-          background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
+          borderBottom: '1px solid var(--app-border)',
+          background: 'linear-gradient(180deg, var(--app-surface-2) 0%, var(--app-surface) 100%)',
           display: 'flex',
           alignItems: 'baseline',
           gap: 8,
@@ -3047,7 +3047,7 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
               style={{
                 border: 'none',
                 background: 'transparent',
-                color: '#475569',
+                color: 'var(--app-text-soft)',
                 fontSize: 14,
                 lineHeight: 1,
                 padding: '0 3px',
@@ -3067,7 +3067,7 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
               style={{
                 border: 'none',
                 background: 'transparent',
-                color: '#475569',
+                color: 'var(--app-text-soft)',
                 fontSize: 14,
                 lineHeight: 1,
                 padding: '0 3px',
@@ -3126,7 +3126,7 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
                     title={isNew ? '今日新出現' : undefined}
                     style={{ cursor: 'pointer' }}
                   >
-                    <td style={{ ...td, color: '#334155' }}>
+                    <td style={{ ...td, color: 'var(--app-text-soft)' }}>
                       {s.id}
                     </td>
                     <td
@@ -3134,7 +3134,7 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
                         ...td,
                         textAlign: 'left',
                         paddingLeft: 4,
-                        color: '#111827',
+                        color: 'var(--app-text)',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                       }}
@@ -3155,12 +3155,12 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
                         />
                       ) : null}
                     </td>
-                    <td style={{ ...td, color: '#334155' }}>{displayRs ?? '—'}</td>
+                    <td style={{ ...td, color: 'var(--app-text-soft)' }}>{displayRs ?? '—'}</td>
                     <td style={{ ...td, color: getDeltaColor(s.delta5d) }}>{fmtDelta(s.delta5d)}</td>
                     <td style={{ ...td, color: getDeltaColor(s.delta20d) }}>{fmtDelta(s.delta20d)}</td>
                     <td style={{ ...td, color: getDeltaColor(s.pricePctShort ?? s.pricePct5d) }}>{fmtPct(s.pricePctShort ?? s.pricePct5d)}</td>
                     <td style={{ ...td, color: getDeltaColor(s.pricePctLong ?? s.pricePct20d) }}>{fmtPct(s.pricePctLong ?? s.pricePct20d)}</td>
-                    <td style={{ ...td, color: '#475569' }}>{fmtHl(s.pricePos6m)}</td>
+                    <td style={{ ...td, color: 'var(--app-text-soft)' }}>{fmtHl(s.pricePos6m)}</td>
                   </tr>
                 );
               })}
@@ -3212,8 +3212,8 @@ function MajorMovesModal({
       overflowX: 'auto',
       WebkitOverflowScrolling: 'touch',
       borderRadius: 10,
-      border: '1px solid #e5e7eb',
-      background: '#fff',
+      border: '1px solid var(--app-border)',
+      background: 'var(--app-surface)',
       boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
       /** 貼合表身寬，避免白框撐滿 modal 右側一大塊空白 */
       width: 'max-content',
@@ -3226,7 +3226,7 @@ function MajorMovesModal({
       borderCollapse: 'collapse',
       fontSize: 12,
       lineHeight: 1.4,
-      color: '#111827',
+      color: 'var(--app-text)',
       fontFeatureSettings: '"tnum" 1',
     },
     th: (fg, align) => ({
@@ -3327,17 +3327,17 @@ function MajorMovesModal({
           onClick={() => onPickStock(s)}
           style={{
             cursor: 'pointer',
-            borderBottom: '1px solid #f1f5f9',
-            background: '#fff',
+            borderBottom: '1px solid var(--app-border)',
+            background: 'var(--app-surface)',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = rowHoverBg;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = '#fff';
+            e.currentTarget.style.background = 'var(--app-surface)';
           }}
         >
-          <td style={{ ...mm.tdId, fontWeight: 700, color: '#374151' }}>{s.id}</td>
+          <td style={{ ...mm.tdId, fontWeight: 700, color: 'var(--app-text-soft)' }}>{s.id}</td>
           <td style={{ ...mm.tdName, fontWeight: 500, fontSize: 12 }}>
             <span
               style={{
@@ -3369,7 +3369,7 @@ function MajorMovesModal({
               {badge.text}
             </span>
           </td>
-          <td style={{ ...mm.tdNum, fontWeight: 700, color: '#111827' }}>{rs ?? '—'}</td>
+          <td style={{ ...mm.tdNum, fontWeight: 700, color: 'var(--app-text)' }}>{rs ?? '—'}</td>
           <td style={{ ...mm.tdNum, fontWeight: 700, color: getDeltaColor(step) }}>
             {stepIsPct1d ? fmtPctModal(step) : fmtDelta(step)}
           </td>
@@ -3444,7 +3444,7 @@ function MajorMovesModal({
             justifyContent: 'space-between',
             gap: 10,
             padding: '14px 28px 10px',
-            borderBottom: '1px solid #eee',
+            borderBottom: '1px solid var(--app-border)',
             flexShrink: 0,
           }}
         >
@@ -3470,9 +3470,9 @@ function MajorMovesModal({
               fontSize: 20,
               lineHeight: 1,
               padding: '2px 10px',
-              border: '1px solid #ddd',
+              border: '1px solid var(--app-border)',
               borderRadius: 8,
-              background: '#fff',
+              background: 'var(--app-surface)',
               cursor: 'pointer',
               color: '#666',
             }}
@@ -4631,7 +4631,7 @@ export default function IBDRsRankingPage() {
 
   const tdBase = {
     padding: '2px 5px',
-    border: '1px solid #f0f0f0',
+    border: '1px solid var(--app-border)',
     verticalAlign: 'middle',
     height: 22,
     boxSizing: 'border-box',
@@ -4640,9 +4640,10 @@ export default function IBDRsRankingPage() {
 
   const thBase = {
     padding: '4px 5px',
-    border: '1px solid #ddd',
+    border: '1px solid var(--app-border)',
     textAlign: 'center',
-    background: '#dce8f8',
+    background: 'var(--app-th-bg)',
+    color: 'var(--app-text)',
     fontWeight: 700,
     fontSize: 11,
     height: 26,
@@ -4690,7 +4691,7 @@ export default function IBDRsRankingPage() {
                   <div
                     style={{
                       display: 'inline-flex',
-                      border: '1px solid #cbd5e1',
+                      border: '1px solid var(--app-border)',
                       borderRadius: 8,
                       overflow: 'hidden',
                     }}
@@ -4714,8 +4715,8 @@ export default function IBDRsRankingPage() {
                             fontSize: 12,
                             fontWeight: 800,
                             cursor: 'pointer',
-                            background: active ? '#0f766e' : '#fff',
-                            color: active ? '#fff' : '#334155',
+                            background: active ? '#0f766e' : 'var(--app-surface)',
+                            color: active ? '#fff' : 'var(--app-text-soft)',
                           transition: 'background-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
                           boxShadow: active ? 'inset 0 0 0 1px rgba(15,118,110,0.2)' : 'none',
                           }}
@@ -4846,9 +4847,9 @@ export default function IBDRsRankingPage() {
                           onClick={() => setPage(target)}
                           style={{
                             padding: '4px 10px',
-                            border: '1px solid #ddd',
+                            border: '1px solid var(--app-border)',
                             borderRadius: 4,
-                            background: '#fff',
+                            background: 'var(--app-surface)',
                             cursor: disabled ? 'default' : 'pointer',
                             opacity: disabled ? 0.4 : 1,
                             fontSize: 12,
@@ -4873,9 +4874,9 @@ export default function IBDRsRankingPage() {
                           onClick={() => setPage(target)}
                           style={{
                             padding: '4px 10px',
-                            border: '1px solid #ddd',
+                            border: '1px solid var(--app-border)',
                             borderRadius: 4,
-                            background: '#fff',
+                            background: 'var(--app-surface)',
                             cursor: disabled ? 'default' : 'pointer',
                             opacity: disabled ? 0.4 : 1,
                             fontSize: 12,
@@ -4899,7 +4900,7 @@ export default function IBDRsRankingPage() {
                       flex: '0 1 auto',
                       minWidth: 96,
                       padding: '4px 8px',
-                      border: '1px solid #d0d0d0',
+                      border: '1px solid var(--app-border)',
                       borderRadius: 6,
                       fontSize: 12,
                       lineHeight: 1.25,
@@ -4937,9 +4938,9 @@ export default function IBDRsRankingPage() {
               zIndex: 10000,
               padding: '14px 20px',
               borderRadius: 999,
-              border: hasActiveFilter ? '2px solid #c0392b' : '1px solid #ccc',
-              background: hasActiveFilter ? '#fff5f5' : '#fff',
-              color: hasActiveFilter ? '#c0392b' : '#444',
+              border: hasActiveFilter ? '2px solid #c0392b' : '1px solid var(--app-border)',
+              background: hasActiveFilter ? '#fff5f5' : 'var(--app-surface)',
+              color: hasActiveFilter ? '#c0392b' : 'var(--app-text)',
               cursor: 'pointer',
               boxShadow: '0 10px 28px rgba(0,0,0,0.15)',
               fontSize: 15,
@@ -4973,7 +4974,7 @@ export default function IBDRsRankingPage() {
                 style={{
                   width: '100%',
                   maxWidth: 480,
-                  background: 'linear-gradient(180deg, #fafdfb 0%, var(--ifm-background-surface-color, #fff) 12%)',
+                  background: 'linear-gradient(180deg, var(--app-surface-2) 0%, var(--ifm-background-surface-color, var(--app-surface)) 12%)',
                   border: '1px solid #cfe8e2',
                   borderRadius: 12,
                   boxShadow: '0 24px 56px rgba(0,0,0,0.22)',
@@ -4999,9 +5000,9 @@ export default function IBDRsRankingPage() {
                       style={{
                         fontSize: 11,
                         padding: '5px 10px',
-                        border: '1px solid #ccc',
+                        border: '1px solid var(--app-border)',
                         borderRadius: 8,
-                        background: '#fff',
+                        background: 'var(--app-surface)',
                         cursor: 'pointer',
                         color: '#555',
                         fontWeight: 700,
@@ -5024,9 +5025,9 @@ export default function IBDRsRankingPage() {
                       fontSize: 20,
                       lineHeight: 1,
                       padding: '2px 8px',
-                      border: '1px solid #ddd',
+                      border: '1px solid var(--app-border)',
                       borderRadius: 8,
-                      background: '#fff',
+                      background: 'var(--app-surface)',
                       cursor: 'pointer',
                       color: '#666',
                       fontWeight: 400,
@@ -5341,8 +5342,8 @@ export default function IBDRsRankingPage() {
                   padding: 32,
                   textAlign: 'center',
                   color: '#888',
-                  background: '#fff',
-                  border: '1px solid #eee',
+                  background: 'var(--app-surface)',
+                  border: '1px solid var(--app-border)',
                   borderRadius: 6,
                 }}
               >
@@ -5391,7 +5392,7 @@ export default function IBDRsRankingPage() {
               color: '#888',
               paddingBottom: 16,
               marginTop: 2,
-              borderTop: '1px solid #eee',
+              borderTop: '1px solid var(--app-border)',
               paddingTop: 8,
             }}
           >
@@ -5427,7 +5428,7 @@ export default function IBDRsRankingPage() {
               marginTop: 4,
               paddingTop: 12,
               paddingBottom: 8,
-              borderTop: '1px solid #eee',
+              borderTop: '1px solid var(--app-border)',
             }}
           >
             <summary
@@ -5455,7 +5456,7 @@ export default function IBDRsRankingPage() {
                 onClick={handleHistoryBackfillClick}
                 disabled={loading || syncing}
                 title="全市場完整回填（約 180 日曆日內有資料的交易日；耗時長）"
-                style={{ ...btnBase, background: '#fff', color: '#7c3aed', border: '1px solid #7c3aed', fontWeight: 800 }}
+                style={{ ...btnBase, background: 'var(--app-surface)', color: '#7c3aed', border: '1px solid #7c3aed', fontWeight: 800 }}
               >
                 全市場·回填歷史
               </button>
@@ -5464,7 +5465,7 @@ export default function IBDRsRankingPage() {
                 onClick={handleHistoryBackfillFirstWeekClick}
                 disabled={loading || syncing}
                 title="試跑：清單前 10 檔、最早 7 個交易日；RS 為此 10 檔內排名"
-                style={{ ...btnBase, background: '#fff', color: '#9333ea', border: '1px solid #9333ea', fontSize: 11 }}
+                style={{ ...btnBase, background: 'var(--app-surface)', color: '#9333ea', border: '1px solid #9333ea', fontSize: 11 }}
               >
                 試跑·最早一週
               </button>
@@ -5473,7 +5474,7 @@ export default function IBDRsRankingPage() {
                 onClick={handlePatchRatingFromHistoryClick}
                 disabled={loading || syncing}
                 title="僅補 Firestore：有歷史卻缺 ibdRsRating 的檔；不抓價、不重跑全市場同步"
-                style={{ ...btnBase, background: '#fff', color: '#0d9488', border: '1px solid #14b8a6', fontSize: 11, fontWeight: 800 }}
+                style={{ ...btnBase, background: 'var(--app-surface)', color: '#0d9488', border: '1px solid #14b8a6', fontSize: 11, fontWeight: 800 }}
               >
                 補寫 RS 快照（歷史→頂層）
               </button>
@@ -5482,7 +5483,7 @@ export default function IBDRsRankingPage() {
                 onClick={handleQuickPatchClick}
                 disabled={loading || syncing}
                 title="用 Firestore 現有 priceMap 補算近 10 個交易日缺漏的 RS 點；不打 Yahoo，1~3 分鐘完成"
-                style={{ ...btnBase, background: '#fff', color: '#2563eb', border: '1px solid #3b82f6', fontSize: 11, fontWeight: 800 }}
+                style={{ ...btnBase, background: 'var(--app-surface)', color: '#2563eb', border: '1px solid #3b82f6', fontSize: 11, fontWeight: 800 }}
               >
                 快速補點（漏同步日）
               </button>
@@ -5491,7 +5492,7 @@ export default function IBDRsRankingPage() {
                 onClick={() => void handleRepairAllData()}
                 disabled={loading || syncing}
                 title="拉上市櫃清單、新增上櫃檔，並批次填補缺失 RS"
-                style={{ ...btnBase, background: '#fff', color: '#0d9488', border: '1px solid #0d9488', fontSize: 11 }}
+                style={{ ...btnBase, background: 'var(--app-surface)', color: '#0d9488', border: '1px solid #0d9488', fontSize: 11 }}
               >
                 補齊所有資料
               </button>
@@ -5523,7 +5524,7 @@ export default function IBDRsRankingPage() {
               justifyContent: 'flex-end',
               marginTop: 16,
               paddingTop: 14,
-              borderTop: '1px solid #eee',
+              borderTop: '1px solid var(--app-border)',
             }}
           >
             <button
@@ -5549,7 +5550,7 @@ export default function IBDRsRankingPage() {
               onClick={refresh}
               disabled={loading || syncing}
               title="僅從資料庫重新抓列表，不重新打 Yahoo"
-              style={{ ...btnBase, background: '#fff', color: '#555', border: '1px solid #ccc' }}
+              style={{ ...btnBase, background: 'var(--app-surface)', color: '#555', border: '1px solid var(--app-border)' }}
             >
               重新載入
             </button>
@@ -5558,7 +5559,7 @@ export default function IBDRsRankingPage() {
                 type="button"
                 onClick={() => stopIbdRsBackgroundTask()}
                 title="停止目前正在執行的任務"
-                style={{ ...btnBase, background: '#fff', color: '#e74c3c', border: '1px solid #e74c3c' }}
+                style={{ ...btnBase, background: 'var(--app-surface)', color: '#e74c3c', border: '1px solid #e74c3c' }}
               >
                 停止
               </button>

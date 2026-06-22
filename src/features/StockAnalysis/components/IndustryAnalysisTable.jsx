@@ -67,7 +67,7 @@ const getChangeHeatmap = (changePercent) => {
     const s = lerp(c.s0, c.s1, t);
     const l = lerp(c.l0, c.l1, t);
     const bg = `hsl(${h.toFixed(1)}, ${s.toFixed(1)}%, ${l.toFixed(1)}%)`;
-    const fg = '#1a1a1a';
+    const fg = 'var(--app-text)';
     return { bg, fg };
 };
 
@@ -173,8 +173,8 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
     const columnItems = getColumnItems();
     const maxRows = Math.max(1, ...columnItems.map(arr => arr.length));
 
-    const thStyle = (extra = {}) => ({ height: rowH, maxHeight: rowH, padding: '2px 4px', border: '1px solid #eef0f2', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden', ...extra });
-    const tdBase = { height: rowH, maxHeight: rowH, padding: '1px 4px', border: '1px solid #eef0f2', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden' };
+    const thStyle = (extra = {}) => ({ height: rowH, maxHeight: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden', ...extra });
+    const tdBase = { height: rowH, maxHeight: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden' };
 
     // 44+44+50+52+42+42+50+40 = 364px per big column
     const SUB_COL_WIDTHS_PX = [44, 44, 50, 52, 42, 42, 50, 40];
@@ -193,7 +193,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
         return `${sign}${abs}`;
     };
 
-    const GROUP_BORDER = '2px solid #b8b8b8';
+    const GROUP_BORDER = '2px solid var(--app-border)';
     const renderMainCellBlock = (item, blockIndex) => {
         if (!item) {
             return (
@@ -205,7 +205,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
         if (item._isHeader) {
             return (
                 <React.Fragment key={blockIndex}>
-                    <td colSpan={SUB_COL_WIDTHS.length} style={{ ...tdBase, height: '32px', maxHeight: '32px', verticalAlign: 'middle', width: `${BIG_COL_WIDTH_PX}px`, maxWidth: `${BIG_COL_WIDTH_PX}px`, padding: '2px 6px', background: '#ffffff', border: 'none', borderTop: GROUP_BORDER, borderBottom: '1px solid #e3e3e3', fontWeight: 'bold', fontSize: '12.5px', color: '#1a1a1a', letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <td colSpan={SUB_COL_WIDTHS.length} style={{ ...tdBase, height: '32px', maxHeight: '32px', verticalAlign: 'middle', width: `${BIG_COL_WIDTH_PX}px`, maxWidth: `${BIG_COL_WIDTH_PX}px`, padding: '2px 6px', background: 'var(--app-th-bg)', border: 'none', borderTop: GROUP_BORDER, borderBottom: '1px solid var(--app-border)', fontWeight: 'bold', fontSize: '12.5px', color: 'var(--app-text)', letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {item.cat}
                     </td>
                 </React.Fragment>
@@ -237,7 +237,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3], textAlign: 'center', color: hm.fg ?? '#888', whiteSpace: 'nowrap', backgroundColor: hm.bg }}>{stock.DailyChange != null ? Number(stock.DailyChange).toFixed(1) : '--'}%</td>
                 ); })()}
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4], textAlign: 'center', backgroundColor: getVolumeHeatmapBg(stock.VolumeRatio) }}>{stock.VolumeRatio != null ? stock.VolumeRatio.toFixed(1) : '--'}</td>
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5], textAlign: 'center', fontWeight: 'bold', padding: 0, ...(stock.foreignSignal === 'B' ? (() => { const n = Math.min(Math.max(1, Number(stock.foreignBCount) || 1), 5); const l = [46, 56, 68, 81, 90][n - 1]; const s = [68, 66, 62, 58, 55][n - 1]; return { backgroundColor: `hsl(354, ${s}%, ${l}%)`, color: l < 58 ? '#fff' : 'hsl(354, 50%, 30%)' }; })() : { backgroundColor: 'transparent', color: '#636e72' }) }}>
+                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5], textAlign: 'center', fontWeight: 'bold', padding: 0, ...(stock.foreignSignal === 'B' ? (() => { const n = Math.min(Math.max(1, Number(stock.foreignBCount) || 1), 5); const l = [46, 56, 68, 81, 90][n - 1]; const s = [68, 66, 62, 58, 55][n - 1]; return { backgroundColor: `hsl(354, ${s}%, ${l}%)`, color: l < 58 ? '#fff' : 'hsl(354, 50%, 30%)' }; })() : { backgroundColor: 'transparent', color: 'var(--app-text-soft)' }) }}>
                     <div style={{ height: rowH, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 }}>
                         <div style={{ fontSize: '12px' }}>{stock.foreignSignal === 'B' ? `B${stock.foreignBCount}` : 'N'}</div>
                         {stock.foreignSignal === 'B' && <div style={{ fontSize: '7px', fontWeight: 'normal', opacity: 0.85 }}>{stock.zScore}x</div>}
@@ -324,7 +324,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                         }}
                         style={{ 
                             padding: '2px 8px', borderRadius: '10px', border: '1px solid #64a0ddff',
-                            backgroundColor: '#fff', cursor: 'pointer', fontSize: '11px', color: 'black'
+                            backgroundColor: 'var(--app-surface)', cursor: 'pointer', fontSize: '11px', color: 'var(--app-text)'
                         }}
                     >
                         {cat} ({groupedData[cat].length})
@@ -336,23 +336,23 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
             {!isChipMode ? (
                 <div style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 0 }}>
                     {columnItems.map((items, c) => (
-                        <div key={c} style={{ flex: '0 0 auto', marginLeft: c > 0 ? '-2px' : 0, border: '2px solid #b8b8b8' }}>
+                        <div key={c} style={{ flex: '0 0 auto', marginLeft: c > 0 ? '-2px' : 0, border: '2px solid var(--app-border)' }}>
                             <table style={{ width: `${BIG_COL_WIDTH_PX}px`, borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600, display: 'table', overflow: 'visible', margin: 0 }}>
                                 <colgroup>
                                     {SUB_COL_WIDTHS_PX.map((w, i) => <col key={i} style={{ width: `${w}px`, minWidth: `${w}px` }} />)}
                                 </colgroup>
                                 <thead>
                                     <tr style={{ ...trStyle, height: '36px', maxHeight: '36px' }}>
-                                        <th colSpan={SUB_COL_WIDTHS.length} style={{ height: '36px', maxHeight: '36px', padding: '2px 8px', border: 'none', borderBottom: '2px solid #e3e3e3', background: '#ffffff', boxSizing: 'border-box', fontWeight: 700, fontSize: '15px', color: '#1a1a1a', textAlign: 'left', overflow: 'hidden' }}>
+                                        <th colSpan={SUB_COL_WIDTHS.length} style={{ height: '36px', maxHeight: '36px', padding: '2px 8px', border: 'none', borderBottom: '2px solid var(--app-border)', background: 'var(--app-surface)', boxSizing: 'border-box', fontWeight: 700, fontSize: '15px', color: 'var(--app-text)', textAlign: 'left', overflow: 'hidden' }}>
                                             <input
                                                 value={columnLabels[c] ?? ''}
                                                 onChange={e => onColumnLabelChange?.(c, e.target.value)}
                                                 placeholder={`第 ${c + 1} 欄`}
-                                                style={{ width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: '15px', fontWeight: 700, color: '#1a1a1a', padding: 0, textAlign: 'left', cursor: 'text', boxSizing: 'border-box' }}
+                                                style={{ width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: '15px', fontWeight: 700, color: 'var(--app-text)', padding: 0, textAlign: 'left', cursor: 'text', boxSizing: 'border-box' }}
                                             />
                                         </th>
                                     </tr>
-                                    <tr style={{ backgroundColor: '#ffffff', color: '#8a8a8a', fontWeight: 500, ...trStyle }}>
+                                    <tr style={{ backgroundColor: 'var(--app-surface)', color: '#8a8a8a', fontWeight: 500, ...trStyle }}>
                                         <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[0], minWidth: SUB_COL_WIDTHS[0], maxWidth: SUB_COL_WIDTHS[0] }) }}>代號</th>
                                         <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[1], minWidth: SUB_COL_WIDTHS[1], maxWidth: SUB_COL_WIDTHS[1], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>名稱</th>
                                         <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2] }) }}>現價</th>
@@ -378,31 +378,31 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 <div style={{ position: 'relative', display: 'inline-block' }}>
                     <table style={{ borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600, display: 'table', overflow: 'visible' }}>
                         <thead>
-                            <tr style={{ backgroundColor: '#ffffff', color: '#8a8a8a', fontWeight: 500, ...trStyle }}>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'38px', boxSizing: 'border-box', verticalAlign: 'middle'}}>PE</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'48px', boxSizing: 'border-box', verticalAlign: 'middle', backgroundColor: '#f8bc43ff'}}>估EPS</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'52px', boxSizing: 'border-box', verticalAlign: 'middle', backgroundColor: '#f8bc43ff'}}>目標價</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'52px', boxSizing: 'border-box', verticalAlign: 'middle' }}>潛在漲幅</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', width:'48px', boxSizing: 'border-box', verticalAlign: 'middle' }}>前瞻PE</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid #ddd', minWidth: '60px', boxSizing: 'border-box', verticalAlign: 'middle'}}>備註</th>
+                            <tr style={{ backgroundColor: 'var(--app-surface)', color: '#8a8a8a', fontWeight: 500, ...trStyle }}>
+                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'38px', boxSizing: 'border-box', verticalAlign: 'middle'}}>PE</th>
+                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'48px', boxSizing: 'border-box', verticalAlign: 'middle', backgroundColor: '#f8bc43ff'}}>估EPS</th>
+                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'52px', boxSizing: 'border-box', verticalAlign: 'middle', backgroundColor: '#f8bc43ff'}}>目標價</th>
+                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'52px', boxSizing: 'border-box', verticalAlign: 'middle' }}>潛在漲幅</th>
+                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'48px', boxSizing: 'border-box', verticalAlign: 'middle' }}>前瞻PE</th>
+                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', minWidth: '60px', boxSizing: 'border-box', verticalAlign: 'middle'}}>備註</th>
                             </tr>
                         </thead>
                         {categories.map(cat => (
                             <tbody key={cat}>
-                                <tr id={`cat-${cat}`} style={{ backgroundColor: '#afd2f5b0', scrollMarginTop: '80px', WebkitScrollMarginTop: '80px'}}>
+                                <tr id={`cat-${cat}`} style={{ backgroundColor: 'var(--app-th-bg)', scrollMarginTop: '80px', WebkitScrollMarginTop: '80px'}}>
                                     <td colSpan={9} style={{ minHeight: rowH, height: rowH, padding: '2px 8px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #37c5e4ff', fontSize: '10.5px', boxSizing: 'border-box', verticalAlign: 'middle' }}>
                                         {cat} (共 {groupedData[cat].length} 檔)
                                     </td>
                                 </tr>
                                 {groupedData[cat].map(stock => (
                                     <tr key={stock.id}>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 3px', border: '1px solid #ddd', fontWeight: 'bold', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.code ?? stock.id}</td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 3px', border: '1px solid var(--app-border)', fontWeight: 'bold', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.code ?? stock.id}</td>
                                         <td
                                             style={{
                                                 minHeight: rowH,
                                                 height: rowH,
                                                 padding: '1px 3px',
-                                                border: '1px solid #ddd',
+                                                border: '1px solid var(--app-border)',
                                                 width:'50px',
                                                 maxWidth:'50px',
                                                 boxSizing: 'border-box',
@@ -417,13 +417,13 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                                         >
                                             {stock.name}
                                         </td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'right', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.displayPrice}</td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle'}}>{stock.realTimePE}</td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} /></td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} /></td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.potentialUpside}%</td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid #ddd', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.forwardPE}</td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid #ddd', boxSizing: 'border-box', verticalAlign: 'middle' }}><EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left'}} /></td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', textAlign: 'right', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.displayPrice}</td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle'}}>{stock.realTimePE}</td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} /></td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} /></td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.potentialUpside}%</td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.forwardPE}</td>
+                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle' }}><EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left'}} /></td>
                                     </tr>
                                 ))}
                             </tbody>

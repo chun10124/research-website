@@ -24,12 +24,12 @@ function createMultiMonthView(monthCount) {
     }
 
     const cardStyle = {
-      border: '1px solid #e2e8f0',
+      border: '1px solid var(--app-border)',
       borderRadius: 8,
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
-      background: '#fff',
+      background: 'var(--app-surface)',
       position: 'relative',
     };
     const monthLabelStyle = {
@@ -38,7 +38,7 @@ function createMultiMonthView(monthCount) {
       right: 8,
       fontSize: 11,
       fontWeight: 600,
-      color: '#64748b',
+      color: 'var(--app-text-soft)',
     };
     const cellStyle = {
       flex: 1,
@@ -55,7 +55,7 @@ function createMultiMonthView(monthCount) {
       borderRadius: 6,
       fontSize: 12,
       lineHeight: 1.35,
-      color: '#1e293b',
+      color: 'var(--app-text)',
       cursor: 'pointer',
       transition: 'background 0.12s ease',
     };
@@ -136,7 +136,7 @@ function createMultiMonthView(monthCount) {
                           flexShrink: 0,
                         }}
                       />
-                      <span style={{ flexShrink: 0, color: '#1e293b', fontSize: 11 }}>{dateStr}</span>
+                      <span style={{ flexShrink: 0, color: 'var(--app-text)', fontSize: 11 }}>{dateStr}</span>
                       <span
                         style={{
                           flex: 1,

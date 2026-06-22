@@ -834,3 +834,89 @@
 .root .modalInput::placeholder {
   color: #94a3b8;
 }
+
+/* ============================================================
+   暗色模式：重定義 --cal-* token（自動套用到所有用變數的規則），
+   再覆蓋少數寫死淺色的規則（網格本體、側欄、頂欄文字、玻璃 modal）。
+   選擇器用 :global([data-theme='dark']) 對應 Docusaurus 掛在 <html> 的屬性。
+   ============================================================ */
+:global([data-theme='dark']) .root {
+  --cal-bg: #242526;
+  --cal-border: #3a3c3e;
+  --cal-sidebar-bg: #1e1e1f;
+  --cal-sidebar-border: #3a3c3e;
+  --cal-text: #e3e3e3;
+  --cal-text-muted: #a0a4a8;
+  --cal-input-border: #4a4d50;
+  --cal-overlay: rgba(0, 0, 0, 0.6);
+  --cal-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --cal-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  background: #1a1a1a;
+}
+
+:global([data-theme='dark']) .sidebar {
+  background: var(--cal-sidebar-bg);
+}
+
+:global([data-theme='dark']) .eventSearchBtn {
+  background: rgba(255, 255, 255, 0.04);
+}
+:global([data-theme='dark']) .eventSearchBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #4a4d50;
+}
+
+/* 日曆本體網格：原本寫死 #fff / #dadce0 */
+:global([data-theme='dark']) .root :global(.rbc-month-view) {
+  background: var(--cal-bg);
+  border-color: var(--cal-border);
+}
+
+/* 頂欄按鈕與標題：原本寫死 #475569 / #1e293b */
+:global([data-theme='dark']) .root :global(.rbc-toolbar button),
+:global([data-theme='dark']) .root :global(.rbc-btn-group:first-child button),
+:global([data-theme='dark']) .root :global(.rbc-btn-group:nth-child(2) button),
+:global([data-theme='dark']) .root :global(.rbc-btn-group:last-child button) {
+  color: var(--cal-text-muted);
+}
+:global([data-theme='dark']) .root :global(.rbc-toolbar-label),
+:global([data-theme='dark']) .root :global(.rbc-btn-group:last-child button.rbc-active) {
+  color: var(--cal-text);
+}
+:global([data-theme='dark']) .root :global(.rbc-toolbar button:hover) {
+  background: rgba(255, 255, 255, 0.08);
+}
+:global([data-theme='dark']) .root :global(.rbc-toolbar button:active) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 玻璃感 modal 與表單按鈕：原本寫死 rgba(255,255,255,..) 淺底 */
+:global([data-theme='dark']) .modal {
+  background: rgba(36, 37, 38, 0.88);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+:global([data-theme='dark']) .btnSecondary,
+:global([data-theme='dark']) .btnDanger {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cal-text);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+:global([data-theme='dark']) .btnPrimary {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--cal-text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+:global([data-theme='dark']) .searchInfoBlock {
+  background: rgba(255, 255, 255, 0.04);
+}
+:global([data-theme='dark']) .searchRawText {
+  background: rgba(255, 255, 255, 0.05);
+}
+:global([data-theme='dark']) .searchResultRow input[type='checkbox'] {
+  background: rgba(255, 255, 255, 0.08);
+}
+/* hover 高亮：原本 rgba(0,0,0,..) 在暗色看不見 */
+:global([data-theme='dark']) .tagRow:hover,
+:global([data-theme='dark']) .searchResultRow:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
