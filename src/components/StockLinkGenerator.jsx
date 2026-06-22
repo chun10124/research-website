@@ -49,11 +49,16 @@ const linkTemplates = [
     url: 'https://doc.twse.com.tw/server-java/t57sb01?step=1&colorchg=1&co_id=',
     suffix: '&year=&seamon=&mtype=B' 
   },
-  { 
-    name: 'Goodinfo籌碼', 
+  {
+    name: 'Goodinfo籌碼',
     url: 'https://goodinfo.tw/tw/StockDirectorSharehold.asp?STOCK_ID=',
   },
-  
+  {
+    name: '完整損益表',
+    url: 'https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcq/zcq_',
+    suffix: '.djhtm'
+  },
+
 ];
 // ^^^^ linkTemplates 陣列 ^^^^
 
@@ -114,11 +119,7 @@ function StockLinkGenerator() {
       </div>
 
       {links.length > 0 && (
-        <> {/* 使用 Fragment 來包裹標題和容器，確保排版正確 */}
-          {/* VVVV 移除公司名稱顯示 VVVV */}
-          <h3>
-             {stockCode} 相關連結
-          </h3>
+        <> {/* 使用 Fragment 來包裹容器，確保排版正確 */}
           {/* VVVV 連結清單獨立成一個兩欄容器 VVVV */}
           <div className={styles.linksContainer}>
             {links.map(link => (
