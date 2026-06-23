@@ -39,6 +39,11 @@
   --app-text: #111827;          /* 主要深色文字 */
   --app-text-soft: #475569;     /* 次要灰字 */
   --app-th-bg: #dce8f8;         /* 表頭底（淺藍）*/
+  /* RS 圖表 RS/籌碼 分頁作用色（亮色＝原本配色；暗色於下方覆蓋）*/
+  --rs-tab-rs-fg: #c0392b;      /* RS 紅：字＋框 */
+  --rs-tab-rs-bg: #fef2f2;      /* RS 作用底（淺粉）*/
+  --rs-tab-chip-fg: #d97706;    /* 籌碼 琥珀：字＋框 */
+  --rs-tab-chip-bg: #fffbeb;    /* 籌碼 作用底（淺奶油）*/
 }
 
 [data-theme='dark'] {
@@ -59,6 +64,11 @@
   --app-text: #e3e3e3;
   --app-text-soft: #b0b4b8;
   --app-th-bg: #2b3442;
+  /* 暗色覆蓋：提亮的紅/琥珀（字＋框）＋半透明深色作用底（不再淺底白框）*/
+  --rs-tab-rs-fg: #ef5350;
+  --rs-tab-rs-bg: rgba(192, 57, 43, 0.22);
+  --rs-tab-chip-fg: #f59e0b;
+  --rs-tab-chip-bg: rgba(217, 119, 6, 0.20);
 }
 
 /* 將 footer 推到視窗底部的 CSS 修復 */

@@ -2652,9 +2652,9 @@ style={{
                         fontSize: 12,
                         fontWeight: activeView === key ? 700 : 500,
                         borderRadius: 5,
-                        border: `1px solid ${activeView === key ? (key === 'rs' ? '#c0392b' : '#d97706') : '#e2e8f0'}`,
-                        background: activeView === key ? (key === 'rs' ? '#fef2f2' : '#fffbeb') : 'transparent',
-                        color: activeView === key ? (key === 'rs' ? '#c0392b' : '#d97706') : '#94a3b8',
+                        border: `1px solid ${activeView === key ? (key === 'rs' ? 'var(--rs-tab-rs-fg)' : 'var(--rs-tab-chip-fg)') : 'var(--app-border)'}`,
+                        background: activeView === key ? (key === 'rs' ? 'var(--rs-tab-rs-bg)' : 'var(--rs-tab-chip-bg)') : 'transparent',
+                        color: activeView === key ? (key === 'rs' ? 'var(--rs-tab-rs-fg)' : 'var(--rs-tab-chip-fg)') : '#94a3b8',
                         cursor: 'pointer',
                         lineHeight: 1.4,
                       }}
