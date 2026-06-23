@@ -852,7 +852,7 @@ function IbdRsComboChart({ data, showMA = true, showRs = true }) {
 
         {/* X 軸日期 */}
         {xTickIdxs.map((i) => (
-          <text key={`xl-${i}`} x={xAt(i)} y={PAD_T + innerH + 16} textAnchor="middle" fontSize={10} fill="#64748b">
+          <text key={`xl-${i}`} x={xAt(i)} y={PAD_T + innerH + 16} textAnchor="middle" fontSize={10} fill="var(--app-text-soft)">
             {String(data[i]?.dateKey || '').slice(5)}
           </text>
         ))}
@@ -880,7 +880,7 @@ function IbdRsComboChart({ data, showMA = true, showRs = true }) {
             minWidth: 148,
           }}
         >
-          <div style={{ color: '#64748b', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid var(--app-border)', paddingBottom: 6 }}>
+          <div style={{ color: 'var(--app-text-soft)', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid var(--app-border)', paddingBottom: 6 }}>
             {hd.dateKey}
           </div>
           {showRs && hd.rs != null && (
@@ -1366,9 +1366,9 @@ function ForeignChipChart({ data, allHoldings }) {
         onWheel={handleWheel}
       >
         {/* 上格底色 */}
-        <rect x={PAD_L} y={PAD_T} width={innerW} height={MAIN_H} fill="#ffffff" />
+        <rect x={PAD_L} y={PAD_T} width={innerW} height={MAIN_H} fill="var(--app-surface)" />
         {/* 下格底色 */}
-        <rect x={PAD_L} y={chipYBase} width={innerW} height={CHIP_H} fill="#fafafa" />
+        <rect x={PAD_L} y={chipYBase} width={innerW} height={CHIP_H} fill="var(--app-surface-2)" />
 
         {/* 上格 grid */}
         {[0, 0.25, 0.5, 0.75, 1].map((t) => (
@@ -1376,7 +1376,7 @@ function ForeignChipChart({ data, allHoldings }) {
         ))}
 
         {/* 下格零軸 */}
-        <line x1={PAD_L} y1={chipMid} x2={PAD_L + innerW} y2={chipMid} stroke="#cbd5e1" strokeWidth={1} />
+        <line x1={PAD_L} y1={chipMid} x2={PAD_L + innerW} y2={chipMid} stroke="var(--app-border)" strokeWidth={1} />
 
         {/* K 棒 */}
         {hasOhlc && data.map((d, i) => {
@@ -1443,7 +1443,7 @@ function ForeignChipChart({ data, allHoldings }) {
 
         {/* 左軸 K 線價格 */}
         {hasOhlc && [pMin + (pMax - pMin) * 0.1, pMin + (pMax - pMin) * 0.9].map((v, i) => (
-          <text key={`pl-${i}`} x={PAD_L - 3} y={yPrice(v) + 4} textAnchor="end" fontSize={9} fill="#6b7280" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          <text key={`pl-${i}`} x={PAD_L - 3} y={yPrice(v) + 4} textAnchor="end" fontSize={9} fill="var(--app-text-soft)" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {v >= 100 ? Math.round(v) : v.toFixed(1)}
           </text>
         ))}
@@ -1457,7 +1457,7 @@ function ForeignChipChart({ data, allHoldings }) {
 
         {/* X 軸日期 */}
         {xTickIdxs.map((i) => (
-          <text key={`xl-${i}`} x={xAt(i)} y={PAD_T + innerH + 16} textAnchor="middle" fontSize={10} fill="#64748b">
+          <text key={`xl-${i}`} x={xAt(i)} y={PAD_T + innerH + 16} textAnchor="middle" fontSize={10} fill="var(--app-text-soft)">
             {String(data[i]?.dateKey || '').slice(5)}
           </text>
         ))}
@@ -1477,7 +1477,7 @@ function ForeignChipChart({ data, allHoldings }) {
           borderRadius: 8, border: '1px solid var(--app-border)', backgroundColor: 'var(--app-surface)',
           boxShadow: '0 8px 24px rgba(15,23,42,0.18)', padding: '10px 12px', minWidth: 160,
         }}>
-          <div style={{ color: '#64748b', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid var(--app-border)', paddingBottom: 6 }}>
+          <div style={{ color: 'var(--app-text-soft)', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid var(--app-border)', paddingBottom: 6 }}>
             {hd.dateKey}
             {hd.bSignal === 'B' && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#ff2d87', background: '#fff0f7', borderRadius: 4, padding: '1px 5px' }}>B訊號</span>}
           </div>
@@ -4732,7 +4732,7 @@ export default function IBDRsRankingPage() {
                         <div
                           style={{
                             fontSize: 12,
-                            color: '#666',
+                            color: 'var(--app-text-soft)',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -4744,7 +4744,7 @@ export default function IBDRsRankingPage() {
                       ) : (
                         <>
                           <span className="ibd-rs-stats-row-today">
-                            <span style={{ color: updatedTodayCount === stocks.length ? '#1e7e34' : '#666' }}>
+                            <span style={{ color: updatedTodayCount === stocks.length ? '#1e7e34' : 'var(--app-text-soft)' }}>
                               今日 <strong>{updatedTodayCount}</strong>/{stocks.length}
                             </span>
                           </span>
