@@ -1,16 +1,10 @@
 name: 每日追蹤表自動同步
 
-# 排程時間為 UTC；台灣 = UTC+8
-#   台灣 15:37 → UTC 07:37（RS 全市場 + 追蹤表價量，Yahoo）
-#   台灣 20:37 → UTC 12:37（三大法人 20:00 更新後就抓；外資持股 21:00 未到，留待 21:37 場次補上）
-#   台灣 21:37 → UTC 13:37（外資持股/營收；此時法人已於 20:37 抓畢、會自動判定新鮮而略過，只補持股）
-# 分鐘用 :37 而非 :00/:30：GitHub 官方建議避開整點/半點壅塞時段，降低排程被延遲或跳過的機率
-# 1-5 = 週一到週五（台股交易日；國定假日仍會跑，抓不到新資料但無害）
+# 觸發改由 Cloudflare Worker（scripts/cron-trigger/）準點打 workflow_dispatch。
+# 原本的 on:schedule 已移除：GitHub 排程觸發實測會被延遲 2~4 小時（連凌晨低載時段也照樣延，
+# 非挑時間問題），且若與 Worker 並存，延遲的排程每天會重複再跑一次 RS、對 Yahoo 全市場多打一輪。
+# 排程時間與各時段對應 mode 見 scripts/cron-trigger/wrangler.toml 與 README.md。
 on:
-  schedule:
-    - cron: '37 7 * * 1-5'
-    - cron: '37 12 * * 1-5'
-    - cron: '37 13 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
@@ -20,6 +14,7 @@ on:
         type: choice
         options:
           - DRY
+          - rsThenPrice   # 15:37 場：同一 run 內依序 rs → priceVolume
           - rs
           - priceVolume
           - holdingsRevenue
@@ -60,14 +55,13 @@ jobs:
       - name: 執行同步
         run: |
           B=scripts/daily-sync/_bundle.mjs
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "== 手動觸發：mode=${{ github.event.inputs.mode }} limit=${{ github.event.inputs.limit }} =="
-            SYNC_MODE="${{ github.event.inputs.mode }}" SYNC_LIMIT="${{ github.event.inputs.limit }}" node "$B"
-          elif [ "${{ github.event.schedule }}" = "37 7 * * 1-5" ]; then
-            echo "== 15:37 時段：先 RS 全市場，再追蹤表價量（沿用 RS、不重抓 Yahoo）=="
-            SYNC_MODE=rs node "$B"
-            SYNC_MODE=priceVolume node "$B"
+          MODE="${{ github.event.inputs.mode }}"
+          LIMIT="${{ github.event.inputs.limit }}"
+          echo "== mode=$MODE limit=$LIMIT =="
+          if [ "$MODE" = "rsThenPrice" ]; then
+            # 15:37 場：先 RS 全市場，再追蹤表價量（沿用 RS、不重抓 Yahoo）
+            SYNC_MODE=rs          SYNC_LIMIT="$LIMIT" node "$B"
+            SYNC_MODE=priceVolume SYNC_LIMIT="$LIMIT" node "$B"
           else
-            echo "== 籌碼時段（schedule=${{ github.event.schedule }}，台灣 20:37 法人／21:37 外資持股）：追蹤表籌碼/外資/營收 =="
-            SYNC_MODE=holdingsRevenue node "$B"
+            SYNC_MODE="$MODE" SYNC_LIMIT="$LIMIT" node "$B"
           fi
