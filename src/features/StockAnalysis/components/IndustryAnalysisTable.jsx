@@ -39,16 +39,21 @@ const getCurvatureStyle = (val, isShowBg) => {
     };
 };
 
-// 量比熱力圖：量縮藍色階（<1）、約 1 白、量增黃色階（>1）
-const getVolumeHeatmapBg = (ratio) => {
-    const v = Number(ratio) ?? 0;
-    if (v >= 0.98 && v <= 1.05) return '#FFFFFF';
-    if (v < 0.98) {
-        const t = Math.min((0.98 - v) / 0.98, 1);
-        return `rgb(${Math.round(255 - 189 * t)}, ${Math.round(255 - 90 * t)}, ${Math.round(255 - 10 * t)})`;
+// 量比熱力圖：量縮藍、約 1 中性(透明)、量增黃/琥珀。回傳 { bg, fg }（與 getChangeHeatmap 同構）。
+// 中性/缺值用 transparent 融入表格（暗色不再出現整排刺眼白塊，原本量比≈1 是純白）；
+// 有色塊永遠淺底、文字固定深色，暗色才不會淺字疊淺底。HSL + gamma 讓小量增/量減也看得出色，
+// 且最深仍夠淺、深字可讀。
+const getVolumeHeatmap = (ratio) => {
+    const v = Number(ratio);
+    if (ratio == null || !isFinite(v) || (v >= 0.98 && v <= 1.05)) return { bg: 'transparent', fg: 'var(--app-text-soft)' };
+    const lerp = (a, b, t) => a + (b - a) * t;
+    if (v < 0.98) { // 量縮（藍）
+        const t = Math.pow(Math.min((0.98 - v) / 0.98, 1), 0.62);
+        return { bg: `hsl(${lerp(206, 214, t).toFixed(1)}, ${lerp(60, 92, t).toFixed(1)}%, ${lerp(92, 66, t).toFixed(1)}%)`, fg: '#111827' };
     }
-    const t = Math.min((v - 1.05) / 2, 1);
-    return `rgb(255, ${Math.round(255 - 20 * t)}, ${Math.round(255 - 196 * t)})`;
+    // 量增（黃/琥珀）
+    const t = Math.pow(Math.min((v - 1.05) / 2, 1), 0.62);
+    return { bg: `hsl(${lerp(46, 40, t).toFixed(1)}, ${lerp(92, 98, t).toFixed(1)}%, ${lerp(93, 64, t).toFixed(1)}%)`, fg: '#111827' };
 };
 
 // 漲跌熱力色階（方案A 鮮明）：HSL 插值避免中段發灰，gamma 0.62 讓小漲跌也可見
@@ -237,7 +242,9 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
                 {(() => { const hm = getChangeHeatmap(stock.DailyChange); return (
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3], textAlign: 'center', color: hm.fg ?? '#888', whiteSpace: 'nowrap', backgroundColor: hm.bg }}>{stock.DailyChange != null ? Number(stock.DailyChange).toFixed(1) : '--'}%</td>
                 ); })()}
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4], textAlign: 'center', color: '#111827', backgroundColor: getVolumeHeatmapBg(stock.VolumeRatio) }}>{stock.VolumeRatio != null ? stock.VolumeRatio.toFixed(1) : '--'}</td>
+                {(() => { const vh = getVolumeHeatmap(stock.VolumeRatio); return (
+                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4], textAlign: 'center', color: vh.fg, backgroundColor: vh.bg }}>{stock.VolumeRatio != null ? stock.VolumeRatio.toFixed(1) : '--'}</td>
+                ); })()}
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5], textAlign: 'center', fontWeight: 'bold', padding: 0, ...(stock.foreignSignal === 'B' ? (() => { const n = Math.min(Math.max(1, Number(stock.foreignBCount) || 1), 5); const l = [46, 56, 68, 81, 90][n - 1]; const s = [68, 66, 62, 58, 55][n - 1]; return { backgroundColor: `hsl(354, ${s}%, ${l}%)`, color: l < 58 ? '#fff' : 'hsl(354, 50%, 30%)' }; })() : { backgroundColor: 'transparent', color: 'var(--app-text-soft)' }) }}>
                     <div style={{ height: rowH, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 }}>
                         <div style={{ fontSize: '12px' }}>{stock.foreignSignal === 'B' ? `B${stock.foreignBCount}` : 'N'}</div>
