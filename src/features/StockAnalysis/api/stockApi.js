@@ -1131,6 +1131,31 @@ export const instFreshnessBound = (market, latestPriceDate) => {
 };
 
 /**
+ * 外資持股（TaiwanStockShareholding）應已公告的最近交易日。
+ * FinMind 官方 21:00 更新（上市/上櫃同一時間，不分市場），未到則回退一天；週末回退到最近平日。
+ * 與 lastExpectedInstDate 同構，差別只在 cutoff 固定 21:00。
+ */
+export const lastExpectedHoldingsDate = () => {
+  const cutoffHour = 21; // 外資持股 21:00 更新
+  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  if (d.getHours() < cutoffHour) d.setDate(d.getDate() - 1); // 今日資料尚未公告
+  let dow = d.getDay(); // 0=日, 6=六
+  while (dow === 0 || dow === 6) { d.setDate(d.getDate() - 1); dow = d.getDay(); }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * 外資持股新鮮度基準：取「應已公告交易日(21:00)」與「實際已有股價的最新交易日」較小者。
+ * 與 instFreshnessBound 同構：以股價最新交易日封頂，端午等國定假日不會誤判而每次空打 API。
+ * latestPriceDate 缺漏時退回純日曆推算。
+ * @param {string|null} [latestPriceDate] YYYY-MM-DD，該檔股價最新交易日
+ */
+export const holdingsFreshnessBound = (latestPriceDate) => {
+  const expected = lastExpectedHoldingsDate();
+  return (latestPriceDate && latestPriceDate < expected) ? latestPriceDate : expected;
+};
+
+/**
  * @param {object} stock - 股票物件
  * @param {object} [syncOptions]
  * @param {'all'|'priceVolume'|'holdingsRevenue'} [syncOptions.syncMode='all']

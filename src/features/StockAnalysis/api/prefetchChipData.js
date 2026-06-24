@@ -13,6 +13,7 @@ import {
   fetchForeignHoldingSeries,
   instArraysToDateMap,
   instFreshnessBound,
+  holdingsFreshnessBound,
 } from './stockApi';
 
 /** 同一檔正在抓取時不重複觸發（fire-and-forget 去重） */
@@ -29,9 +30,6 @@ const eighteenMonthsAgo = () => {
   d.setMonth(d.getMonth() - 18);
   return d.toISOString().slice(0, 10);
 };
-
-const daysSince = (dateStr) =>
-  dateStr ? Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000) : 999;
 
 /**
  * 局部寫入 stockWatchlist/{code}（updateDoc 支援 dot-notation，不覆蓋其他 history 欄位）。
@@ -113,10 +111,13 @@ export async function prefetchWatchlistChipData(stockCode) {
     }
 
     // ── 外資持股序列 ───────────────────────────────────────────
-    // 視窗新鮮度判定：持股有出版延遲，3 天內視為新鮮；否則重抓整段（API 無增量）。
+    // 新鮮度基準 = 外資持股應公告交易日(21:00)，封頂在股價最新交易日（與三大法人一致）；
+    // 不夠新就重抓整段（API 無增量）。
     const holdings = hist.foreignTotalHolding;
+    const holdingsBound = holdingsFreshnessBound(existing.latestPriceDate);
     const holdingsFresh =
-      Array.isArray(holdings) && holdings.length > 100 && daysSince(existing.latestHoldingsDate) <= 3;
+      Array.isArray(holdings) && holdings.length > 100 &&
+      existing.latestHoldingsDate && existing.latestHoldingsDate >= holdingsBound;
     if (!holdingsFresh) {
       try {
         const result = await fetchForeignHoldingSeries(code);

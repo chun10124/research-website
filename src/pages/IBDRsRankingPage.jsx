@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { getDoc, onSnapshot, setDoc, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../utils/firebaseConfig';
 import Layout from '@theme/Layout';
-import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache, fetchInstitutionalInvestorsSeries, fetchForeignHoldingSeries, instArraysToDateMap, instFreshnessBound } from '../features/StockAnalysis/api/stockApi';
+import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache, fetchInstitutionalInvestorsSeries, fetchForeignHoldingSeries, instArraysToDateMap, instFreshnessBound, holdingsFreshnessBound } from '../features/StockAnalysis/api/stockApi';
 import { syncSingleStock, syncTestBatch } from '../features/StockAnalysis/api/rsApi';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
 import {
@@ -35,6 +35,7 @@ import {
 import { clampIbdDeltaDays, enrichIbdRsRow } from '../features/StockAnalysis/utils/ibdRsRankingEnrich';
 import { RS_OPEN_STOCK_SESSION_KEY } from '../features/StockAnalysis/api/ibdRsWatchlistFirestore';
 import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
+import { prefetchWatchlistChipData } from '../features/StockAnalysis/api/prefetchChipData';
 import { IBD_RS_HOME_FIRST_SEEN_DOC_REF, SYNC_STATUS_DOC_REF } from '../utils/firebaseConfig';
 
 /** 篩選 input 用 data 屬性，placeholder 顏色用 CSS 選 `input[data-ibd-rs-filter]`（見 custom.css ＋掛載時注入 head） */
@@ -1797,11 +1798,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               const h  = d.history?.foreignTotalHolding;
               const hd = d.history?.foreignHoldingDates ?? null;
               const ld = d.latestHoldingsDate ?? null;
-              // 新鮮度檢查：持股資料超過 3 天視為過期（持股有出版延遲），繼續往下呼叫 API
-              const daysSinceUpdate = ld
-                ? Math.floor((Date.now() - new Date(ld).getTime()) / 86400000)
-                : 999;
-              if (Array.isArray(h) && h.length > 100 && daysSinceUpdate <= 3) {
+              // 新鮮度基準 = 外資持股應公告交易日(21:00)，封頂在股價最新交易日（與三大法人一致，
+              // 避免端午等假日誤判而每次空打 API）。不夠新 → fsHoldingsDone 維持 false →
+              // 走下面 fetchForeignHoldingSeries 補抓最新交易日 + 存回 Firestore。
+              const holdingsBound = holdingsFreshnessBound(d.latestPriceDate || stock?.latestPriceDate);
+              if (Array.isArray(h) && h.length > 100 && ld && ld >= holdingsBound) {
                 setFetchedHoldings({ holdings: h, holdingDates: hd, latestDate: ld });
                 fsHoldingsDone = true;
               }
@@ -3777,7 +3778,7 @@ function summarizeIbdRsFilters(filters, deltaShortResolved, deltaLongResolved) {
 
 export default function IBDRsRankingPage() {
   const { stocks, loading, syncing, syncProgress, syncRs, lastSyncAt, refresh } = useIbdRsData();
-  const { idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } = useIbdRsWatchlist();
+  const { stockIds: rsWatchlistIds, idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, ready: rsWatchlistReady, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } = useIbdRsWatchlist();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [activeView, setActiveView] = useState('home');
   const [page, setPage] = useState(0);
@@ -3800,6 +3801,19 @@ export default function IBDRsRankingPage() {
     return window.matchMedia(`(max-width: ${IBDRS_MOBILE_MAX_WIDTH_PX}px)`).matches;
   });
   const batchAbortRef = useRef(null);
+
+  // 觀察清單載入後，背景預抓每檔籌碼（三大法人 + 外資持股），讓之後開籌碼視窗時已是最新、免等 API。
+  // prefetchWatchlistChipData 已內建新鮮度判斷(holdingsFreshnessBound / instFreshnessBound)與去重：
+  // 已到最新交易日者幾乎零成本（只讀 Firestore），只有過期的才打 FinMind 補抓並存回。
+  const chipPrefetchedRef = useRef(new Set());
+  useEffect(() => {
+    if (!rsWatchlistReady || !rsWatchlistIds?.length) return;
+    rsWatchlistIds.forEach((id) => {
+      if (!id || chipPrefetchedRef.current.has(id)) return;
+      chipPrefetchedRef.current.add(id);
+      prefetchWatchlistChipData(id).catch(() => {});
+    });
+  }, [rsWatchlistReady, rsWatchlistIds]);
 
   /** VCP 篩選：id → 加權合成值；僅在設了 vcp 上下限時向 Yahoo 批次抓取 */
   const [vcpById, setVcpById] = useState(() => new Map());
