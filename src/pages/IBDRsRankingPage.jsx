@@ -67,6 +67,22 @@ html[data-theme='dark'] body input.ibd-rs-filter-input[data-ibd-rs-filter]::-web
 }
 `;
 
+/** 籌碼訊號標籤（外資/投信連買）CSS：modal 共用於 3 個頁面，故由 RsChartModal 自行注入。
+ *  亮色維持琥珀底深字；暗色改半透明琥珀底＋亮字，避免淺底疊暗頁面。 */
+const SIGNAL_NOTE_STYLE_ID = 'ibd-rs-signal-note-style';
+const SIGNAL_NOTE_CSS = `
+.ibd-rs-signal-note {
+  color: #92400e;
+  background: #fff8e1;
+  border: 1px solid #f59e0b;
+}
+html[data-theme='dark'] .ibd-rs-signal-note {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.13);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+}
+`;
+
 /** 今日重點 modal：表格欄寬（px，與 colgroup 一致） */
 const MM_FOCUS_COL_PX = {
   id: 46,
@@ -1608,6 +1624,15 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   /** 追蹤上一個 stock.id：用來判斷是「modal 新開」還是「左右導航」 */
   const prevStockIdRef = useRef(null);
 
+  // 籌碼訊號標籤的暗色適配 CSS：modal 共用於多頁，於此自行注入一次
+  useEffect(() => {
+    if (document.getElementById(SIGNAL_NOTE_STYLE_ID)) return;
+    const el = document.createElement('style');
+    el.id = SIGNAL_NOTE_STYLE_ID;
+    el.textContent = SIGNAL_NOTE_CSS;
+    document.head.appendChild(el);
+  }, []);
+
   /** 同一「交易日」只保留一點（台灣曆週六／週日併入週五）；舊資料若同週內多筆則取曆日較新那筆的 r */
   const history = useMemo(() => {
     if (!stock?.ibdRsHistory) return [];
@@ -2484,12 +2509,9 @@ style={{
                 </a>
               )}
               {signalNote && (
-                <span style={{
+                <span className="ibd-rs-signal-note" style={{
                   fontSize: 11,
                   fontWeight: 500,
-                  color: '#92400e',
-                  background: '#fff8e1',
-                  border: '1px solid #f59e0b',
                   borderRadius: 4,
                   padding: '2px 7px',
                   lineHeight: 1.4,
@@ -3086,6 +3108,7 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
           overflowX: 'hidden',
           overflowY: 'visible',
           minHeight: mobileLayout ? undefined : IBDRS_HOME_CARD_BODY_MIN_PX,
+          paddingTop: 10,
           paddingLeft: 12,
           paddingRight: 12,
         }}
