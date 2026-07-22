@@ -188,8 +188,11 @@ async function readExistingRsData() {
     });
     return map;
   } catch (e) {
-    console.warn('[RS] 讀取現有 ibdRsRatings 失敗:', e.message);
-    return {};
+    // 不可吞掉錯誤回傳 {}：finalize 會把空 existingMap 當成「所有股票都無歷史」，
+    // 用今日單點覆蓋掉 ibdRsHistory → 全市場歷史被洗掉（2026-07-06 事故成因）。
+    // 讀取失敗時直接拋出，讓本次同步中止、保留既有資料，下次再試即可。
+    console.error('[RS] 讀取現有 ibdRsRatings 失敗，中止同步以保護既有歷史:', e.message);
+    throw new Error(`讀取 ibdRsRatings 失敗，已中止本次同步以避免覆蓋歷史：${e.message}`);
   }
 }
 
