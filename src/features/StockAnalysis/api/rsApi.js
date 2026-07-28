@@ -179,21 +179,34 @@ export function clearIbdrsChunkProgress() {
   } catch (_) {}
 }
 
-async function readExistingRsData() {
-  try {
-    const snapshot = await getDocs(RS_RATINGS_COLLECTION);
-    const map = {};
-    snapshot.docs.forEach((d) => {
-      map[d.id] = d.data();
-    });
-    return map;
-  } catch (e) {
-    // 不可吞掉錯誤回傳 {}：finalize 會把空 existingMap 當成「所有股票都無歷史」，
-    // 用今日單點覆蓋掉 ibdRsHistory → 全市場歷史被洗掉（2026-07-06 事故成因）。
-    // 讀取失敗時直接拋出，讓本次同步中止、保留既有資料，下次再試即可。
-    console.error('[RS] 讀取現有 ibdRsRatings 失敗，中止同步以保護既有歷史:', e.message);
-    throw new Error(`讀取 ibdRsRatings 失敗，已中止本次同步以避免覆蓋歷史：${e.message}`);
+/**
+ * 全量讀 ibdRsRatings（~2000 檔 × 180 點歷史），Firestore 偶發
+ * "The datastore operation timed out" 屬暫時性錯誤 → 先退避重試。
+ */
+async function readExistingRsData({ maxRetries = 4, baseDelayMs = 2000 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const snapshot = await getDocs(RS_RATINGS_COLLECTION);
+      const map = {};
+      snapshot.docs.forEach((d) => {
+        map[d.id] = d.data();
+      });
+      if (attempt > 0) console.log(`[RS] 讀取 ibdRsRatings 第 ${attempt + 1} 次成功（${snapshot.docs.length} 檔）`);
+      return map;
+    } catch (e) {
+      lastErr = e;
+      if (attempt === maxRetries) break;
+      const wait = baseDelayMs * 2 ** attempt + Math.random() * 1000;
+      console.warn(`[RS] 讀取 ibdRsRatings 第 ${attempt + 1} 次失敗，${Math.round(wait)}ms 後重試：${e.message}`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
   }
+  // 重試耗盡才中止。不可吞掉錯誤回傳 {}：finalize 會把空 existingMap 當成「所有股票都無歷史」，
+  // 用今日單點覆蓋掉 ibdRsHistory → 全市場歷史被洗掉（2026-07-06 事故成因）。
+  // 中止可保留既有資料，下次排程再試即可。
+  console.error('[RS] 讀取現有 ibdRsRatings 重試耗盡，中止同步以保護既有歷史:', lastErr?.message);
+  throw new Error(`讀取 ibdRsRatings 失敗（已重試 ${maxRetries + 1} 次），已中止本次同步以避免覆蓋歷史：${lastErr?.message}`);
 }
 
 /**
