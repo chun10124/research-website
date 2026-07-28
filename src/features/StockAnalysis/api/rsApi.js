@@ -19,7 +19,7 @@
  *   - 其餘欄位見下方註解
  */
 
-import { doc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDocs, writeBatch, query, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
 import { db, RS_RATINGS_COLLECTION } from '../../../utils/firebaseConfig';
 import { fetchYahooHistoricalPriceMap, fetchHistoricalPriceMap, fetchYahooHistoricalPriceVolumeMaps } from './stockApi';
 import { fetchTaiwanStockList } from './rsStockList';
@@ -179,34 +179,60 @@ export function clearIbdrsChunkProgress() {
   } catch (_) {}
 }
 
+/** 單次 getDocs 的檔數上限。單檔實測平均 ~38KB（九成是 price/volume/open/high/low 五張 map），
+ *  全 collection 一次拉約 73MB → 抓價階段寫入壓力下必逾時。200 檔約 7MB，單頁失敗也只重試該頁。 */
+const RS_READ_PAGE_SIZE = 200;
+
 /**
- * 全量讀 ibdRsRatings（~2000 檔 × 180 點歷史），Firestore 偶發
- * "The datastore operation timed out" 屬暫時性錯誤 → 先退避重試。
+ * 分頁讀 ibdRsRatings 全檔。Firestore 偶發 "The datastore operation timed out"
+ * 屬暫時性錯誤 → 單頁退避重試；任一頁重試耗盡即拋出（不可回傳半套 map，理由見下方）。
  */
-async function readExistingRsData({ maxRetries = 4, baseDelayMs = 2000 } = {}) {
-  let lastErr;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const snapshot = await getDocs(RS_RATINGS_COLLECTION);
-      const map = {};
-      snapshot.docs.forEach((d) => {
-        map[d.id] = d.data();
-      });
-      if (attempt > 0) console.log(`[RS] 讀取 ibdRsRatings 第 ${attempt + 1} 次成功（${snapshot.docs.length} 檔）`);
-      return map;
-    } catch (e) {
-      lastErr = e;
-      if (attempt === maxRetries) break;
-      const wait = baseDelayMs * 2 ** attempt + Math.random() * 1000;
-      console.warn(`[RS] 讀取 ibdRsRatings 第 ${attempt + 1} 次失敗，${Math.round(wait)}ms 後重試：${e.message}`);
-      await new Promise((r) => setTimeout(r, wait));
+async function readExistingRsData({ maxRetries = 4, baseDelayMs = 2000, pageSize = RS_READ_PAGE_SIZE } = {}) {
+  const map = {};
+  let cursor = null;
+  let pages = 0;
+  let total = 0;
+
+  for (;;) {
+    const q = cursor
+      ? query(RS_RATINGS_COLLECTION, orderBy(documentId()), startAfter(cursor), limit(pageSize))
+      : query(RS_RATINGS_COLLECTION, orderBy(documentId()), limit(pageSize));
+
+    let snapshot;
+    let lastErr;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        snapshot = await getDocs(q);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (attempt === maxRetries) break;
+        const wait = baseDelayMs * 2 ** attempt + Math.random() * 1000;
+        console.warn(`[RS] 讀取 ibdRsRatings 第 ${pages + 1} 頁第 ${attempt + 1} 次失敗，${Math.round(wait)}ms 後重試：${e.message}`);
+        await new Promise((r) => setTimeout(r, wait));
+      }
     }
+
+    if (lastErr) {
+      // 讀不完整就中止。不可吞掉錯誤回傳半套或空 map：finalize 會把缺漏的檔當成「無歷史」，
+      // 用今日單點覆蓋掉 ibdRsHistory → 該批歷史被洗掉（2026-07-06 全市場事故成因）。
+      // 中止可保留既有資料，下次排程再試即可。
+      console.error(`[RS] 讀取 ibdRsRatings 第 ${pages + 1} 頁重試耗盡，中止同步以保護既有歷史:`, lastErr.message);
+      throw new Error(`讀取 ibdRsRatings 第 ${pages + 1} 頁失敗（已重試 ${maxRetries + 1} 次），已中止本次同步以避免覆蓋歷史：${lastErr.message}`);
+    }
+
+    snapshot.docs.forEach((d) => {
+      map[d.id] = d.data();
+    });
+    pages += 1;
+    total += snapshot.docs.length;
+    if (snapshot.docs.length < pageSize) break;
+    cursor = snapshot.docs[snapshot.docs.length - 1];
   }
-  // 重試耗盡才中止。不可吞掉錯誤回傳 {}：finalize 會把空 existingMap 當成「所有股票都無歷史」，
-  // 用今日單點覆蓋掉 ibdRsHistory → 全市場歷史被洗掉（2026-07-06 事故成因）。
-  // 中止可保留既有資料，下次排程再試即可。
-  console.error('[RS] 讀取現有 ibdRsRatings 重試耗盡，中止同步以保護既有歷史:', lastErr?.message);
-  throw new Error(`讀取 ibdRsRatings 失敗（已重試 ${maxRetries + 1} 次），已中止本次同步以避免覆蓋歷史：${lastErr?.message}`);
+
+  console.log(`[RS] 讀取 ibdRsRatings 完成：${total} 檔 / ${pages} 頁`);
+  return map;
 }
 
 /**
@@ -700,8 +726,10 @@ async function runMonolithicSync(
     }
   }
 
-  const existingFresh = await readExistingRsData();
-  const fin = await runFinalizePhases(stockList, stockListTotal, todayStr, existingFresh, onProgress, listMeta, {
+  // 不重讀 existingMap：finalize 在有 rawResultsOverride 時只用到 ibdRsHistory / ibdRsRating，
+  // 而上方抓價階段的寫入 payload 並不含這兩個欄位（見該 batch.set 內容）→ 開頭讀的那份仍然正確。
+  // 重讀一次要拉全 collection ~73MB，正是 2026-07-28 抓價後逾時中止的主因。
+  const fin = await runFinalizePhases(stockList, stockListTotal, todayStr, existingMap, onProgress, listMeta, {
     skippedYahooCount,
     rawResultsOverride: rawResults,
     signal,
