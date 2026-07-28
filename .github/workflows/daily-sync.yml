@@ -59,9 +59,20 @@ jobs:
           LIMIT="${{ github.event.inputs.limit }}"
           echo "== mode=$MODE limit=$LIMIT =="
           if [ "$MODE" = "rsThenPrice" ]; then
-            # 15:37 場：先 RS 全市場，再追蹤表價量（沿用 RS、不重抓 Yahoo）
-            SYNC_MODE=rs          SYNC_LIMIT="$LIMIT" node "$B"
+            # 15:37 場：先 RS 全市場，再追蹤表價量（優先沿用 RS priceMap，沿用不到會自己抓 Yahoo）。
+            # RS 失敗不可中斷 priceVolume：兩者非硬相依，priceVolume 有 Yahoo fallback
+            # （stockApi.js 內 RS priceMap 不夠新即重抓）。中斷只會讓追蹤表白白連坐。
+            RS_FAILED=0
+            SYNC_MODE=rs SYNC_LIMIT="$LIMIT" node "$B" || RS_FAILED=1
+            if [ "$RS_FAILED" = "1" ]; then
+              echo "::warning::RS 同步失敗，仍續跑追蹤表價量（沿用不到 RS priceMap，將改抓 Yahoo、較慢）"
+            fi
             SYNC_MODE=priceVolume SYNC_LIMIT="$LIMIT" node "$B"
+            # priceVolume 成功也要讓 job 標紅，否則 RS 失敗會被吃掉沒人發現
+            if [ "$RS_FAILED" = "1" ]; then
+              echo "::error::RS 同步失敗（追蹤表價量已續跑完成），請檢視上方 [rs] 日誌"
+              exit 1
+            fi
           else
             SYNC_MODE="$MODE" SYNC_LIMIT="$LIMIT" node "$B"
           fi
