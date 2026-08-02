@@ -52,6 +52,8 @@ export default function IbdRsQuadrantTable({
   /** Map<id, 區間 RS 1..99>；showUtilityRsColumn 為真時必填 */
   utilRsById = null,
   utilRsTitle,
+  /** 欄位標題：區間 RS 的窗口交易日數（每個交易日 +1，由大盤距高點天數決定） */
+  utilRsLabel,
 }) {
   const baseW = showLastCloseColumn
     ? IBDRS_QUADRANT_TABLE_WIDTH_WITH_LAST_CLOSE_AND_DAY_CHANGE_PX
@@ -124,8 +126,8 @@ export default function IbdRsQuadrantTable({
             ) : null}
             <th style={{ ...thBase }}>RS</th>
             {showUtilityRsColumn ? (
-              <th style={{ ...thBase, fontSize: 10 }} title={utilRsTitle}>
-                區RS
+              <th style={{ ...thBase }} title={utilRsTitle}>
+                {utilRsLabel ?? '—'}
               </th>
             ) : null}
             <th style={{ ...thBase }} title={deltaShortTitle}>

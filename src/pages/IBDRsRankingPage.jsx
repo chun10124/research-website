@@ -4243,8 +4243,9 @@ export default function IBDRsRankingPage() {
   }, [utilityMetrics]);
 
   const utilityRsColumnTitle = utilityMetrics.state.active
-    ? `區間 RS：以大盤距 200 日高點的 ${utilityMetrics.windowDays} 個交易日為窗口，` +
-      `用與 RS 相同的權重重算後做全市場百分位（四段各 ${utilityMetrics.segmentDays} 日，最近一段權重 ×2）`
+    ? `${utilityMetrics.windowDays} 日區間 RS：以大盤距 200 日高點的 ${utilityMetrics.windowDays} 個交易日為窗口，` +
+      `用與 RS 相同的權重重算後做全市場百分位（四段各 ${utilityMetrics.segmentDays} 日，最近一段權重 ×2）。` +
+      `窗口每個交易日 +1，大盤創高即歸零`
     : undefined;
 
   // ── Step 1：預先計算每檔 RS 變化 + 自選天數漲跌幅
@@ -5794,6 +5795,7 @@ export default function IBDRsRankingPage() {
                       showUtilityRsColumn={utilityActive}
                       utilRsById={utilityIntervalRsById}
                       utilRsTitle={utilityRsColumnTitle}
+                      utilRsLabel={utilityMetrics.windowDays}
                     />
                   ))}
                 </div>
