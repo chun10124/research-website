@@ -3,6 +3,7 @@ import {
   IBDRS_QUADRANT_COL_PX,
   IBDRS_QUADRANT_TABLE_WIDTH_PX,
   IBDRS_QUADRANT_TABLE_WIDTH_WITH_LAST_CLOSE_AND_DAY_CHANGE_PX,
+  IBDRS_QUADRANT_TABLE_WIDTH_WITH_UTIL_RS_PX,
   fmtDelta,
   getDeltaColor,
   getEffectiveDisplayRs,
@@ -46,11 +47,19 @@ export default function IbdRsQuadrantTable({
   deltaShortTitle,
   deltaLongTitle,
   showLastCloseColumn = false,
+  /** Utility Screen 生效時在 RS 右側加「區RS」欄 */
+  showUtilityRsColumn = false,
+  /** Map<id, 區間 RS 1..99>；showUtilityRsColumn 為真時必填 */
+  utilRsById = null,
+  utilRsTitle,
 }) {
-  const tableW = showLastCloseColumn
+  const baseW = showLastCloseColumn
     ? IBDRS_QUADRANT_TABLE_WIDTH_WITH_LAST_CLOSE_AND_DAY_CHANGE_PX
     : IBDRS_QUADRANT_TABLE_WIDTH_PX;
-  const colSpan = showLastCloseColumn ? 10 : 8;
+  const tableW = showUtilityRsColumn
+    ? baseW + (IBDRS_QUADRANT_TABLE_WIDTH_WITH_UTIL_RS_PX - IBDRS_QUADRANT_TABLE_WIDTH_PX)
+    : baseW;
+  const colSpan = (showLastCloseColumn ? 10 : 8) + (showUtilityRsColumn ? 1 : 0);
 
   return (
     <div
@@ -80,6 +89,7 @@ export default function IbdRsQuadrantTable({
           {showLastCloseColumn ? <col style={{ width: IBDRS_QUADRANT_COL_PX.lastClose }} /> : null}
           {showLastCloseColumn ? <col style={{ width: IBDRS_QUADRANT_COL_PX.dayChange }} /> : null}
           <col style={{ width: IBDRS_QUADRANT_COL_PX.rs }} />
+          {showUtilityRsColumn ? <col style={{ width: IBDRS_QUADRANT_COL_PX.utilRs }} /> : null}
           <col style={{ width: IBDRS_QUADRANT_COL_PX.delta5 }} />
           <col style={{ width: IBDRS_QUADRANT_COL_PX.delta20 }} />
           <col style={{ width: IBDRS_QUADRANT_COL_PX.pct5d }} />
@@ -113,6 +123,11 @@ export default function IbdRsQuadrantTable({
               </th>
             ) : null}
             <th style={{ ...thBase }}>RS</th>
+            {showUtilityRsColumn ? (
+              <th style={{ ...thBase, fontSize: 10 }} title={utilRsTitle}>
+                區RS
+              </th>
+            ) : null}
             <th style={{ ...thBase }} title={deltaShortTitle}>
               {deltaShortLabel}
             </th>
@@ -199,6 +214,14 @@ export default function IbdRsQuadrantTable({
                   <td style={{ ...tdBase, textAlign: 'center', ...rsStyle }} title={rsTitle}>
                     {displayRs ?? '—'}
                   </td>
+                  {showUtilityRsColumn ? (
+                    <td
+                      style={{ ...tdBase, textAlign: 'center', ...getRsStyle(utilRsById?.get(s.id) ?? null) }}
+                      title={utilRsTitle}
+                    >
+                      {utilRsById?.get(s.id) ?? '—'}
+                    </td>
+                  ) : null}
                   <td style={{ ...tdBase, textAlign: 'center', color: getDeltaColor(s.delta5d) }}>
                     {fmtDelta(s.delta5d)}
                   </td>

@@ -12,6 +12,8 @@ export const IBDRS_QUADRANT_COL_PX = {
   /** 觀察列表：最右側「當日漲跌」 */
   dayChange: 42,
   rs: 28,
+  /** Utility Screen：RS 右側「區間 RS」（大盤修正期窗口重算） */
+  utilRs: 30,
   delta5: 37,
   delta20: 37,
   pct5d: 37,
@@ -36,6 +38,10 @@ export const IBDRS_QUADRANT_TABLE_WIDTH_WITH_LAST_CLOSE_PX =
 /** 觀察列表：多「收盤」+「當日漲跌」 */
 export const IBDRS_QUADRANT_TABLE_WIDTH_WITH_LAST_CLOSE_AND_DAY_CHANGE_PX =
   IBDRS_QUADRANT_TABLE_WIDTH_WITH_LAST_CLOSE_PX + IBDRS_QUADRANT_COL_PX.dayChange;
+
+/** Utility Screen 生效時多「區RS」欄 */
+export const IBDRS_QUADRANT_TABLE_WIDTH_WITH_UTIL_RS_PX =
+  IBDRS_QUADRANT_TABLE_WIDTH_PX + IBDRS_QUADRANT_COL_PX.utilRs;
 
 /** 名稱欄內容區至少寬度（px） */
 export const IBDRS_NAME_COL_MIN_PX = 34;

@@ -39,6 +39,9 @@
   --app-text: #111827;          /* 主要深色文字 */
   --app-text-soft: #475569;     /* 次要灰字 */
   --app-th-bg: #dce8f8;         /* 表頭底（淺藍）*/
+  /* 篩選面板等處的青綠作用色（原本各處寫死 #0d9488 / #134e4a，暗色下偏暗）*/
+  --app-accent: #0d9488;        /* 區塊標題、強調標籤 */
+  --app-accent-strong: #134e4a; /* 標題列、粗體標籤 */
   /* RS 圖表 RS/籌碼 分頁作用色（亮色＝原本配色；暗色於下方覆蓋）*/
   --rs-tab-rs-fg: #c0392b;      /* RS 紅：字＋框 */
   --rs-tab-rs-bg: #fef2f2;      /* RS 作用底（淺粉）*/
@@ -64,6 +67,9 @@
   --app-text: #e3e3e3;
   --app-text-soft: #b0b4b8;
   --app-th-bg: #2b3442;
+  /* 暗色覆蓋：青綠提亮，深底上才讀得清楚 */
+  --app-accent: #2dd4bf;
+  --app-accent-strong: #5eead4;
   /* 暗色覆蓋：提亮的紅/琥珀（字＋框）＋半透明深色作用底（不再淺底白框）*/
   --rs-tab-rs-fg: #ef5350;
   --rs-tab-rs-bg: rgba(192, 57, 43, 0.22);

@@ -31,8 +31,18 @@ import {
   fmtDelta,
   getEffectiveDisplayRs,
   IBDRS_QUADRANT_TABLE_WIDTH_PX,
+  IBDRS_QUADRANT_TABLE_WIDTH_WITH_UTIL_RS_PX,
 } from '../features/StockAnalysis/utils/ibdRsRankingTableUtils';
 import { clampIbdDeltaDays, enrichIbdRsRow } from '../features/StockAnalysis/utils/ibdRsRankingEnrich';
+import {
+  applyUtilityFilters,
+  computeUtilityMetrics,
+  UTILITY_DEFAULT_PARAMS,
+  UTILITY_FAIL_LABELS,
+  UTILITY_INDEX_LOOKBACK,
+  UTILITY_MIN_DAYS_SINCE_HIGH,
+  UTILITY_MAX_DAYS_SINCE_HIGH,
+} from '../features/StockAnalysis/utils/utilityScreen';
 import { RS_OPEN_STOCK_SESSION_KEY } from '../features/StockAnalysis/api/ibdRsWatchlistFirestore';
 import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
 import { prefetchWatchlistChipData } from '../features/StockAnalysis/api/prefetchChipData';
@@ -281,23 +291,90 @@ function didCrossRsLevelUpward(prevR, lastR, level) {
 // ─── 子元件：篩選區塊標題 ────────────────────────────────────────────────────
 // placeholder 顏色：FILTER_INPUT_MARK + custom.css / IBD_RS_PLACEHOLDER_CSS（行內 style 無法設 ::placeholder）
 
-function FilterSectionTitle({ children, first }) {
+function FilterSectionTitle({ children }) {
   return (
     <div
       style={{
-        gridColumn: '1 / -1',
         fontSize: 11,
         fontWeight: 800,
-        color: '#0d9488',
+        color: 'var(--app-accent)',
         letterSpacing: '0.04em',
-        marginTop: first ? 0 : 5,
-        marginBottom: 3,
-        paddingBottom: 3,
-        borderBottom: '1px solid #e6f7f4',
+        paddingBottom: 6,
+        borderBottom: '1px solid var(--app-border)',
         lineHeight: 1.2,
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * 篩選面板：一個條件群組＝一張卡片。
+ * 外層 grid 依面板寬度自動排成 1～3 欄；wide 的卡片（橫向長列）獨佔整行。
+ */
+function FilterCard({ title, children, wide = false, hint }) {
+  return (
+    <section
+      style={{
+        gridColumn: wide ? '1 / -1' : 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: '10px 12px 12px',
+        border: '1px solid var(--app-border)',
+        borderRadius: 10,
+        background: 'var(--app-surface)',
+        minWidth: 0,
+      }}
+    >
+      <FilterSectionTitle>{title}</FilterSectionTitle>
+      {hint ? (
+        <div style={{ fontSize: 11, color: 'var(--app-text-soft)', lineHeight: 1.45 }}>{hint}</div>
+      ) : null}
+      {children}
+    </section>
+  );
+}
+
+/** 卡片內一列條件（標籤 + 控制項），自動換行 */
+const FILTER_ROW_STYLE = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 12,
+  color: 'var(--app-text)',
+};
+
+/** 卡片內粗體強調標籤（原本寫死 #134e4a） */
+const FILTER_ROW_LABEL_STYLE = { fontWeight: 700, color: 'var(--app-accent-strong)' };
+
+/**
+ * 「標籤 ……… 控制項」一列：標籤靠左、控制項靠右。
+ * 同一欄的多列因此對齊，不會因標籤長短而參差。
+ */
+function FilterParamRow({ label, title, unit, children }) {
+  return (
+    <div
+      title={title}
+      style={{
+        display: 'grid',
+        // 控制項欄固定 60px、單位欄固定 18px，各列的輸入框／勾選框才會左右對齊。
+        // 用 auto 會讓有單位的列被單位文字擠窄、位置全部錯開。
+        gridTemplateColumns: 'minmax(0, 1fr) 60px 18px',
+        alignItems: 'center',
+        gap: 8,
+        maxWidth: 260,
+        fontSize: 12,
+        color: 'var(--app-text)',
+      }}
+    >
+      <span style={FILTER_ROW_LABEL_STYLE}>{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', minWidth: 0 }}>
+        {children}
+      </span>
+      <span style={{ color: 'var(--app-text-soft)', whiteSpace: 'nowrap' }}>{unit ?? ''}</span>
     </div>
   );
 }
@@ -308,10 +385,10 @@ const FILTER_SANDWICH_INPUT = {
   border: '1px solid var(--app-border)',
   borderRadius: 6,
   fontSize: 12,
-  flex: '0 0 auto',
-  width: 118,
-  minWidth: 80,
-  maxWidth: 132,
+  flex: '0 1 auto',
+  width: 106,
+  minWidth: 76,
+  maxWidth: 118,
   boxSizing: 'border-box',
   background: 'var(--ifm-background-color, #fff)',
   color: 'var(--ifm-font-color-base)',
@@ -322,7 +399,7 @@ const FILTER_DELTA_MID_TEXT_STYLE = {
   flex: '0 0 auto',
   fontWeight: 800,
   fontSize: 12,
-  color: '#134e4a',
+  color: 'var(--app-accent-strong)',
   userSelect: 'none',
 };
 
@@ -341,6 +418,14 @@ const FILTER_DELTA_DAYS_INPUT = {
   color: 'var(--ifm-font-color-base)',
 };
 
+/** FilterParamRow 專用：填滿固定的控制項欄，讓同欄各列的輸入框左右邊界都對齊 */
+const FILTER_PARAM_INPUT = {
+  ...FILTER_DELTA_DAYS_INPUT,
+  width: '100%',
+  minWidth: 0,
+  maxWidth: 'none',
+};
+
 /** [上限] ≥ 名稱 ≥ [下限]（左格=上限、右格=下限；語意：下限 ≤ 指標 ≤ 上限） */
 function FilterSandwichBetween({
   centerLabel,
@@ -357,7 +442,7 @@ function FilterSandwichBetween({
     flex: '0 0 auto',
     fontWeight: 800,
     fontSize: 12,
-    color: '#134e4a',
+    color: 'var(--app-accent-strong)',
     userSelect: 'none',
   };
   const centerKey = centerAriaName || (typeof centerLabel === 'string' ? centerLabel : '指標');
@@ -367,13 +452,10 @@ function FilterSandwichBetween({
   return (
     <div
       style={{
-        gridColumn: '1 / -1',
-        justifySelf: 'start',
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        width: 'max-content',
-        maxWidth: '100%',
+        width: '100%',
         minWidth: 0,
         flexWrap: 'wrap',
       }}
@@ -3730,6 +3812,17 @@ const DEFAULT_FILTERS = {
   /** VCP 加權合成（0～1）；與圖表區塊相同公式，需即時抓 Yahoo */
   vcpMin: '',
   vcpMax: '',
+  /**
+   * Utility Screen（大盤修正期領先股）：'1' 才套用。
+   * 僅在大盤距 200 日高點 20～200 個交易日之間可用；成交額以「億元」輸入。
+   */
+  utilityOn: '',
+  utilityRsMin: String(UTILITY_DEFAULT_PARAMS.rsMin),
+  utilityMaxPctFromHigh: String(UTILITY_DEFAULT_PARAMS.maxPctFromHigh),
+  utilityTurnoverMin: '1',
+  utilityTurnoverDays: String(UTILITY_DEFAULT_PARAMS.turnoverDays),
+  utilityReqMa200: '1',
+  utilityReqMaStack: '1',
   query: '',
 };
 
@@ -3796,7 +3889,55 @@ function summarizeIbdRsFilters(filters, deltaShortResolved, deltaLongResolved) {
   }
   const vcpLine = summarizeMinMaxLine('VCP', f.vcpMin, f.vcpMax);
   if (vcpLine) parts.push(vcpLine);
+  if (f.utilityOn === '1') parts.push('Utility Screen');
   return parts;
+}
+
+/**
+ * Utility Screen 狀態：拆成幾個短數據＋一句話結論，避免一整段長句擠在框裡。
+ * 高低點日期與點位放進 tooltip（title），需要時再看。
+ */
+function describeUtilityState(state) {
+  if (!state || state.ok !== true) {
+    return { tone: 'muted', badge: '載入中', stats: [], note: '加權指數（^TWII）尚未取得', detail: undefined };
+  }
+  const d = state.daysSinceHigh;
+  const pct = Number.isFinite(state.pctFromHigh) ? state.pctFromHigh.toFixed(2) : '—';
+  const fmt = (v) => (v != null ? Math.round(v).toLocaleString() : '—');
+  const detail =
+    `${UTILITY_INDEX_LOOKBACK} 日高點 ${state.highDate ?? '—'} ${fmt(state.high)}　|　` +
+    `最新 ${state.lastDate ?? '—'} ${fmt(state.lastClose)}`;
+
+  const stats = [
+    { label: '距高點', value: `${d} 日` },
+    { label: '回檔', value: `−${pct}%` },
+  ];
+
+  if (state.reason === 'nearHigh') {
+    return {
+      tone: 'muted',
+      badge: '未啟動',
+      stats,
+      note: `未超過 ${UTILITY_MIN_DAYS_SINCE_HIGH} 日，請用原本 RS 濾網`,
+      detail,
+    };
+  }
+  if (state.reason === 'tooLong') {
+    return {
+      tone: 'muted',
+      badge: '停用',
+      stats,
+      note: `已超過 ${UTILITY_MAX_DAYS_SINCE_HIGH} 日，請用原本 RS 濾網`,
+      detail,
+    };
+  }
+  return {
+    tone: 'active',
+    badge: '可用',
+    stats: [...stats, { label: 'RS 窗口', value: `${d} 日` }],
+    note: null,
+    detail,
+  };
 }
 
 export default function IBDRsRankingPage() {
@@ -3819,6 +3960,8 @@ export default function IBDRsRankingPage() {
   const [homeFirstSeenById, setHomeFirstSeenById] = useState(() => ({}));
   const homeFirstSeenLocalMigratedRef = useRef(false);
   const [homeCardUniformHeight, setHomeCardUniformHeight] = useState(null);
+  /** Utility Screen 用的加權指數（^TWII）收盤序列；null＝尚未載入、{}＝抓取失敗 */
+  const [utilIndexMap, setUtilIndexMap] = useState(null);
   const [isMobileLayout, setIsMobileLayout] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.matchMedia(`(max-width: ${IBDRS_MOBILE_MAX_WIDTH_PX}px)`).matches;
@@ -3894,6 +4037,28 @@ export default function IBDRsRankingPage() {
       const v = localStorage.getItem(IBDRS_LAST_SYNC_DATE_KEY);
       if (v) setLastSyncDateLocal(v);
     } catch (_) {}
+  }, []);
+
+  /**
+   * Utility Screen 需要加權指數判斷「距 200 日高點幾個交易日」。
+   * 抓 2 年（≈480 根）以確保 200 交易日回看有餘裕；每日一次、走既有 proxy 快取。
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    const end = new Date();
+    const start = new Date();
+    start.setMonth(start.getMonth() - 24);
+    fetchIndexPriceMap(start.toISOString().slice(0, 10), end.toISOString().slice(0, 10))
+      .then((m) => {
+        if (!cancelled) setUtilIndexMap(m || {});
+      })
+      .catch(() => {
+        if (!cancelled) setUtilIndexMap({});
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -4026,6 +4191,61 @@ export default function IBDRsRankingPage() {
     () => clampIbdDeltaDays(filters.pctLongDays, 20),
     [filters.pctLongDays]
   );
+
+  // ── Utility Screen：重算階段（只吃 stocks／指數／取樣天數，改門檻不重跑）
+  const utilityTurnoverDaysResolved = useMemo(
+    () => clampIbdDeltaDays(filters.utilityTurnoverDays, UTILITY_DEFAULT_PARAMS.turnoverDays),
+    [filters.utilityTurnoverDays]
+  );
+  const utilityMetrics = useMemo(
+    () => computeUtilityMetrics(stocks, utilIndexMap, { turnoverDays: utilityTurnoverDaysResolved }),
+    [stocks, utilIndexMap, utilityTurnoverDaysResolved]
+  );
+
+  /** 門檻階段：純比較，改上下限即時重跑 */
+  const utilityParams = useMemo(() => {
+    const num = (v, fallback) => {
+      const x = parseFloat(String(v ?? '').trim());
+      return Number.isFinite(x) ? x : fallback;
+    };
+    const turnoverYi = num(filters.utilityTurnoverMin, 0);
+    return {
+      rsMin: num(filters.utilityRsMin, UTILITY_DEFAULT_PARAMS.rsMin),
+      maxPctFromHigh: num(filters.utilityMaxPctFromHigh, UTILITY_DEFAULT_PARAMS.maxPctFromHigh),
+      turnoverMin: turnoverYi > 0 ? turnoverYi * 1e8 : null,
+      requirePriceAboveMa200: filters.utilityReqMa200 === '1',
+      requireMa50AboveMa200: filters.utilityReqMaStack === '1',
+    };
+  }, [
+    filters.utilityRsMin,
+    filters.utilityMaxPctFromHigh,
+    filters.utilityTurnoverMin,
+    filters.utilityReqMa200,
+    filters.utilityReqMaStack,
+  ]);
+
+  const utilityResult = useMemo(
+    () => applyUtilityFilters(utilityMetrics, utilityParams),
+    [utilityMetrics, utilityParams]
+  );
+
+  /** Utility Screen 是否實際生效：勾選了、且大盤處於可用區間 */
+  const utilityActive = filters.utilityOn === '1' && utilityMetrics.state.active === true;
+  const utilityStatus = useMemo(() => describeUtilityState(utilityMetrics.state), [utilityMetrics.state]);
+
+  /** 表格「區RS」欄用：id → 區間 RS */
+  const utilityIntervalRsById = useMemo(() => {
+    const m = new Map();
+    for (const [id, e] of utilityMetrics.byId) {
+      if (e.intervalRs != null) m.set(id, e.intervalRs);
+    }
+    return m;
+  }, [utilityMetrics]);
+
+  const utilityRsColumnTitle = utilityMetrics.state.active
+    ? `區間 RS：以大盤距 200 日高點的 ${utilityMetrics.windowDays} 個交易日為窗口，` +
+      `用與 RS 相同的權重重算後做全市場百分位（四段各 ${utilityMetrics.segmentDays} 日，最近一段權重 ×2）`
+    : undefined;
 
   // ── Step 1：預先計算每檔 RS 變化 + 自選天數漲跌幅
   const enriched = useMemo(() => {
@@ -4197,7 +4417,8 @@ export default function IBDRsRankingPage() {
     const vcpHi = n(filters.vcpMax);
     const vcpBoundsActive = vcpFilterActive && !vcpLoading;
 
-    return globalSorted.filter((s) => {
+    const base = globalSorted.filter((s) => {
+      if (utilityActive && !utilityResult.passIds.has(s.id)) return false;
       if (!stockPassesNonVcpFilters(s, filters)) return false;
       if (vcpBoundsActive) {
         const comp = vcpById.get(s.id);
@@ -4207,7 +4428,26 @@ export default function IBDRsRankingPage() {
       }
       return true;
     });
-  }, [globalSorted, filters, vcpById, vcpLoading, vcpFilterActive]);
+
+    // Utility Screen 生效時改以「區間 RS」由高到低排序：此模式下要看的是修正期間的相對強度
+    if (utilityActive) {
+      return [...base].sort((a, b) => {
+        const ra = utilityMetrics.byId.get(a.id)?.intervalRs ?? -1;
+        const rb = utilityMetrics.byId.get(b.id)?.intervalRs ?? -1;
+        return rb - ra;
+      });
+    }
+    return base;
+  }, [
+    globalSorted,
+    filters,
+    vcpById,
+    vcpLoading,
+    vcpFilterActive,
+    utilityActive,
+    utilityResult,
+    utilityMetrics,
+  ]);
 
   /** 折線圖 ←／→：今日重點開啟時用合併清單；否則主表 filtered／globalSorted */
   const chartNavigationList = useMemo(() => {
@@ -5010,13 +5250,13 @@ export default function IBDRsRankingPage() {
                 onMouseDown={(e) => e.stopPropagation()}
                 style={{
                   width: '100%',
-                  maxWidth: 480,
-                  background: 'linear-gradient(180deg, var(--app-surface-2) 0%, var(--ifm-background-surface-color, var(--app-surface)) 12%)',
-                  border: '1px solid #cfe8e2',
+                  maxWidth: 800,
+                  background: 'var(--ifm-background-surface-color, var(--app-surface))',
+                  border: '1px solid var(--app-border)',
                   borderRadius: 12,
                   boxShadow: '0 24px 56px rgba(0,0,0,0.22)',
-                  padding: '12px 16px 10px',
-                  maxHeight: '96vh',
+                  padding: '14px 16px 16px',
+                  maxHeight: '92vh',
                   overflowY: 'auto',
                 }}
               >
@@ -5025,33 +5265,42 @@ export default function IBDRsRankingPage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
-                    marginBottom: 8,
+                    marginBottom: 12,
+                    paddingBottom: 10,
+                    borderBottom: '1px solid var(--app-border)',
                     flexWrap: 'wrap',
+                    position: 'sticky',
+                    top: -14,
+                    zIndex: 1,
+                    background: 'var(--ifm-background-surface-color, var(--app-surface))',
                   }}
                 >
-                  <strong style={{ fontSize: 15, fontWeight: 800, color: '#134e4a', letterSpacing: '-0.02em' }}>篩選條件</strong>
-                  {hasActiveFilter && (
-                    <button
-                      type="button"
-                      onClick={resetFilters}
-                      style={{
-                        fontSize: 11,
-                        padding: '5px 10px',
-                        border: '1px solid var(--app-border)',
-                        borderRadius: 8,
-                        background: 'var(--app-surface)',
-                        cursor: 'pointer',
-                        color: '#555',
-                        fontWeight: 700,
-                      }}
-                    >
-                      清除全部
-                    </button>
-                  )}
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#555' }}>
+                  <strong style={{ fontSize: 15, fontWeight: 800, color: 'var(--app-accent-strong)', letterSpacing: '-0.02em' }}>篩選條件</strong>
+                  {/* 一律 render、只切換可見性：條件式 render 會讓標題列高度變動，整個面板跟著跳 */}
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    tabIndex={hasActiveFilter ? 0 : -1}
+                    aria-hidden={!hasActiveFilter}
+                    style={{
+                      fontSize: 11,
+                      padding: '5px 10px',
+                      border: '1px solid var(--app-border)',
+                      borderRadius: 8,
+                      background: 'var(--app-surface)',
+                      cursor: 'pointer',
+                      color: 'var(--app-text-soft)',
+                      fontWeight: 700,
+                      visibility: hasActiveFilter ? 'visible' : 'hidden',
+                      pointerEvents: hasActiveFilter ? 'auto' : 'none',
+                    }}
+                  >
+                    清除全部
+                  </button>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--app-text-soft)' }}>
                     符合{' '}
-                    <strong style={{ color: filteredWithRsCount > 0 ? '#c0392b' : '#888', fontSize: 14 }}>{filteredWithRsCount}</strong> / {totalWithRs}
-                    <span style={{ color: '#888', fontSize: 11 }}>（有 RS）</span>
+                    <strong style={{ color: filteredWithRsCount > 0 ? '#e05a4b' : 'var(--app-text-soft)', fontSize: 14 }}>{filteredWithRsCount}</strong> / {totalWithRs}
+                    <span style={{ color: 'var(--app-text-soft)', fontSize: 11 }}>（有 RS）</span>
                   </span>
                   <button
                     type="button"
@@ -5066,7 +5315,7 @@ export default function IBDRsRankingPage() {
                       borderRadius: 8,
                       background: 'var(--app-surface)',
                       cursor: 'pointer',
-                      color: '#666',
+                      color: 'var(--app-text-soft)',
                       fontWeight: 400,
                     }}
                   >
@@ -5078,13 +5327,12 @@ export default function IBDRsRankingPage() {
                   className="ibd-rs-filter-fields-grid"
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, auto))',
-                    gap: '5px 16px',
-                    alignItems: 'end',
-                    justifyItems: 'start',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+                    gap: 10,
+                    alignItems: 'stretch',
                   }}
                 >
-                  <FilterSectionTitle first>RS</FilterSectionTitle>
+                  <FilterCard title="RS 與變化（Δ）">
                   <FilterSandwichBetween
                     centerLabel="RS"
                     upperValue={filters.rsMax}
@@ -5092,8 +5340,6 @@ export default function IBDRsRankingPage() {
                     onUpperChange={setFilter('rsMax')}
                     onLowerChange={setFilter('rsMin')}
                   />
-
-                  <FilterSectionTitle>RS 變化（Δ）</FilterSectionTitle>
                   <FilterSandwichBetween
                     centerAriaName={`RS變化·${deltaShortDaysResolved}日`}
                     centerSlot={
@@ -5144,8 +5390,9 @@ export default function IBDRsRankingPage() {
                     onUpperChange={setFilter('delta20dMax')}
                     onLowerChange={setFilter('delta20dMin')}
                   />
+                  </FilterCard>
 
-                  <FilterSectionTitle>漲跌幅（%）</FilterSectionTitle>
+                  <FilterCard title="漲跌幅（%）與 HL（6M 區間價位）">
                   <FilterSandwichBetween
                     centerAriaName={`漲跌幅·${pctShortDaysResolved}日`}
                     centerSlot={
@@ -5194,8 +5441,6 @@ export default function IBDRsRankingPage() {
                     onUpperChange={setFilter('pct20dMax')}
                     onLowerChange={setFilter('pct20dMin')}
                   />
-
-                  <FilterSectionTitle>HL（6M 區間價位 0～1）</FilterSectionTitle>
                   <FilterSandwichBetween
                     centerLabel="HL"
                     upperValue={filters.hlMax}
@@ -5205,20 +5450,18 @@ export default function IBDRsRankingPage() {
                     upperPlaceholder="上限 例 0.8"
                     lowerPlaceholder="下限 例 0.3"
                   />
+                  </FilterCard>
 
-                  <FilterSectionTitle>型態（ibdRsHistory）</FilterSectionTitle>
+                  <FilterCard title="型態（ibdRsHistory）與 VCP" wide>
                   <div
                     style={{
-                      gridColumn: '1 / -1',
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontSize: 12,
-                      color: '#444',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                      gap: '8px 20px',
                     }}
                   >
-                    <span style={{ fontWeight: 700, color: '#134e4a' }}>向上突破</span>
+                  <div style={FILTER_ROW_STYLE}>
+                    <span style={FILTER_ROW_LABEL_STYLE}>向上突破</span>
                     <span>近</span>
                     <input
                       {...FILTER_INPUT_MARK}
@@ -5246,18 +5489,8 @@ export default function IBDRsRankingPage() {
                       aria-label="突破：門檻 y"
                     />
                   </div>
-                  <div
-                    style={{
-                      gridColumn: '1 / -1',
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontSize: 12,
-                      color: '#444',
-                    }}
-                  >
-                    <span style={{ fontWeight: 700, color: '#134e4a' }}>區間新高</span>
+                  <div style={FILTER_ROW_STYLE}>
+                    <span style={FILTER_ROW_LABEL_STYLE}>區間新高</span>
                     <span>近</span>
                     <input
                       {...FILTER_INPUT_MARK}
@@ -5274,18 +5507,8 @@ export default function IBDRsRankingPage() {
                     <span>週（5 交易日）內 RS 最高</span>
                   </div>
 
-                  <div
-                    style={{
-                      gridColumn: '1 / -1',
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontSize: 12,
-                      color: '#444',
-                    }}
-                  >
-                    <span style={{ fontWeight: 700, color: '#134e4a' }}>價格站上均線</span>
+                  <div style={FILTER_ROW_STYLE}>
+                    <span style={FILTER_ROW_LABEL_STYLE}>價格站上均線</span>
                     {[
                       { key: 'priceAboveMA10', label: 'MA10' },
                       { key: 'priceAboveMA20', label: 'MA20' },
@@ -5306,7 +5529,6 @@ export default function IBDRsRankingPage() {
                     ))}
                   </div>
 
-                  <FilterSectionTitle>VCP（0～1）</FilterSectionTitle>
                   <FilterSandwichBetween
                     centerLabel="VCP"
                     upperValue={filters.vcpMax}
@@ -5316,6 +5538,157 @@ export default function IBDRsRankingPage() {
                     upperPlaceholder="上限 例 0.85"
                     lowerPlaceholder="下限 例 0.25"
                   />
+                  </div>
+                  </FilterCard>
+
+                  <FilterCard title="Utility Screen（大盤修正期領先股）" wide>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <label
+                      style={{
+                        // 父層是 flex column：不設 alignSelf 會被 stretch 成整張卡片寬，
+                        // 導致點空白處也會切換勾選。
+                        alignSelf: 'flex-start',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        cursor: utilityMetrics.state.active ? 'pointer' : 'not-allowed',
+                        userSelect: 'none',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: utilityMetrics.state.active
+                          ? 'var(--app-accent-strong)'
+                          : 'var(--app-text-soft)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={!utilityMetrics.state.active}
+                        checked={filters.utilityOn === '1'}
+                        onChange={(e) => setFilter('utilityOn')(e.target.checked ? '1' : '')}
+                        style={{ cursor: utilityMetrics.state.active ? 'pointer' : 'not-allowed' }}
+                      />
+                      {utilityMetrics.state.active
+                        ? `套用（區間 RS ＝ ${utilityMetrics.windowDays} 交易日）`
+                        : `無法啟用（${utilityStatus.badge}）`}
+                    </label>
+
+                    <div
+                      title={utilityStatus.detail}
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'baseline',
+                        gap: '2px 10px',
+                        fontSize: 11,
+                        color: 'var(--app-text-soft)',
+                      }}
+                    >
+                      <span>加權指數</span>
+                      {utilityStatus.stats.map((s) => (
+                        <span key={s.label}>
+                          {s.label}{' '}
+                          <strong style={{ color: 'var(--app-text)', fontVariantNumeric: 'tabular-nums' }}>
+                            {s.value}
+                          </strong>
+                        </span>
+                      ))}
+                      {utilityStatus.note ? <span>{utilityStatus.note}</span> : null}
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                        gap: '7px 24px',
+                        marginTop: 2,
+                        opacity: filters.utilityOn === '1' ? 1 : 0.62,
+                      }}
+                    >
+                      <FilterParamRow label="區間 RS ≥">
+                        <input
+                          style={FILTER_PARAM_INPUT}
+                          value={filters.utilityRsMin}
+                          onChange={(e) => setFilter('utilityRsMin')(e.target.value)}
+                          inputMode="numeric"
+                          {...FILTER_INPUT_MARK}
+                        />
+                      </FilterParamRow>
+
+                      <FilterParamRow
+                        label="距 200 日高點 <"
+                        unit="%"
+                        title="以收盤價計算（Firestore 的 highMap 僅保留 120 天，不足 200）"
+                      >
+                        <input
+                          style={FILTER_PARAM_INPUT}
+                          value={filters.utilityMaxPctFromHigh}
+                          onChange={(e) => setFilter('utilityMaxPctFromHigh')(e.target.value)}
+                          inputMode="decimal"
+                          {...FILTER_INPUT_MARK}
+                        />
+                      </FilterParamRow>
+
+                      <FilterParamRow label="平均成交額 >" unit="億" title="填 0 ＝ 不篩此條件">
+                        <input
+                          style={FILTER_PARAM_INPUT}
+                          value={filters.utilityTurnoverMin}
+                          onChange={(e) => setFilter('utilityTurnoverMin')(e.target.value)}
+                          inputMode="decimal"
+                          {...FILTER_INPUT_MARK}
+                        />
+                      </FilterParamRow>
+
+                      <FilterParamRow label="成交額取樣" unit="日">
+                        <input
+                          style={FILTER_PARAM_INPUT}
+                          value={filters.utilityTurnoverDays}
+                          onChange={(e) => setFilter('utilityTurnoverDays')(e.target.value)}
+                          inputMode="numeric"
+                          {...FILTER_INPUT_MARK}
+                        />
+                      </FilterParamRow>
+
+                      <FilterParamRow label="收盤 > MA200">
+                        <input
+                          type="checkbox"
+                          checked={filters.utilityReqMa200 === '1'}
+                          onChange={(e) => setFilter('utilityReqMa200')(e.target.checked ? '1' : '')}
+                          style={{ cursor: 'pointer', margin: 0 }}
+                        />
+                      </FilterParamRow>
+
+                      <FilterParamRow label="MA50 > MA200">
+                        <input
+                          type="checkbox"
+                          checked={filters.utilityReqMaStack === '1'}
+                          onChange={(e) => setFilter('utilityReqMaStack')(e.target.checked ? '1' : '')}
+                          style={{ cursor: 'pointer', margin: 0 }}
+                        />
+                      </FilterParamRow>
+                    </div>
+
+                    {/* 這行一律 render（未套用時顯示提示），否則勾選當下多一行、整個面板高度會跳 */}
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--app-text-soft)',
+                        marginTop: 2,
+                        height: 16,
+                        lineHeight: '16px',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {utilityActive ? (
+                        <>
+                          母體 {utilityMetrics.rankedCount} 檔 · 通過{' '}
+                          <strong style={{ color: 'var(--app-text)' }}>{utilityResult.passIds.size}</strong> 檔 · 主表改依區間 RS 排序
+                        </>
+                      ) : (
+                        '勾選後主表改依區間 RS 由高到低排序'
+                      )}
+                    </div>
+                  </div>
+                  </FilterCard>
                 </div>
               </div>
             </div>
@@ -5396,7 +5769,9 @@ export default function IBDRsRankingPage() {
                   className="ibd-rs-ranking-parallel-tables"
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: `repeat(${parallelChunksToShow.length}, ${IBDRS_QUADRANT_TABLE_WIDTH_PX}px)`,
+                    gridTemplateColumns: `repeat(${parallelChunksToShow.length}, ${
+                      utilityActive ? IBDRS_QUADRANT_TABLE_WIDTH_WITH_UTIL_RS_PX : IBDRS_QUADRANT_TABLE_WIDTH_PX
+                    }px)`,
                     gap: 8,
                     alignItems: 'start',
                     width: 'max-content',
@@ -5416,6 +5791,9 @@ export default function IBDRsRankingPage() {
                       deltaLongLabel={`Δ${deltaLongDaysResolved}`}
                       deltaShortTitle={deltaShortTitle}
                       deltaLongTitle={deltaLongTitle}
+                      showUtilityRsColumn={utilityActive}
+                      utilRsById={utilityIntervalRsById}
+                      utilRsTitle={utilityRsColumnTitle}
                     />
                   ))}
                 </div>
