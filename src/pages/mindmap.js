@@ -13,7 +13,12 @@ export default function MindMapPage() {
       <BrowserOnly fallback={<div>載入心智圖中...</div>}>
         {() => {
           const { MindMapList } = require('../components/MindMapComponent.jsx');
-          return <MindMapList />;
+          const AuthGate = require('../components/AuthGate.jsx').default;
+          return (
+            <AuthGate title="心智圖為私人資料">
+              <MindMapList />
+            </AuthGate>
+          );
         }}
       </BrowserOnly>
     </Layout>

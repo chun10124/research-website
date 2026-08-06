@@ -13,7 +13,12 @@ export default function WhiteboardPage() {
       <BrowserOnly fallback={<div>載入白板中...</div>}>
         {() => {
           const WhiteboardComponent = require('../components/WhiteboardComponent.jsx').default;
-          return <WhiteboardComponent />;
+          const AuthGate = require('../components/AuthGate.jsx').default;
+          return (
+            <AuthGate title="白板為私人資料">
+              <WhiteboardComponent />
+            </AuthGate>
+          );
         }}
       </BrowserOnly>
     </Layout>

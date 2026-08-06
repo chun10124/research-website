@@ -15,8 +15,13 @@ export default function JournalPage() {
         {() => {
           // 確保路徑指向您的組件
           const TradeJournalComponent = require('../components/TradeJournalComponent.jsx').default;
-          
-          return <TradeJournalComponent />;
+          const AuthGate = require('../components/AuthGate.jsx').default;
+
+          return (
+            <AuthGate title="交易日誌為私人資料">
+              <TradeJournalComponent />
+            </AuthGate>
+          );
         }}
       </BrowserOnly>
     </Layout>

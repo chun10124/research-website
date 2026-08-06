@@ -8,7 +8,12 @@ export default function PerformancePageRoute() {
       <BrowserOnly fallback={<div>載入績效資料中...</div>}>
         {() => {
           const PerformancePage = require('../components/PerformancePage.jsx').default;
-          return <PerformancePage />;
+          const AuthGate = require('../components/AuthGate.jsx').default;
+          return (
+            <AuthGate title="績效為私人資料">
+              <PerformancePage />
+            </AuthGate>
+          );
         }}
       </BrowserOnly>
     </Layout>

@@ -1,0 +1,45 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Firestore 安全規則（真正的權限邊界；前端程式碼與 apiKey 皆為公開，擋不住任何人）
+//
+// 貼上位置：Firebase Console → Firestore Database → 規則 → 發布（即時生效）
+// 此檔僅作為版本控管與草稿，不會被網站 build 或部署使用。
+//
+// 設計原則：
+//   1. 每日同步（GitHub Actions）是用「無身分」的 client SDK 寫入的，
+//      所以它會碰到的 collection 必須維持公開寫入，否則同步會全部 permission-denied。
+//      → ibdRsRatings / ibdRsMeta / stockWatchlist
+//   2. 個人資料一律只有擁有者可讀寫。
+//   3. RS 資料被惡意寫壞可重跑同步重建；交易日誌不行——所以優先保護後者。
+// ─────────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ⚠️ 部署前把這裡換成你的 Firebase Auth UID
+    //    取得方式：網站按 Google 登入 → Firebase Console → Authentication → Users → 複製「使用者 UID」
+    function isOwner() {
+      return request.auth != null && request.auth.uid == 'YOUR_UID_HERE';
+    }
+
+    // ── 公開：RS 與追蹤表 ────────────────────────────────────────────────────
+    // 朋友不需登入即可讀；每日同步不需身分即可寫。
+    match /ibdRsRatings/{doc}    { allow read, write: if true; }
+    match /ibdRsMeta/{doc}       { allow read, write: if true; }
+    match /stockWatchlist/{doc}  { allow read, write: if true; }
+    match /analysis_layout/{doc} { allow read, write: if true; }
+
+    // ── 私人：只有你 ────────────────────────────────────────────────────────
+    match /trade_journals/{doc}    { allow read, write: if isOwner(); }  // 交易日誌、績效頁
+    match /navHistory/{doc}        { allow read, write: if isOwner(); }  // 淨值歷史
+    match /whiteboard/{doc}        { allow read, write: if isOwner(); }  // 白板、已完成便利貼
+    match /mindmaps/{doc}          { allow read, write: if isOwner(); }  // 心智圖
+    match /investor_calendar/{doc} { allow read, write: if isOwner(); }  // 日曆
+
+    // 未列出的 collection 一律拒絕（這也是 Firestore 的預設行為，寫出來只是提醒）。
+    // ⚠️ 若資料庫裡還有此檔未涵蓋的 collection，它們會被擋掉——
+    //    上線前請到 Firestore Database → 資料 對一遍實際的 collection 清單。
+    match /{document=**} { allow read, write: if false; }
+  }
+}

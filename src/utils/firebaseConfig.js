@@ -3,6 +3,7 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { initializeFirestore, doc, collection } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
+import { getAuth } from "firebase/auth";
 import ExecutionEnvironment from '@docusaurus/ExecutionEnvironment';
 
 const firebaseConfig = {
@@ -48,6 +49,18 @@ export const WHITEBOARD_DOC_REF = doc(db, "whiteboard", "my_whiteboard");
 export const MINDMAP_DOC_REF = doc(db, "mindmaps", "mindmap_list");
 export const CALENDAR_DOC_REF = doc(db, "investor_calendar", "my_calendar");
 export const ANALYSIS_LAYOUT_DOC_REF = doc(db, "analysis_layout", "layout");
+
+/**
+ * Firebase Auth（僅瀏覽器端初始化；SSR/build 時為 null）。
+ * 登入狀態預設用 browserLocalPersistence 保存，關掉瀏覽器再開仍是登入狀態，
+ * 頁面載入時由 onAuthStateChanged 還原（見 src/utils/useAuth.js）。
+ */
+let auth = null;
+if (ExecutionEnvironment.canUseDOM) {
+    auth = getAuth(app);
+}
+
+export { auth };
 
 // Analytics 初始化
 let analytics;

@@ -13,7 +13,12 @@ export default function CompletedNotesPage() {
       <BrowserOnly fallback={<div>載入中...</div>}>
         {() => {
           const CompletedNotesComponent = require('../components/CompletedNotesComponent.jsx').default;
-          return <CompletedNotesComponent />;
+          const AuthGate = require('../components/AuthGate.jsx').default;
+          return (
+            <AuthGate title="便利貼為私人資料">
+              <CompletedNotesComponent />
+            </AuthGate>
+          );
         }}
       </BrowserOnly>
     </Layout>
