@@ -17,10 +17,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ⚠️ 部署前把這裡換成你的 Firebase Auth UID
-    //    取得方式：網站按 Google 登入 → Firebase Console → Authentication → Users → 複製「使用者 UID」
+    // 擁有者（Firebase Auth UID；取自 Console → Authentication → Users）
     function isOwner() {
-      return request.auth != null && request.auth.uid == 'YOUR_UID_HERE';
+      return request.auth != null && request.auth.uid == 'pRnvvRH8KlcK5Jq6GXHpBuh1eKA2';
     }
 
     // ── 公開：RS 與追蹤表 ────────────────────────────────────────────────────
