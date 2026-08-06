@@ -10,7 +10,8 @@
  *   1. 身分還原中 → 顯示載入字樣，**不 render children**
  *      （關鍵：children 一 mount 就會去讀 Firestore，這時還沒有身分會被拒絕）
  *   2. 未登入     → 顯示登入畫面
- *   3. 已登入     → render children，右上角一條細身分列可登出
+ *   3. 已登入     → 直接 render children，不加任何額外版面
+ *      （身分顯示與登出在 navbar 右側，見 NavbarAccount.jsx）
  *
  * 只有讀寫私人 collection 的頁面需要包：
  *   交易(trade_journals)、績效(trade_journals)、白板/已完成筆記(whiteboard)、
@@ -33,7 +34,7 @@ const WRAP = {
 };
 
 export default function AuthGate({ children, title = '這是私人資料' }) {
-  const { user, ready, error, signIn, logout } = useAuth();
+  const { user, ready, error, signIn } = useAuth();
 
   if (!ready) {
     return (
@@ -75,37 +76,5 @@ export default function AuthGate({ children, title = '這是私人資料' }) {
     );
   }
 
-  return (
-    <>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: 10,
-          padding: '4px 12px',
-          fontSize: 11,
-          color: 'var(--app-text-soft)',
-        }}
-      >
-        <span>{user.email || user.displayName || '已登入'}</span>
-        <button
-          type="button"
-          onClick={logout}
-          style={{
-            padding: '3px 9px',
-            fontSize: 11,
-            borderRadius: 6,
-            border: '1px solid var(--app-border)',
-            background: 'var(--app-surface)',
-            color: 'var(--app-text-soft)',
-            cursor: 'pointer',
-          }}
-        >
-          登出
-        </button>
-      </div>
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }
