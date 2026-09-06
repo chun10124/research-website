@@ -26,9 +26,9 @@ def build(kind, date, pdf_path=None, stale=None, market=None, blocks=None):
     msg['From'], msg['To'] = addr, addr
 
     if stale:
-        msg['Subject'] = f'⚠️ RS {label} {date} — 資料未更新，未產出報告'
+        msg['Subject'] = f'⚠️ {date} {label} — 資料未更新，未產出報告'
         msg.set_content(
-            f'RS {label} 今日未產出。\n\n'
+            f'{date} {label} 今日未產出。\n\n'
             f'原因：資料庫最新收盤日為 {stale}，與預期的交易日 {date} 不符。\n'
             f'代表每日同步未執行或失敗。\n\n'
             f'請檢查：\n'
@@ -38,7 +38,7 @@ def build(kind, date, pdf_path=None, stale=None, market=None, blocks=None):
             f'（本信為自動發出，資料正確前不會寄出報告，以免你看到過期數字。）\n')
         return msg
 
-    lines = [f'RS {label}　{date}', f'（{subtitle}）', '']
+    lines = [f'{date}　{label}', f'（{subtitle}）', '']
     if market:
         t, p = market.get('taiex') or {}, market.get('tpex_index') or {}
         lines += [f"加權指數　{t.get('close', 0):,.2f}　{t.get('chg', 0):+,.2f}　{t.get('pct', 0):+.2f}%",
@@ -54,7 +54,7 @@ def build(kind, date, pdf_path=None, stale=None, market=None, blocks=None):
     lines += ['詳見附件 PDF。', '',
               '本報告僅為數據排名與統計，不含任何買賣建議。']
 
-    msg['Subject'] = f'RS {label} {date}'
+    msg['Subject'] = f'{date} {label}'
     msg.set_content('\n'.join(lines))
 
     if pdf_path:
