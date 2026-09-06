@@ -7,9 +7,10 @@
 
 用法：python3 report_price.py <資料目錄> <輸出目錄>
 """
-import json, sys, statistics as st
+import json, math, sys, statistics as st
 from collections import Counter
 from pathlib import Path
+import sys as _sys; _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
@@ -26,8 +27,9 @@ matplotlib.rcParams.update({'font.sans-serif': [FONT], 'axes.unicode_minus': Fal
 SITE_RS, SITE_IDX, GRID = '#c0392b', '#1565c0', '#e5e7eb'
 UP_F, UP_E, DN_F, DN_E = '#e53935', '#c62828', '#1a8a30', '#0f5c1e'
 R, DR, G, DG, MUTED = '#c62828', '#8e1b1b', '#1a8a30', '#0f5c1e', '#666'
-BARS, COLS, ROWS_PER_PAGE = 120, 4, 4
-LIMIT_UP_PCT = 9.5          # 台股漲停≈+10%，受最小跳動單位影響，用 9.5% 近似
+from settings import (BARS, COLS, ROWS_PER_PAGE, MIN_COLS,     # noqa: E402
+                      MA_SHORT, MA_LONG, PRICE)
+B1, B2, B3 = PRICE['block1'], PRICE['block2'], PRICE['block3']
 
 ok = lambda v: v is not None
 clean = lambda xs: [x for x in xs if ok(x)]
@@ -41,23 +43,24 @@ def ma(seq, n):
 
 # ── 篩選 ────────────────────────────────────────────────────────────────
 def ma_stack(c):
-    m20, m50 = ma(c, 20)[-1], ma(c, 50)[-1]
+    m20, m50 = ma(c, MA_SHORT)[-1], ma(c, MA_LONG)[-1]
     return ok(m20) and ok(m50) and m20 > m50
 
-def new_high(c, n=120):
+def new_high(c, n):
     prev = clean(c[-n - 1:-1])
     return bool(prev) and ok(c[-1]) and c[-1] > max(prev)
 
 def limit_up(s, c):
+    pct = B2['limit_up_pct']
     p = s.get('p1')
-    if ok(p): return p >= LIMIT_UP_PCT
+    if ok(p): return p >= pct
     if len(c) < 2 or not ok(c[-2]) or c[-2] <= 0: return False
-    return (c[-1] - c[-2]) / c[-2] * 100 >= LIMIT_UP_PCT
+    return (c[-1] - c[-2]) / c[-2] * 100 >= pct
 
-def rs_rise_60(s):
+def rs_rise(s, days):
     h = s.get('rsHist') or []
-    if len(h) < 61: return None
-    cur, ref = h[-1]['r'], h[-61]['r']
+    if len(h) < days + 1: return None
+    cur, ref = h[-1]['r'], h[-days - 1]['r']
     return None if cur is None or ref is None else cur - ref
 
 def screen(universe, data_date):
@@ -68,11 +71,14 @@ def screen(universe, data_date):
         if len(c) < 130 or not ok(c[-1]): continue
         pool.append((s, c))
 
-    b1 = [(s, c) for s, c in pool if (s['rs'] or 0) > 85 and new_high(c, 120) and ma_stack(c)]
-    b2 = [(s, c) for s, c in pool if (s['rs'] or 0) > 85 and (s['hl'] or 0) > 0.75
-          and ma_stack(c) and limit_up(s, c)]
-    b3 = [(s, c) for s, c in pool if (s['rs'] or 0) > 75 and ma_stack(c)
-          and (rs_rise_60(s) or -99) > 25]
+    b1 = [(s, c) for s, c in pool if (s['rs'] or 0) > B1['rs_min']
+          and new_high(c, B1['high_days']) and (not B1['ma_stack'] or ma_stack(c))]
+    b2 = [(s, c) for s, c in pool if (s['rs'] or 0) > B2['rs_min']
+          and (s['hl'] or 0) > B2['hl_min']
+          and (not B2['ma_stack'] or ma_stack(c)) and limit_up(s, c)]
+    b3 = [(s, c) for s, c in pool if (s['rs'] or 0) > B3['rs_min']
+          and (not B3['ma_stack'] or ma_stack(c))
+          and (rs_rise(s, B3['rs_rise_days']) or -99) > B3['rs_rise_min']]
 
     seen = set()
     def dedupe(rows):
@@ -140,17 +146,22 @@ def card(fig, spec, s, cat, tw_close):
 # ── 版面 ────────────────────────────────────────────────────────────────
 L, RT = .048, .952          # 左右留白，封面與內頁一致
 
-BLOCK_DEF = (('區塊1 創新高', '6 個月新高　RS > 85　MA20 > MA50'),
-             ('區塊2 追發動', 'RS > 85　HL > 0.75　MA20 > MA50　當日漲停'),
-             ('區塊3 強勢股', 'RS 近 60 交易日上升 > 25　MA20 > MA50　RS > 75'))
+def _stack(c):
+    return f"　MA{MA_SHORT} > MA{MA_LONG}" if c.get('ma_stack') else ''
+
+BLOCK_DEF = (
+    (f"區塊1 {B1['name']}", f"{B1['high_days']} 日新高　RS > {B1['rs_min']}{_stack(B1)}"),
+    (f"區塊2 {B2['name']}", f"RS > {B2['rs_min']}　HL > {B2['hl_min']}{_stack(B2)}　當日漲停"),
+    (f"區塊3 {B3['name']}", f"RS 近 {B3['rs_rise_days']} 交易日上升 > {B3['rs_rise_min']}"
+                            f"{_stack(B3)}　RS > {B3['rs_min']}"),
+)
 
 def cover(pdf, mkt, blocks, data_date):
     fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
     rule = lambda y: fig.lines.append(
         plt.Line2D([L, RT], [y, y], color='#ddd', lw=.9, transform=fig.transFigure))
 
-    fig.text(L, .925, 'RS 價格報告', fontsize=25, fontweight='bold')
-    fig.text(RT, .932, data_date, fontsize=11, color=MUTED, ha='right')
+    fig.text(L, .925, f'{data_date}　價格報告', fontsize=25, fontweight='bold')
     rule(.895)
     fig.text(L, .850, '大盤', fontsize=13, fontweight='bold')
 
@@ -220,13 +231,23 @@ def cover(pdf, mkt, blocks, data_date):
         fig.text(RT, .90 - i * .026, '⚠️ ' + w, fontsize=8, color=R, ha='right')
     pdf.savefig(fig); plt.close(fig)
 
+def layout_for(n):
+    """依檔數決定欄列數：數量少時用較少欄位把卡片放大，避免整頁留白。
+       回傳 (每頁欄數, 每頁列數, 版面列數)——版面列數至少 2，
+       否則單列會被拉成整頁高、卡片變成極扁的長條。"""
+    cols = COLS if n > (MIN_COLS * 2) else MIN_COLS
+    rows = math.ceil(n / cols) if n else 1
+    return cols, min(rows, ROWS_PER_PAGE), max(2, min(rows, ROWS_PER_PAGE))
+
+
 def grid_pages(pdf, title, rows, cats, tw_close, data_date):
-    per = COLS * ROWS_PER_PAGE
+    cols, rpp, layout_rows = layout_for(len(rows))
+    per = cols * rpp
     pages = max(1, (len(rows) + per - 1) // per)
     for pg in range(pages):
         chunk = rows[pg * per:(pg + 1) * per]
         fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
-        gs = GridSpec(ROWS_PER_PAGE, COLS, figure=fig, hspace=.34, wspace=.14,
+        gs = GridSpec(layout_rows, cols, figure=fig, hspace=.34, wspace=.14,
                       left=L, right=RT, top=.855, bottom=.035)
         head = title + (f'（{pg + 1}/{pages}）' if pages > 1 else '')
         fig.suptitle(head, fontsize=13, fontweight='bold', y=.945, x=L, ha='left')
@@ -234,7 +255,7 @@ def grid_pages(pdf, title, rows, cats, tw_close, data_date):
         fig.lines.append(plt.Line2D([L, RT], [.918, .918], color='#ddd', lw=.9,
                                     transform=fig.transFigure))
         for i, (s, _c) in enumerate(chunk):
-            card(fig, gs[i // COLS, i % COLS], s, cats.get(s['id']), tw_close)
+            card(fig, gs[i // cols, i % cols], s, cats.get(s['id']), tw_close)
         pdf.savefig(fig); plt.close(fig)
 
 def build(data_dir, out_dir):

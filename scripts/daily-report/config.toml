@@ -1,0 +1,55 @@
+# ══════════════════════════════════════════════════════════════════════
+#  每日 RS 報告參數
+#  改完存檔即生效，不需改任何程式碼。本機驗證：
+#    python3 scripts/daily-report/run.py --kind price --no-mail --force
+# ══════════════════════════════════════════════════════════════════════
+
+[common]
+bars          = 120   # 每張卡片的 K 棒根數（約半年）
+history_days  = 120   # 封面圖表回看的交易日數；與 bars 一致，全報告同一個「半年」定義
+                      # 台股近一年約 243 個交易日，半年約 122，取 120 與 K 棒對齊
+cols          = 4     # 每頁欄數（檔數多時）
+rows_per_page = 4
+min_cols      = 3     # 檔數少時的最少欄數，避免單一檔佔掉半頁
+
+[common.ma]
+short = 20            # MA20
+long  = 50            # MA50
+
+# ── 價格報告（16:30）─────────────────────────────────────────────────
+# 三個區塊依序判定，個股只出現在最前面符合的那一區（區塊間去重）
+
+[price.block1]        # 創新高
+name     = "創新高"
+rs_min   = 85         # RS 需大於此值
+high_days = 120       # 收盤創幾日新高（120 ≈ 6 個月）
+ma_stack = true       # 需 MA20 > MA50
+
+[price.block2]        # 追發動
+name          = "追發動"
+rs_min        = 85
+hl_min        = 0.75  # 近六個月價位（0=最低、1=最高）
+ma_stack      = true
+limit_up_pct  = 9.5   # 當日漲幅達此值視為漲停。台股漲停≈10%，
+                      # 但受最小跳動單位影響不會剛好，故用 9.5 近似
+
+[price.block3]        # 強勢股
+name         = "強勢股"
+rs_min       = 75
+rs_rise_days = 60     # RS 與幾個交易日前相比
+rs_rise_min  = 25     # 上升幅度需大於此值
+ma_stack     = true
+
+# ── 籌碼報告（22:00）─────────────────────────────────────────────────
+# 母體＝追蹤表 ∩ RS≥rs_min ∩ 法人資料為最近交易日。
+# 只有追蹤表那 320 檔有法人資料，全市場沒有——資料面的硬限制。
+
+[chip]
+rs_min          = 85
+include_persist = true  # 納入「消退中」（訊號剛結束、仍在餘溫內）
+
+[chip.signal]           # 移植自 analysisUtils.js:129 calculateFlowSignal
+z_threshold  = 1.0      # 每日買賣超 z-score 超過幾個標準差算大買
+hist_window  = 250      # z-score 的歷史基準視窗（交易日）
+min_days     = 2        # 連續幾天超標才算 active
+persist_days = 3        # 訊號結束後的餘溫天數

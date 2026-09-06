@@ -13,7 +13,7 @@ DATA, OUT = HERE / '_data', HERE / '_out'      # 產物不進版控，見同層 
 TZ = zoneinfo.ZoneInfo('Asia/Taipei')
 
 sys.path.insert(0, str(HERE))
-import market, mailer                                   # noqa: E402
+import market, mailer, settings                         # noqa: E402
 
 def log(m): print(f'[run] {m}', flush=True)
 
@@ -59,11 +59,26 @@ def main():
         pdf, date, counts = report_price.build(DATA, OUT)
         blocks, mail_market = counts, m
     else:
-        log('抓取三大法人（含近 20 交易日外資序列，逐日請求需數秒）…')
+        log('抓取三大法人與半年籌碼序列…')
         inst = market.institutional(data_date)
         json.dump(inst, open(DATA / 'institutional.json', 'w'), ensure_ascii=False)
-        days = [r['date'] for r in taiex][-20:]
-        json.dump(market.foreign_net_series(days), open(DATA / 'foreign_series.json', 'w'))
+        # 半年 ≈ 124 交易日。FinMind 與期交所皆支援區間查詢，三項合計約 1 秒；
+        # 證交所的 BFI82U / MI_MARGN 只能逐日，同樣範圍要 240 次請求。
+        days = [r['date'] for r in taiex]
+        n = settings.HISTORY_DAYS
+        start = days[-n] if len(days) >= n else days[0]
+        # 單一來源失效不該讓整份報告產不出來（實測期交所偶發 308 重導向）；
+        # 抓不到就寫空陣列，封面該格會顯示「無法取得」，其餘照常。
+        tdays = [r['date'] for r in taiex]
+        for fn, getter in (('foreign_series.json',    lambda: market.foreign_net_series_all(start, data_date, tdays)),
+                           ('futures_oi_series.json', lambda: market.futures_oi_series(start, data_date)),
+                           ('margin_series.json',     lambda: market.margin_series(start, data_date))):
+            try:
+                val = getter()
+            except Exception as e:
+                log(f'⚠️ {fn} 抓取失敗，該圖留白：{e}')
+                val = []
+            json.dump(val, open(DATA / fn, 'w'), ensure_ascii=False)
         import report_chip
         pdf, date, counts = report_chip.build(DATA, OUT)
         blocks, mail_market = counts, None

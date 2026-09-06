@@ -11,8 +11,15 @@
 陣列皆為 newest-first（index 0 = 最新）。
 """
 import math
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from settings import SIGNAL                                    # noqa: E402
 
-Z_THRESHOLD, HIST_WINDOW, PERSIST_DAYS = 1.0, 250, 3
+Z_THRESHOLD  = SIGNAL['z_threshold']
+HIST_WINDOW  = SIGNAL['hist_window']
+PERSIST_DAYS = SIGNAL['persist_days']
+MIN_DAYS     = SIGNAL['min_days']
 
 def calc_streak(arr, z_threshold=Z_THRESHOLD, hist_window=HIST_WINDOW):
     a = [x for x in (arr or []) if x is not None]
@@ -39,7 +46,7 @@ def calc_streak(arr, z_threshold=Z_THRESHOLD, hist_window=HIST_WINDOW):
             days += 1; cum += a[i]
         else:
             break
-    active = days >= 2
+    active = days >= MIN_DAYS
 
     persist = persist_days = 0
     if not active:
@@ -49,7 +56,7 @@ def calc_streak(arr, z_threshold=Z_THRESHOLD, hist_window=HIST_WINDOW):
                 j, past = i, 0
                 while j < len(z) and z[j] > z_threshold:
                     past += 1; j += 1
-                if past >= 2:
+                if past >= MIN_DAYS:
                     persist = max(0, PERSIST_DAYS - (i - 1)); persist_days = past
                 break
             i += 1
