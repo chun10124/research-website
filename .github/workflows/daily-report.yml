@@ -56,9 +56,12 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          # 用 if 而非 `[ ... ] && ...`：GitHub 的 run: 預設帶 -e，
+          # AND-list 在條件為 false 時整句回非零，位置一變就會讓步驟莫名失敗。
+          # 手動測試時兩個旗標都是 true 所以沒暴露，排程觸發時才會是 false。
           ARGS="--kind ${{ github.event.inputs.kind }}"
-          [ "${{ github.event.inputs.no_mail }}" = "true" ] && ARGS="$ARGS --no-mail"
-          [ "${{ github.event.inputs.force }}"   = "true" ] && ARGS="$ARGS --force"
+          if [ "${{ github.event.inputs.no_mail }}" = "true" ]; then ARGS="$ARGS --no-mail"; fi
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then ARGS="$ARGS --force"; fi
           echo "== python3 scripts/daily-report/run.py $ARGS =="
           python3 scripts/daily-report/run.py $ARGS
 

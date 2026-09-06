@@ -62,6 +62,14 @@ curl https://research-daily-sync-trigger.<你的子網域>.workers.dev/health
 curl "https://research-daily-sync-trigger.<你的子網域>.workers.dev/?key=<TRIGGER_KEY>&mode=DRY"
 ```
 
+觸發報告（不寄信、強制產出，供非交易日測試）：
+
+```bash
+curl "https://research-daily-sync-trigger.<你的子網域>.workers.dev/?key=<TRIGGER_KEY>&report=price&no_mail=true&force=true"
+```
+
+`report` 可填 `price` 或 `chip`。
+
 沒設 `TRIGGER_KEY` 時，這個端點一律回 403（預設關閉，安全）。
 
 ## 驗證有沒有準點
@@ -70,7 +78,9 @@ curl "https://research-daily-sync-trigger.<你的子網域>.workers.dev/?key=<TR
 
 ## 維護
 
-- **改時間**：編輯 `wrangler.toml` 的 `crons`（UTC），重新 `npx wrangler deploy`。
+- **改時間**：編輯 `wrangler.toml` 的 `crons`（UTC）與 `worker.js` 的 `CRON_JOB`，
+  重新 `npx wrangler deploy`。兩處要同步——只改 cron 不改對應表，該次觸發會被當成
+  「未知 cron」略過（log 會寫）。
 - **改抓取邏輯**：那是 repo 裡的 `scripts/daily-sync/`，跟這支無關。這支只負責「準時按下按鈕」。
 - **PAT 到期**：重跑 `npx wrangler secret put GH_PAT` 換新的即可，不用重部署程式碼。
 - **看 log**：`npx wrangler tail` 即時看 cron 觸發紀錄。
