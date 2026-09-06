@@ -139,3 +139,49 @@ if __name__ == '__main__':
         print(f"{lbl}　漲 {d['up']:>4}（漲停 {d['limit_up']:>2}）　"
               f"跌 {d['down']:>4}（跌停 {d['limit_down']:>2}）　平 {d['flat']:>3}")
     for w in m['warnings']: print('⚠️', w)
+
+
+# ── 三大法人（大盤層級）─────────────────────────────────────────────────
+def _num(x):
+    return float(str(x).replace(',', '')) if x not in (None, '') else 0.0
+
+def institutional(date):
+    """單日三大法人買賣超（元）。上市 TWSE BFI82U、上櫃 TPEX 3insti_summary。
+       自營商合併「自行買賣 + 避險」。"""
+    out = {'date': date}
+    y = date.replace('-', '')
+    tw = get(f'https://www.twse.com.tw/rwd/zh/fund/BFI82U?dayDate={y}&type=day&response=json')
+    m = {r[0]: _num(r[3]) for r in tw.get('data', [])}
+    out['twse'] = {
+        'foreign': m.get('外資及陸資(不含外資自營商)', 0) + m.get('外資自營商', 0),
+        'trust':   m.get('投信', 0),
+        'dealer':  m.get('自營商(自行買賣)', 0) + m.get('自營商(避險)', 0),
+    }
+    tp = get('https://www.tpex.org.tw/openapi/v1/tpex_3insti_summary')
+    latest = max(r['Date'] for r in tp)
+    mm = {r['Investor'].strip(): _num(r['Net']) for r in tp if r['Date'] == latest}
+    out['tpex'] = {'foreign': mm.get('外資及陸資合計', 0),
+                   'trust':   mm.get('投信', 0),
+                   'dealer':  mm.get('自營商合計', 0)}
+    d = roc_to_ymd(latest)
+    if d != date:
+        out['tpex_date_mismatch'] = d
+    out['total'] = {k: out['twse'][k] + out['tpex'][k] for k in ('foreign', 'trust', 'dealer')}
+    return out
+
+def foreign_net_series(trading_days):
+    """近 N 個交易日的外資買賣超（上市，元）。單日數字沒有意義，要看連續性。
+       BFI82U 一次只給一天，故逐日抓；失敗的日子略過不中斷。"""
+    out = []
+    for d in trading_days:
+        try:
+            y = d.replace('-', '')
+            tw = get(f'https://www.twse.com.tw/rwd/zh/fund/BFI82U?dayDate={y}&type=day&response=json')
+            m = {r[0]: _num(r[3]) for r in tw.get('data', [])}
+            if not m: continue
+            out.append({'date': d,
+                        'foreign': m.get('外資及陸資(不含外資自營商)', 0) + m.get('外資自營商', 0),
+                        'trust': m.get('投信', 0)})
+        except Exception:
+            continue
+    return out

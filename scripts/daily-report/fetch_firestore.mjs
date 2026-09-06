@@ -72,11 +72,19 @@ async function fetchWatchlist() {
       id: String(d.id), name: d.name, category: d.category ?? null,
       latestInstDate: d.latestInstDate ?? null,
       latestHoldingsDate: d.latestHoldingsDate ?? null,
+      // 外資持股動能訊號（analysisUtils.calculateForeignForce 算好後存下來的，
+      // 與「連買」是兩套不同訊號，勿混用）
+      foreignSignal: d.foreignSignal ?? 'N',
+      foreignBCount: d.foreignBCount ?? 0,
+      zScore: d.zScore ?? null,
       // newest-first；籌碼報告的連買訊號需要 250 日基準 + 掃描緩衝
       instDates:   (h.instDates   || []).slice(0, 300),
       instForeign: (h.instForeign || []).slice(0, 300),
       instTrust:   (h.instTrust   || []).slice(0, 300),
       instDealer:  (h.instDealer  || []).slice(0, 300),
+      // 外資持股張數（newest-first），用來畫持股比例趨勢
+      foreignHoldingDates: (h.foreignHoldingDates || []).slice(0, 300),
+      foreignTotalHolding: (h.foreignTotalHolding || []).slice(0, 300),
     };
   });
   console.log(`[fetch] watchlist ${out.length} 檔（有產業標籤 ${out.filter((x) => x.category).length}）`);

@@ -49,22 +49,30 @@ def main():
         return 1
 
     log('抓取大盤資料…')
-    m = market.fetch(data_date)
-    json.dump(m, open(DATA / 'market.json', 'w'), ensure_ascii=False)
-    json.dump(market.fetch_taiex_daily(), open(DATA / 'taiex.json', 'w'))
+    taiex = market.fetch_taiex_daily()
+    json.dump(taiex, open(DATA / 'taiex.json', 'w'))
 
     if a.kind == 'price':
+        m = market.fetch(data_date)
+        json.dump(m, open(DATA / 'market.json', 'w'), ensure_ascii=False)
         import report_price
         pdf, date, counts = report_price.build(DATA, OUT)
-        blocks = {k: v for k, v in counts.items()}
+        blocks, mail_market = counts, m
     else:
-        log('籌碼報告尚未實作'); return 2
+        log('抓取三大法人（含近 20 交易日外資序列，逐日請求需數秒）…')
+        inst = market.institutional(data_date)
+        json.dump(inst, open(DATA / 'institutional.json', 'w'), ensure_ascii=False)
+        days = [r['date'] for r in taiex][-20:]
+        json.dump(market.foreign_net_series(days), open(DATA / 'foreign_series.json', 'w'))
+        import report_chip
+        pdf, date, counts = report_chip.build(DATA, OUT)
+        blocks, mail_market = counts, None
 
     if a.no_mail:
         log(f'--no-mail：略過寄信。PDF 位於 {pdf}')
         return 0
 
-    mailer.send(mailer.build(a.kind, date, pdf, market=m, blocks=blocks))
+    mailer.send(mailer.build(a.kind, date, pdf, market=mail_market, blocks=blocks))
     return 0
 
 if __name__ == '__main__':
