@@ -1,0 +1,72 @@
+name: 每日 RS 報告
+
+# 觸發：先以 workflow_dispatch 手動驗證；穩定後由 scripts/cron-trigger/ 的
+# Cloudflare Worker 準點打（價格報告 16:30、籌碼報告 22:00）。
+# 不用 on:schedule —— GitHub 排程實測延遲 2~4 小時，見 daily-sync.yml 的說明。
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: '報告種類'
+        required: true
+        default: 'price'
+        type: choice
+        options: [price, chip]
+      no_mail:
+        description: '只產 PDF 不寄信（產物可從 Artifacts 下載）'
+        required: false
+        default: false
+        type: boolean
+      force:
+        description: '非交易日或資料過期仍強制產出（測試用）'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: daily-report-${{ github.event.inputs.kind }}
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: 安裝 Python 與中文字型
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - name: 中文字型（缺這個 PDF 內中文會變空白方框）
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
+      - run: pip install -r scripts/daily-report/requirements.txt
+
+      - name: 產出報告並寄信
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          ARGS="--kind ${{ github.event.inputs.kind }}"
+          [ "${{ github.event.inputs.no_mail }}" = "true" ] && ARGS="$ARGS --no-mail"
+          [ "${{ github.event.inputs.force }}"   = "true" ] && ARGS="$ARGS --force"
+          echo "== python3 scripts/daily-report/run.py $ARGS =="
+          python3 scripts/daily-report/run.py $ARGS
+
+      - name: 保留 PDF 供下載
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rs-report-${{ github.event.inputs.kind }}
+          path: scripts/daily-report/_out/*.pdf
+          if-no-files-found: ignore
+          retention-days: 14
