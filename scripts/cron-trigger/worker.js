@@ -7,16 +7,19 @@
  *   （連凌晨低載時段也照樣延，非挑時間問題）。改用 workflow_dispatch（手動/API 觸發）
  *   不會被降級——本 Worker 的 Cron Trigger 準點呼叫 GitHub API，數秒內開跑。
  *
+ * ⚠️ 星期欄用 * 而非 1-5：實測 Cloudflare 的星期欄不是標準的 0=週日，
+ *    設 1-5 實際觸發的是週日～週四，週五完全不會跑（7 週零次）。詳見 wrangler.toml。
+ *
  * cron(UTC) → 要 dispatch 的 mode：
- *   37 7  * * 1-5  (台灣 15:37)  rsThenPrice        一次 dispatch；workflow 端在同一個 run 內
+ *   37 7  * * *    (台灣 15:37)  rsThenPrice        一次 dispatch；workflow 端在同一個 run 內
  *                                先跑 RS 全市場、再跑追蹤表價量，與原 schedule 完全相同。
  *                                ※ 刻意不拆成兩次 dispatch：GitHub 的 concurrency 在新 run 進 pending 時
  *                                  會取消「前一個還在 pending 的 run」，可能誤殺還沒排到 runner 的 RS。
- *   37 12 * * 1-5  (台灣 20:37)  holdingsRevenue    抓三大法人
- *   37 13 * * 1-5  (台灣 21:37)  holdingsRevenue    抓外資持股／營收
- *   30 8  * * 1-5  (台灣 16:30)  daily-report price 價格報告。15:37 那場實測 22~26 分，
+ *   37 12 * * *    (台灣 20:37)  holdingsRevenue    抓三大法人
+ *   37 13 * * *    (台灣 21:37)  holdingsRevenue    抓外資持股／營收
+ *   30 8  * * *    (台灣 16:30)  daily-report price 價格報告。15:37 那場實測 22~26 分，
  *                                約 16:05 完成，留 25 分餘裕。
- *   0  14 * * 1-5  (台灣 22:00)  daily-report chip  籌碼報告。21:37 那場約 21:42 完成。
+ *   0  14 * * *    (台灣 22:00)  daily-report chip  籌碼報告。21:37 那場約 21:42 完成。
  *
  * 報告端自帶防呆：交易所回報的最近交易日不等於今日就不產出；資料庫日期對不上
  * 就改寄警告信。所以非交易日觸發是無害的。
@@ -29,15 +32,15 @@
 /** cron(UTC) → { workflow, inputs }。workflow 省略時用 env.GH_WORKFLOW（daily-sync.yml）。 */
 const CRON_JOB = {
   // 資料同步
-  "37 7 * * 1-5": { inputs: { mode: "rsThenPrice", limit: "0" } }, // 台灣 15:37
-  "37 12 * * 1-5": { inputs: { mode: "holdingsRevenue", limit: "0" } }, // 台灣 20:37
-  "37 13 * * 1-5": { inputs: { mode: "holdingsRevenue", limit: "0" } }, // 台灣 21:37
+  "37 7 * * *": { inputs: { mode: "rsThenPrice", limit: "0" } }, // 台灣 15:37
+  "37 12 * * *": { inputs: { mode: "holdingsRevenue", limit: "0" } }, // 台灣 20:37
+  "37 13 * * *": { inputs: { mode: "holdingsRevenue", limit: "0" } }, // 台灣 21:37
   // 報告
-  "30 8 * * 1-5": {
+  "30 8 * * *": {
     workflow: "daily-report.yml",
     inputs: { kind: "price", no_mail: "false", force: "false" },
   }, // 台灣 16:30
-  "0 14 * * 1-5": {
+  "0 14 * * *": {
     workflow: "daily-report.yml",
     inputs: { kind: "chip", no_mail: "false", force: "false" },
   }, // 台灣 22:00
