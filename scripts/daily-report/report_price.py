@@ -1,9 +1,9 @@
-"""價格報告：三區塊篩選 + PDF 排版（唯讀，不寫任何資料庫）。
+"""價格報告：三分區篩選 + PDF 排版（唯讀，不寫任何資料庫）。
 
-區塊（順序即優先序，個股只出現在最前面符合的那一區）：
-  1 創新高  6 個月(120日)新高　RS > 85　MA20 > MA50
-  2 追發動  RS > 85　HL > 0.75　MA20 > MA50　當日漲停
-  3 強勢股  RS 近 60 交易日上升 > 25　MA20 > MA50　RS > 75
+分區（順序即優先序，個股只出現在最前面符合的那一區）：
+  A.創新高  6 個月(120日)新高　RS > 85　MA20 > MA50
+  B.追發動  RS > 85　HL > 0.75　MA20 > MA50　當日漲停
+  C.強勢股  RS 近 60 交易日上升 > 25　MA20 > MA50　RS > 75
 
 用法：python3 report_price.py <資料目錄> <輸出目錄>
 """
@@ -89,7 +89,7 @@ def screen(universe, data_date):
         return out
 
     order = lambda rows: sorted(dedupe(rows), key=lambda t: -(t[0]['rs'] or 0))
-    return {'區塊1': order(b1), '區塊2': order(b2), '區塊3': order(b3)}, len(pool)
+    return {'A': order(b1), 'B': order(b2), 'C': order(b3)}, len(pool)
 
 # ── 卡片 ────────────────────────────────────────────────────────────────
 def card(fig, spec, s, cat, tw_close):
@@ -149,14 +149,14 @@ L, RT = .048, .952          # 左右留白，封面與內頁一致
 def _stack(c):
     return f"　MA{MA_SHORT} > MA{MA_LONG}" if c.get('ma_stack') else ''
 
-BLOCK_DEF = (
-    (f"區塊1 {B1['name']}", f"{B1['high_days']} 日新高　RS > {B1['rs_min']}{_stack(B1)}"),
-    (f"區塊2 {B2['name']}", f"RS > {B2['rs_min']}　HL > {B2['hl_min']}{_stack(B2)}　當日漲停"),
-    (f"區塊3 {B3['name']}", f"RS 近 {B3['rs_rise_days']} 交易日上升 > {B3['rs_rise_min']}"
-                            f"{_stack(B3)}　RS > {B3['rs_min']}"),
+SECTIONS = (
+    ('A', B1['name'], f"{B1['high_days']} 日新高　RS > {B1['rs_min']}{_stack(B1)}"),
+    ('B', B2['name'], f"RS > {B2['rs_min']}　HL > {B2['hl_min']}{_stack(B2)}　當日漲停"),
+    ('C', B3['name'], f"RS 近 {B3['rs_rise_days']} 交易日上升 > {B3['rs_rise_min']}"
+                      f"{_stack(B3)}　RS > {B3['rs_min']}"),
 )
 
-def cover(pdf, mkt, blocks, data_date):
+def cover(pdf, mkt, sections, data_date):
     fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
     rule = lambda y: fig.lines.append(
         plt.Line2D([L, RT], [y, y], color='#ddd', lw=.9, transform=fig.transFigure))
@@ -220,12 +220,12 @@ def cover(pdf, mkt, blocks, data_date):
     for sp in ('left', 'bottom'): ax.spines[sp].set_color('#ccc')
 
     rule(.385)
-    fig.text(L, .325, '本報告區塊', fontsize=13, fontweight='bold')
+    fig.text(L, .325, '本報告分區', fontsize=13, fontweight='bold')
     y = .245
-    for name, cond in BLOCK_DEF:
-        fig.text(L, y, name, fontsize=12, fontweight='bold')
+    for key, name, cond in SECTIONS:
+        fig.text(L, y, f'{key}.{name}', fontsize=12, fontweight='bold')
         fig.text(.24, y, cond, fontsize=10.5, color='#444')
-        fig.text(RT, y, f"{len(blocks[name.split()[0]])} 檔", fontsize=12, ha='right', fontweight='bold')
+        fig.text(RT, y, f'{len(sections[key])} 檔', fontsize=12, ha='right', fontweight='bold')
         y -= .058
     for i, w in enumerate(mkt.get('warnings', [])):
         fig.text(RT, .90 - i * .026, '⚠️ ' + w, fontsize=8, color=R, ha='right')
@@ -267,18 +267,17 @@ def build(data_dir, out_dir):
     tw_close = {r['date']: r['close'] for r in json.load(open(data_dir / 'taiex.json'))}
 
     data_date = Counter(s['lastDate'] for s in universe).most_common(1)[0][0]
-    blocks, pool_n = screen(universe, data_date)
+    sections, pool_n = screen(universe, data_date)
     print(f'[report] 母體 {pool_n} 檔　' +
-          '　'.join(f'{k} {len(v)}' for k, v in blocks.items()))
+          '　'.join(f'{k} {len(v)}' for k, v in sections.items()))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = out_dir / f"{data_date[2:].replace('-', '')}_價格報告.pdf"
     with PdfPages(pdf_path) as pdf:
-        cover(pdf, mkt, blocks, data_date)
-        for name, cond in BLOCK_DEF:
-            key = name.split()[0]
-            grid_pages(pdf, f'{name}　{cond}', blocks[key], cats, tw_close, data_date)
-    counts = {k: len(v) for k, v in blocks.items()}
+        cover(pdf, mkt, sections, data_date)
+        for key, name, cond in SECTIONS:
+            grid_pages(pdf, f'{key}.{name}　{cond}', sections[key], cats, tw_close, data_date)
+    counts = {f'{k}.{name}': len(sections[k]) for k, name, _ in SECTIONS}
     json.dump(counts, open(out_dir / 'price_blocks.json', 'w'), ensure_ascii=False)
     print(f'[report] ✅ {pdf_path}')
     return str(pdf_path), data_date, counts

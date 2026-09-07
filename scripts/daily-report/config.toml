@@ -17,15 +17,15 @@ short = 20            # MA20
 long  = 50            # MA50
 
 # ── 價格報告（16:30）─────────────────────────────────────────────────
-# 三個區塊依序判定，個股只出現在最前面符合的那一區（區塊間去重）
+# 三個分區 A／B／C 依序判定，個股只出現在最前面符合的那一區（分區間去重）
 
-[price.block1]        # 創新高
+[price.block1]        # A.創新高
 name     = "創新高"
 rs_min   = 85         # RS 需大於此值
 high_days = 120       # 收盤創幾日新高（120 ≈ 6 個月）
 ma_stack = true       # 需 MA20 > MA50
 
-[price.block2]        # 追發動
+[price.block2]        # B.追發動
 name          = "追發動"
 rs_min        = 85
 hl_min        = 0.75  # 近六個月價位（0=最低、1=最高）
@@ -33,7 +33,7 @@ ma_stack      = true
 limit_up_pct  = 9.5   # 當日漲幅達此值視為漲停。台股漲停≈10%，
                       # 但受最小跳動單位影響不會剛好，故用 9.5 近似
 
-[price.block3]        # 強勢股
+[price.block3]        # C.強勢股
 name         = "強勢股"
 rs_min       = 75
 rs_rise_days = 60     # RS 與幾個交易日前相比

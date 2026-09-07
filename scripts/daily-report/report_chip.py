@@ -1,7 +1,7 @@
 """籌碼報告：外資／投信連買訊號 + PDF 排版（唯讀，不寫任何資料庫）。
 
 分區（順序即優先序，個股只出現一次）：
-  A 同時觸發外資與投信   B 僅外資   C 僅投信
+  A.同時觸發外資與投信   B.僅外資   C.僅投信
 
 母體＝追蹤表（stockWatchlist）∩ RS≥85 ∩ 法人資料為最近交易日。
 只有追蹤表那 320 檔有法人資料，全市場沒有——這是資料面的硬限制，非設計選擇。
@@ -351,7 +351,7 @@ def summary_page(pdf, sections, data_date, pool_n, inst=None):
     y = TOP
     for key, desc in SECTIONS:
         rows = sections[key]
-        fig.text(L, y, f'{key}　{desc}', fontsize=12.5, fontweight='bold')
+        fig.text(L, y, f'{key}.{desc}', fontsize=12.5, fontweight='bold')
         fig.text(L + .27, y, f'{len(rows)} 檔', fontsize=10.5, color=MUTED)
         y -= .038
         if not rows:
@@ -433,8 +433,8 @@ def build(data_dir, out_dir):
         summary_page(pdf, sections, data_date, pool_n, inst)
         for key, desc in SECTIONS:
             if sections[key]:
-                grid_pages(pdf, f'{key}　{desc}', sections[key], data_date)
-    counts = {f'{k} {d}': len(sections[k]) for k, d in SECTIONS}
+                grid_pages(pdf, f'{key}.{desc}', sections[key], data_date)
+    counts = {f'{k}.{d}': len(sections[k]) for k, d in SECTIONS}
     print(f'[chip] ✅ {pdf_path}')
     return str(pdf_path), data_date, counts
 

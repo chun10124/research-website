@@ -81,7 +81,7 @@ if __name__ == '__main__':
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--stale', help='資料庫實際最新日期；給了就寄警告信')
     ap.add_argument('--market', help='大盤摘要 JSON 路徑')
-    ap.add_argument('--blocks', help='區塊檔數 JSON 路徑')
+    ap.add_argument('--blocks', help='分區檔數 JSON 路徑')
     a = ap.parse_args()
 
     mkt = json.load(open(a.market)) if a.market and Path(a.market).exists() else None
