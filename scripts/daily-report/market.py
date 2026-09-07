@@ -1,7 +1,7 @@
 """大盤摘要：加權／櫃買指數漲跌、上市上櫃漲跌家數與漲跌停家數，以及最近交易日判定。
    來源皆為交易所官方：
      最近交易日    TWSE rwd      FMTQIK（當月每日成交量值）——不用 OpenAPI，理由見 latest_trading_day
-     加權指數      TWSE OpenAPI  /exchangeReport/MI_INDEX
+     加權指數      TWSE rwd      FMTQIK 的收盤指數與漲跌點數——不用 OpenAPI，理由見 fetch
      上市漲跌家數  TWSE rwd      MI_INDEX?type=MS  的「漲跌證券數合計」（取『股票』欄，排除權證/ETF）
      櫃買指數+家數 TPEX OpenAPI  /openapi/v1/tpex_mainborad_highlight（端點名稱官方拼錯，非筆誤）
 """
@@ -75,12 +75,31 @@ def fetch_taiex_daily(years=2):
     return out
 
 
-def _fmtqik_days(ym):
-    """ym: 'YYYYMM'。該月已公布的交易日（YYYY-MM-DD，遞增）。查無資料回 []。"""
+def _num(x):
+    """'46,551.13' → 46551.13；空值或非數字回 None。"""
+    try:
+        return float(str(x).replace(',', '').strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmtqik(ym):
+    """ym: 'YYYYMM'。該月已公布的交易日 → {'YYYY-MM-DD': {'close': 收盤指數, 'chg': 漲跌點數}}。
+       欄位為 日期/成交股數/成交金額/成交筆數/發行量加權股價指數/漲跌點數。查無資料回 {}。"""
     d = get(f'https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?date={ym}01&response=json')
     if d.get('stat') != 'OK':
-        return []
-    return sorted(x for x in (roc_to_ymd(r[0]) for r in d.get('data') or [] if r) if x)
+        return {}
+    out = {}
+    for r in d.get('data') or []:
+        if not r: continue
+        day = roc_to_ymd(r[0])
+        if day: out[day] = {'close': _num(r[4]), 'chg': _num(r[5])}
+    return out
+
+
+def _fmtqik_days(ym):
+    """ym: 'YYYYMM'。該月已公布的交易日（YYYY-MM-DD，遞增）。查無資料回 []。"""
+    return sorted(_fmtqik(ym))
 
 
 def _fmtqik_latest(today):
@@ -138,15 +157,28 @@ def fetch(data_date):
     out = {'date': data_date, 'warnings': []}
 
     # ── 加權指數 ──
-    twse_idx = get('https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX')
-    row = next((r for r in twse_idx if r.get('指數') == '發行量加權股價指數'), None)
-    if row:
-        sign = -1 if row.get('漲跌', '+').strip() == '-' else 1
-        out['taiex'] = {'close': float(row['收盤指數'].replace(',', '')),
-                        'chg': sign * float(row['漲跌點數'].replace(',', '')),
-                        'pct': sign * float(row['漲跌百分比'])}
-        d = roc_to_ymd(row['日期'])
-        if d != data_date: out['warnings'].append(f'加權指數日期 {d} 與報告資料日 {data_date} 不符')
+    # 主來源是 rwd 的 FMTQIK：官方收盤指數與漲跌點數，收盤後就有。
+    # openapi 的 MI_INDEX 只留作備援——2026-09-07 收盤後 6.5 小時實測，openapi 整站
+    # （MI_INDEX / MI_INDEX20 / STOCK_DAY_ALL / BWIBBU_d / FMTQIK）都還停在前一交易日 9/4，
+    # 同一時刻 rwd 已有 9/7。回應帶 no-cache 且無 Last-Modified，是上游產製落後而非快取。
+    # 漲跌百分比 FMTQIK 沒有，用「漲跌點數 ÷ 前一交易日收盤」自己算——
+    # 以 9/4 回推 693.47/45857.66 = 1.512%，與官方公告的 1.51 對得起來。
+    q = _fmtqik(data_date[:7].replace('-', '')).get(data_date)
+    if q and q['close'] is not None and q['chg'] is not None:
+        prev = q['close'] - q['chg']
+        out['taiex'] = {'close': q['close'], 'chg': q['chg'],
+                        'pct': (q['chg'] / prev * 100) if prev else 0.0}
+    else:
+        out['warnings'].append(f'FMTQIK 查無 {data_date} 加權指數，改用 openapi MI_INDEX')
+        twse_idx = get('https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX')
+        row = next((r for r in twse_idx if r.get('指數') == '發行量加權股價指數'), None)
+        if row:
+            sign = -1 if row.get('漲跌', '+').strip() == '-' else 1
+            out['taiex'] = {'close': float(row['收盤指數'].replace(',', '')),
+                            'chg': sign * float(row['漲跌點數'].replace(',', '')),
+                            'pct': sign * float(row['漲跌百分比'])}
+            d = roc_to_ymd(row['日期'])
+            if d != data_date: out['warnings'].append(f'加權指數日期 {d} 與報告資料日 {data_date} 不符')
 
     # ── 上市漲跌家數（取「股票」欄）──
     y = data_date.replace('-', '')
