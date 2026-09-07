@@ -1,5 +1,6 @@
 """大盤摘要：加權／櫃買指數漲跌、上市上櫃漲跌家數與漲跌停家數，以及最近交易日判定。
    來源皆為交易所官方：
+     最近交易日    TWSE rwd      FMTQIK（當月每日成交量值）——不用 OpenAPI，理由見 latest_trading_day
      加權指數      TWSE OpenAPI  /exchangeReport/MI_INDEX
      上市漲跌家數  TWSE rwd      MI_INDEX?type=MS  的「漲跌證券數合計」（取『股票』欄，排除權證/ETF）
      櫃買指數+家數 TPEX OpenAPI  /openapi/v1/tpex_mainborad_highlight（端點名稱官方拼錯，非筆誤）
@@ -29,7 +30,8 @@ def get(url):
         return json.loads(r.stdout)
 
 def roc_to_ymd(s):
-    s = str(s).strip()
+    """民國日期轉西元。'1150904' 與 '115/09/01' 兩種格式都吃。"""
+    s = str(s).strip().replace('/', '')
     return f"{int(s[:-4])+1911:04d}-{s[-4:-2]}-{s[-2:]}" if len(s) >= 6 else None
 
 def parse_pair(txt):
@@ -73,12 +75,62 @@ def fetch_taiex_daily(years=2):
     return out
 
 
+def _fmtqik_days(ym):
+    """ym: 'YYYYMM'。該月已公布的交易日（YYYY-MM-DD，遞增）。查無資料回 []。"""
+    d = get(f'https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?date={ym}01&response=json')
+    if d.get('stat') != 'OK':
+        return []
+    return sorted(x for x in (roc_to_ymd(r[0]) for r in d.get('data') or [] if r) if x)
+
+
+def _fmtqik_latest(today):
+    """FMTQIK 認定的最近交易日；查不到回 None。"""
+    import datetime
+    # 月初當月可能還沒有任何交易日（1 號逢假日），往前補查上個月。
+    months = (today.strftime('%Y%m'),
+              (today.replace(day=1) - datetime.timedelta(days=1)).strftime('%Y%m'))
+    for ym in months:
+        # 只認今天（含）以前——FMTQIK 不會有未來日期，純粹防呆。
+        days = [d for d in _fmtqik_days(ym) if d <= today.isoformat()]
+        if days:
+            return days[-1]
+    return None
+
+
+def _taiex_latest(today):
+    """Yahoo ^TWII 最後一根 K 線的日期；抓不到回 None。
+       只有真的開盤那天才會有 K 線，所以這根 K 就是「今天有沒有交易」的證人。
+       注意不能改用 volume > 0 判斷——收盤後成交量會晚一步才補上（9/7 實測當日 K 的 volume=0）。"""
+    try:
+        days = [r['date'] for r in fetch_taiex_daily(years=1) if r['date'] <= today.isoformat()]
+    except Exception:
+        return None
+    return days[-1] if days else None
+
+
 def latest_trading_day():
-    """交易所回報的最近一個交易日（YYYY-MM-DD）。
-       不自行推算國定假日／颱風假——以官方資料的日期為唯一真實來源。"""
-    idx = get('https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX')
-    row = next((r for r in idx if r.get('指數') == '發行量加權股價指數'), None)
-    return roc_to_ymd(row['日期']) if row else None
+    """最近一個交易日（YYYY-MM-DD）。
+       不自行推算國定假日／颱風假——以官方資料的日期為唯一真實來源。
+
+       兩個獨立來源取「較新者」：TWSE rwd 的 FMTQIK（當月每日成交量值）與 Yahoo ^TWII 的最後一根 K。
+       不用 OpenAPI 的 MI_INDEX：2026-09-07（交易日）實測它到收盤後 3.5 小時仍停在前一交易日 9/4，
+       16:30 的價格報告因此誤判「今日非交易日」，安靜跳過、不產出也不寄信，
+       而 Actions 那個 run 還是綠燈（見 run.py 的交易日關卡）。同一時刻 FMTQIK 與 Yahoo 都已有 9/7。
+
+       取較新者而非取交集，是因為要防的失敗是「單邊落後 → 靜默跳過」；
+       資料本身對不對另有 run.py 的 data_date 關卡把關，不靠這裡。
+       （實測 2026-08~09 兩來源的交易日集合完全一致。）
+
+       兩邊都查不到就拋錯，不回 None——回 None 會讓上游當成「今天非交易日」再次靜默跳過，
+       那正是這支函式要修掉的失敗模式。寧可讓 run 紅燈。"""
+    import datetime, zoneinfo
+    today = datetime.datetime.now(zoneinfo.ZoneInfo('Asia/Taipei')).date()
+    fm, yh = _fmtqik_latest(today), _taiex_latest(today)
+    if fm != yh:
+        print(f'[market] ⚠️ 交易日兩來源不一致：FMTQIK={fm} Yahoo^TWII={yh}，取較新者', flush=True)
+    if not fm and not yh:
+        raise RuntimeError('FMTQIK 與 Yahoo ^TWII 都查不到交易日，無法判定最近交易日')
+    return max(d for d in (fm, yh) if d)
 
 
 def fetch(data_date):
