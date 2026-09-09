@@ -240,20 +240,34 @@ def layout_for(n):
     return cols, min(rows, ROWS_PER_PAGE), max(2, min(rows, ROWS_PER_PAGE))
 
 
+def page_head(title, data_date):
+    """內頁頁首：分區標題、資料日期、分隔線。回傳 fig。"""
+    fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
+    fig.suptitle(title, fontsize=13, fontweight='bold', y=.945, x=L, ha='left')
+    fig.text(RT, .947, f'資料日期 {data_date}', fontsize=8.5, color=MUTED, ha='right', va='bottom')
+    fig.lines.append(plt.Line2D([L, RT], [.918, .918], color='#ddd', lw=.9,
+                                transform=fig.transFigure))
+    return fig
+
+
 def grid_pages(pdf, title, rows, cats, tw_close, data_date):
+    # 該分區今天一檔都沒有：頁還是留著（分區數固定，翻頁位置才不會每天跑掉），
+    # 但要明講「本日無符合個股」——否則就是一張只有標題的空白頁，看起來像排版壞掉。
+    if not rows:
+        fig = page_head(title, data_date)
+        fig.text(.5, .48, '本日無符合個股', fontsize=15, color=MUTED, ha='center', va='center')
+        pdf.savefig(fig); plt.close(fig)
+        return
+
     cols, rpp, layout_rows = layout_for(len(rows))
     per = cols * rpp
-    pages = max(1, (len(rows) + per - 1) // per)
+    pages = (len(rows) + per - 1) // per
     for pg in range(pages):
         chunk = rows[pg * per:(pg + 1) * per]
-        fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
+        head = title + (f'（{pg + 1}/{pages}）' if pages > 1 else '')
+        fig = page_head(head, data_date)
         gs = GridSpec(layout_rows, cols, figure=fig, hspace=.34, wspace=.14,
                       left=L, right=RT, top=.855, bottom=.035)
-        head = title + (f'（{pg + 1}/{pages}）' if pages > 1 else '')
-        fig.suptitle(head, fontsize=13, fontweight='bold', y=.945, x=L, ha='left')
-        fig.text(RT, .947, f'資料日期 {data_date}', fontsize=8.5, color=MUTED, ha='right', va='bottom')
-        fig.lines.append(plt.Line2D([L, RT], [.918, .918], color='#ddd', lw=.9,
-                                    transform=fig.transFigure))
         for i, (s, _c) in enumerate(chunk):
             card(fig, gs[i // cols, i % cols], s, cats.get(s['id']), tw_close)
         pdf.savefig(fig); plt.close(fig)
