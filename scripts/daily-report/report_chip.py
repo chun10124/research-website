@@ -1,11 +1,14 @@
 """籌碼報告：外資／投信連買訊號 + PDF 排版（唯讀，不寫任何資料庫）。
 
-分區（順序即優先序，個股只出現一次）：
-  A.同時觸發外資與投信   B.僅外資   C.僅投信
+分區（個股只出現一次）：
+  A.首日大買   B.同時觸發外資與投信   C.僅外資   D.僅投信
+判定優先序仍是連買訊號優先（B→C→D），都不符合才看 A。
 
 母體＝追蹤表（stockWatchlist）∩ RS≥85 ∩ 法人資料為最近交易日。
 只有追蹤表那 320 檔有法人資料，全市場沒有——這是資料面的硬限制，非設計選擇。
 訊號採原始嚴格參數（z>1.0、連買≥2 天），檔數少屬預期行為。
+A.首日大買＝單日 z 已過門檻但還沒連到第 2 天者；連買定義下買最兇的那一天
+只會落在這裡，故獨立成區。
 
 用法：python3 report_chip.py <資料目錄> <輸出目錄>
 """
@@ -21,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from flow_signal import flow_signal                                   # noqa: E402
 from report_price import (ok, clean, ma, FONT, GRID, UP_F, UP_E, DN_F, DN_E,   # noqa: E402
                           R, DR, G, DG, MUTED, BARS, COLS, ROWS_PER_PAGE, L, RT,
-                          layout_for, MA_SHORT, MA_LONG)
+                          layout_for, page_head, MA_SHORT, MA_LONG)
 
 # 沿用網站籌碼視窗配色（IBDRsRankingPage.jsx:1521）
 FOREIGN_C, TRUST_C, DEALER_C = '#1565c0', '#16a34a', '#f97316'
@@ -30,14 +33,15 @@ from settings import CHIP                                       # noqa: E402
 RS_MIN = CHIP['rs_min']
 INCLUDE_PERSIST = CHIP['include_persist']
 
-SECTIONS = (('A', '外資 ＋ 投信　同時'),
-            ('B', '僅外資'),
-            ('C', '僅投信'))
+SECTIONS = (('A', '首日大買'),
+            ('B', '外資 ＋ 投信　同時'),
+            ('C', '僅外資'),
+            ('D', '僅投信'))
 
 # ── 篩選 ────────────────────────────────────────────────────────────────
 def screen(watchlist, universe, data_date):
     uni = {s['id']: s for s in universe}
-    pool, out = [], {'A': [], 'B': [], 'C': []}
+    pool, out = [], {'A': [], 'B': [], 'C': [], 'D': []}
     for w in watchlist:
         u = uni.get(w['id'])
         if not u or (u['rs'] or 0) < RS_MIN: continue
@@ -48,12 +52,19 @@ def screen(watchlist, universe, data_date):
         # 納入「消退中」：訊號剛結束但仍在 3 日餘溫內（calculateFlowSignal 的 persist）
         fon = f['active'] or (INCLUDE_PERSIST and f['persist'] > 0)
         ton = t['active'] or (INCLUDE_PERSIST and t['persist'] > 0)
-        key = 'A' if (fon and ton) else 'B' if fon else 'C' if ton else None
+        # 連買訊號優先判定；都沒有才看是不是「首日大買」——
+        # 單日 z 已過門檻但還沒連到第 2 天。min_days=2 的定義下，
+        # 外資買最兇的那一天必然落在 A，而不是 B/C/D。
+        key = ('B' if (fon and ton) else 'C' if fon else 'D' if ton else
+               'A' if (f['days'] == 1 or t['days'] == 1) else None)
         if key: out[key].append((w, u))
-    for k in out:
+    for k in ('B', 'C', 'D'):
         # 正在觸發者優先，消退中的排後面；同組內依 RS 高到低
         out[k].sort(key=lambda p: (not (p[0]['_f']['active'] or p[0]['_t']['active']),
                                    -(p[1]['rs'] or 0)))
+    # 首日大買依當日買超張數由大到小——要先看到買最兇的那幾檔
+    out['A'].sort(key=lambda p: -max(p[0]['_f']['cum'] if p[0]['_f']['days'] == 1 else 0,
+                                     p[0]['_t']['cum'] if p[0]['_t']['days'] == 1 else 0))
     return out, len(pool)
 
 # ── 卡片：K棒 / 成交量 / 法人買賣超＋外資持股 ────────────────────────────
@@ -336,33 +347,53 @@ def summary_page(pdf, sections, data_date, pool_n, inst=None):
             return f"{name} {sig['days']}日 {round(sig['cum']):+,}張"
         if sig['persist'] > 0:
             return f"{name} 消退中　前 {sig['persist_days']}日、剩 {sig['persist']}日"
+        if sig['days'] == 1:
+            return f"{name} 首日 {round(sig['cum']):+,}張"
         return ''
 
-    # 行距依檔數自動縮放：檔數會逐日變動，寫死行距遲早爆版
-    TOP, BOTTOM = .592, .075
+    # 行距依檔數自動縮放：檔數會逐日變動，寫死行距遲早爆版。
+    # 縮到最小行距還是放不下就續頁，不截斷、也不壓縮任何一區——
+    # 少列一檔就是少一個看不到的訊號，寧可多印一頁。
+    HEAD, GAP, ROW_MAX, ROW_MIN = .038, .016, .031, .020
+    TOP, TOP_CONT, BOTTOM = .592, .880, .075
     n_rows = sum(max(1, len(sections[k])) for k, _ in SECTIONS)
-    n_head = len(SECTIONS)
-    avail = TOP - BOTTOM
-    step = min(.031, (avail - n_head * .038 - n_head * .016) / max(1, n_rows))
-    step = max(step, .020)                       # 再擠就看不清楚，寧可截斷
-    fits = int((avail - n_head * .038 - n_head * .016) / step)
-    shown, dropped = 0, 0
+    step = max(min(ROW_MAX, ((TOP - BOTTOM) - len(SECTIONS) * (HEAD + GAP))
+                   / max(1, n_rows)), ROW_MIN)
 
-    y = TOP
+    y = page_top = TOP
+
+    def new_page():
+        # 續頁沒有三大法人區塊，整頁都給清單
+        nonlocal fig, y, page_top
+        pdf.savefig(fig); plt.close(fig)
+        fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
+        fig.text(L, .938, '連買訊號（續）', fontsize=20, fontweight='bold')
+        fig.text(RT, .944, f'{data_date}　籌碼報告', fontsize=11, color=MUTED, ha='right')
+        fig.lines.append(plt.Line2D([L, RT], [.912, .912], color='#ddd', lw=.9,
+                                    transform=fig.transFigure))
+        y = page_top = TOP_CONT
+
+    def head(text, n=None):
+        nonlocal y
+        fig.text(L, y, text, fontsize=12.5, fontweight='bold')
+        if n is not None:
+            fig.text(L + .27, y, f'{n} 檔', fontsize=10.5, color=MUTED)
+        y -= HEAD
+
     for key, desc in SECTIONS:
         rows = sections[key]
-        fig.text(L, y, f'{key}.{desc}', fontsize=12.5, fontweight='bold')
-        fig.text(L + .27, y, f'{len(rows)} 檔', fontsize=10.5, color=MUTED)
-        y -= .038
+        # 標題後至少要放得下一行，否則整段挪到下一頁，免得留下孤兒標題
+        if y < page_top and y - (HEAD + step) < BOTTOM:
+            new_page()
+        head(f'{key}.{desc}', len(rows))
         if not rows:
             fig.text(L + .02, y, '今日無符合', fontsize=10, color='#bbb')
-            y -= .016 + step
+            y -= GAP + step
             continue
         for w, u in rows:
-            if shown >= fits:
-                dropped += 1
-                continue
-            shown += 1
+            if y < BOTTOM:
+                new_page()
+                head(f'{key}.{desc}（續）')
             cat = w.get('category')
             fig.text(L + .02, y, f"{u['id']} {u['name']}" + (f"_{cat}" if cat else ''),
                      fontsize=10.5)
@@ -377,11 +408,7 @@ def summary_page(pdf, sections, data_date, pool_n, inst=None):
                 fig.text(RT, y, f"B{w['foreignBCount']}", fontsize=9.5,
                          color='#ff2d87', fontweight='bold', ha='right')
             y -= step
-        y -= .016
-
-    if dropped:
-        fig.text(L + .02, y + .010, f'⋯ 另有 {dropped} 檔，詳見後續卡片頁',
-                 fontsize=9.5, color='#999')
+        y -= GAP
     fig.text(L, .042,
              '訊號＝每日買賣超 z-score（vs 過去 250 日）連續 2 天以上 > 1.0σ，'
              '移植自網站 calculateFlowSignal。',
@@ -394,20 +421,23 @@ def summary_page(pdf, sections, data_date, pool_n, inst=None):
 
 
 def grid_pages(pdf, title, rows, data_date):
+    # 該分區今天一檔都沒有：頁還是留著（分區數固定，翻頁位置才不會每天跑掉），
+    # 但要明講「今日無符合個股」——否則就是一張只有標題的空白頁，看起來像排版壞掉。
+    if not rows:
+        fig = page_head(title, data_date)
+        fig.text(.5, .48, '今日無符合個股', fontsize=15, color=MUTED, ha='center', va='center')
+        pdf.savefig(fig); plt.close(fig)
+        return
+
     cols, rpp, layout_rows = layout_for(len(rows))
     per = cols * rpp
-    pages = max(1, (len(rows) + per - 1) // per)
+    pages = (len(rows) + per - 1) // per
     for pg in range(pages):
         chunk = rows[pg * per:(pg + 1) * per]
-        fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
+        head = title + (f'（{pg + 1}/{pages}）' if pages > 1 else '')
+        fig = page_head(head, data_date)
         gs = GridSpec(layout_rows, cols, figure=fig, hspace=.52, wspace=.14,
                       left=L, right=RT, top=.835, bottom=.035)
-        head = title + (f'（{pg + 1}/{pages}）' if pages > 1 else '')
-        fig.suptitle(head, fontsize=13, fontweight='bold', y=.945, x=L, ha='left')
-        fig.text(RT, .947, f'資料日期 {data_date}', fontsize=8.5, color=MUTED,
-                 ha='right', va='bottom')
-        fig.lines.append(plt.Line2D([L, RT], [.918, .918], color='#ddd', lw=.9,
-                                    transform=fig.transFigure))
         for i, (w, u) in enumerate(chunk):
             card(fig, gs[i // cols, i % cols], w, u)
         pdf.savefig(fig); plt.close(fig)
@@ -432,8 +462,7 @@ def build(data_dir, out_dir):
         cover(pdf, inst, sections, data_date, pool_n, fseries, oiseries, mseries, taiex)
         summary_page(pdf, sections, data_date, pool_n, inst)
         for key, desc in SECTIONS:
-            if sections[key]:
-                grid_pages(pdf, f'{key}.{desc}', sections[key], data_date)
+            grid_pages(pdf, f'{key}.{desc}', sections[key], data_date)
     counts = {f'{k}.{d}': len(sections[k]) for k, d in SECTIONS}
     print(f'[chip] ✅ {pdf_path}')
     return str(pdf_path), data_date, counts
