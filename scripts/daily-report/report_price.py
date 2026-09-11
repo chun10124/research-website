@@ -2,7 +2,7 @@
 
 分區（順序即優先序，個股只出現在最前面符合的那一區）：
   A.創新高  6 個月(120日)新高　RS > 85　MA20 > MA50
-  B.追發動  RS > 85　HL > 0.75　MA20 > MA50　當日漲停
+  B.追發動  RS > 85　HL > 0.75　MA20 > MA50　當日漲停；不足 16 檔依當日漲幅補齊，全區依漲幅排序
   C.強勢股  RS 近 60 交易日上升 > 25　MA20 > MA50　RS > 75
 
 用法：python3 report_price.py <資料目錄> <輸出目錄>
@@ -50,12 +50,15 @@ def new_high(c, n):
     prev = clean(c[-n - 1:-1])
     return bool(prev) and ok(c[-1]) and c[-1] > max(prev)
 
-def limit_up(s, c):
-    pct = B2['limit_up_pct']
+def gain(s, c):
     p = s.get('p1')
-    if ok(p): return p >= pct
-    if len(c) < 2 or not ok(c[-2]) or c[-2] <= 0: return False
-    return (c[-1] - c[-2]) / c[-2] * 100 >= pct
+    if ok(p): return p
+    if len(c) < 2 or not ok(c[-2]) or c[-2] <= 0: return None
+    return (c[-1] - c[-2]) / c[-2] * 100
+
+def limit_up(s, c):
+    g = gain(s, c)
+    return ok(g) and g >= B2['limit_up_pct']
 
 def rs_rise(s, days):
     h = s.get('rsHist') or []
@@ -75,7 +78,7 @@ def screen(universe, data_date):
           and new_high(c, B1['high_days']) and (not B1['ma_stack'] or ma_stack(c))]
     b2 = [(s, c) for s, c in pool if (s['rs'] or 0) > B2['rs_min']
           and (s['hl'] or 0) > B2['hl_min']
-          and (not B2['ma_stack'] or ma_stack(c)) and limit_up(s, c)]
+          and (not B2['ma_stack'] or ma_stack(c))]
     b3 = [(s, c) for s, c in pool if (s['rs'] or 0) > B3['rs_min']
           and (not B3['ma_stack'] or ma_stack(c))
           and (rs_rise(s, B3['rs_rise_days']) or -99) > B3['rs_rise_min']]
@@ -89,7 +92,16 @@ def screen(universe, data_date):
         return out
 
     order = lambda rows: sorted(dedupe(rows), key=lambda t: -(t[0]['rs'] or 0))
-    return {'A': order(b1), 'B': order(b2), 'C': order(b3)}, len(pool)
+    by_gain = lambda rows: sorted(rows, key=lambda t: (-gain(*t), -(t[0]['rs'] or 0)))
+    a = order(b1)
+    b = dedupe(by_gain([r for r in b2 if limit_up(*r)]))
+    # 漲停不足 fill_to 檔：同條件未漲停者依當日漲幅補齊。只把「選中的」標記為已用，
+    # 沒選上的仍可落入 C 區。漲停與補齊都依漲幅排，整區即由高到低
+    need = max(0, B2.get('fill_to', 0) - len(b))
+    fill = by_gain([r for r in b2 if r[0]['id'] not in seen
+                    and not limit_up(*r) and ok(gain(*r))])[:need]
+    b += dedupe(fill)
+    return {'A': a, 'B': b, 'C': order(b3)}, len(pool)
 
 # ── 卡片 ────────────────────────────────────────────────────────────────
 def card(fig, spec, s, cat, tw_close):
@@ -151,10 +163,16 @@ def _stack(c):
 
 SECTIONS = (
     ('A', B1['name'], f"{B1['high_days']} 日新高　RS > {B1['rs_min']}{_stack(B1)}"),
-    ('B', B2['name'], f"RS > {B2['rs_min']}　HL > {B2['hl_min']}{_stack(B2)}　當日漲停"),
+    ('B', B2['name'], f"RS > {B2['rs_min']}　HL > {B2['hl_min']}{_stack(B2)}"),
     ('C', B3['name'], f"RS 近 {B3['rs_rise_days']} 交易日上升 > {B3['rs_rise_min']}"
                       f"{_stack(B3)}　RS > {B3['rs_min']}"),
 )
+
+def section_list(sections):
+    """B 的條件文字補上當日實際漲停檔數（其餘是依漲幅補齊的）與排序方式。"""
+    n_lu = sum(limit_up(s, c) for s, c in sections['B'])
+    return [(k, name, f'{cond}　依漲幅排列（今日漲停 {n_lu} 檔）' if k == 'B' else cond)
+            for k, name, cond in SECTIONS]
 
 def cover(pdf, mkt, sections, data_date):
     fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
@@ -222,7 +240,7 @@ def cover(pdf, mkt, sections, data_date):
     rule(.385)
     fig.text(L, .325, '本報告分區', fontsize=13, fontweight='bold')
     y = .245
-    for key, name, cond in SECTIONS:
+    for key, name, cond in section_list(sections):
         fig.text(L, y, f'{key}.{name}', fontsize=12, fontweight='bold')
         fig.text(.24, y, cond, fontsize=10.5, color='#444')
         fig.text(RT, y, f'{len(sections[key])} 檔', fontsize=12, ha='right', fontweight='bold')
@@ -289,7 +307,7 @@ def build(data_dir, out_dir):
     pdf_path = out_dir / f"{data_date[2:].replace('-', '')}_價格報告.pdf"
     with PdfPages(pdf_path) as pdf:
         cover(pdf, mkt, sections, data_date)
-        for key, name, cond in SECTIONS:
+        for key, name, cond in section_list(sections):
             grid_pages(pdf, f'{key}.{name}　{cond}', sections[key], cats, tw_close, data_date)
     counts = {f'{k}.{name}': len(sections[k]) for k, name, _ in SECTIONS}
     json.dump(counts, open(out_dir / 'price_blocks.json', 'w'), ensure_ascii=False)
