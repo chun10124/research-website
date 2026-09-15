@@ -37,7 +37,7 @@ fill_to       = 16    # 漲停不足此檔數時，從同條件（RS／HL／MA�
 
 [price.block3]        # C.強勢股
 name         = "強勢股"
-rs_min       = 75
+rs_min       = 80
 rs_rise_days = 60     # RS 與幾個交易日前相比
 rs_rise_min  = 25     # 上升幅度需大於此值
 ma_stack     = true
