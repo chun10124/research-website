@@ -55,6 +55,15 @@ def main():
     if a.kind == 'price':
         m = market.fetch(data_date)
         json.dump(m, open(DATA / 'market.json', 'w'), ensure_ascii=False)
+        # 封面 K 線下方的成交金額。抓不到不擋報告，該格顯示「無法取得」
+        kdays = [r['date'] for r in taiex if r['date'] <= data_date][-settings.HISTORY_DAYS:]
+        if data_date not in kdays: kdays.append(data_date)
+        try:
+            amt = market.taiex_amount_series(kdays)
+        except Exception as e:
+            log(f'⚠️ 成交金額抓取失敗，該圖留白：{e}')
+            amt = []
+        json.dump(amt, open(DATA / 'taiex_amount.json', 'w'))
         import report_price
         pdf, date, counts = report_price.build(DATA, OUT)
         blocks, mail_market = counts, m

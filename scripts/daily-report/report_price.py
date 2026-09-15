@@ -27,7 +27,7 @@ matplotlib.rcParams.update({'font.sans-serif': [FONT], 'axes.unicode_minus': Fal
 SITE_RS, SITE_IDX, GRID = '#c0392b', '#1565c0', '#e5e7eb'
 UP_F, UP_E, DN_F, DN_E = '#e53935', '#c62828', '#1a8a30', '#0f5c1e'
 R, DR, G, DG, MUTED = '#c62828', '#8e1b1b', '#1a8a30', '#0f5c1e', '#666'
-from settings import (BARS, COLS, ROWS_PER_PAGE, MIN_COLS,     # noqa: E402
+from settings import (BARS, COLS, ROWS_PER_PAGE, MIN_COLS, HISTORY_DAYS,     # noqa: E402
                       MA_SHORT, MA_LONG, PRICE)
 B1, B2, B3 = PRICE['block1'], PRICE['block2'], PRICE['block3']
 
@@ -174,7 +174,58 @@ def section_list(sections):
     return [(k, name, f'{cond}　依漲幅排列（今日漲停 {n_lu} 檔）' if k == 'B' else cond)
             for k, name, cond in SECTIONS]
 
-def cover(pdf, mkt, sections, data_date):
+def taiex_kline(ax, axv, taiex, amount, data_date):
+    """加權指數近半年日 K + MA，畫法同籌碼報告封面；axv 畫上市成交金額（億）。
+       Yahoo 若已有比資料日新的 K 棒則截掉。"""
+    rows = [r for r in (taiex or []) if r['date'] <= data_date]
+    n = min(HISTORY_DAYS, len(rows))
+    tx = rows[-n:]
+    if not tx:
+        for a in (ax, axv):
+            a.set_xticks([]); a.set_yticks([])
+        ax.text(.5, .5, '日線資料無法取得', ha='center', va='center',
+                fontsize=10, color='#999', transform=ax.transAxes)
+        return
+    o = [r.get('open') for r in tx]; h = [r.get('high') for r in tx]
+    l = [r.get('low') for r in tx]; c = [r['close'] for r in tx]
+    for i in range(n):
+        if not all(ok(v) for v in (o[i], h[i], l[i], c[i])): continue
+        fc, ec = (UP_F, UP_E) if c[i] >= o[i] else (DN_F, DN_E)
+        ax.vlines(i, l[i], h[i], color=ec, lw=.45)
+        body = abs(c[i] - o[i]) or (h[i] - l[i]) * .02 or .01
+        ax.add_patch(plt.Rectangle((i - .34, min(o[i], c[i])), .68, body,
+                                   facecolor=fc, edgecolor=ec, lw=.25))
+    cl = [r['close'] for r in rows]
+    for span, col in ((MA_SHORT, '#1f77b4'), (MA_LONG, '#ff7f0e')):
+        mv = ma(cl, span)[-n:]
+        ax.plot(range(n), [m if ok(m) else float('nan') for m in mv], color=col, lw=.9)
+    lo, hi = min(x for x in l if ok(x)), max(x for x in h if ok(x))
+    ax.set_ylim(lo - (hi - lo) * .05, hi + (hi - lo) * .05)
+    amt = {r['date']: r['amount'] / 1e8 for r in (amount or [])}
+    vals = [amt.get(r['date']) for r in tx]
+    if any(ok(v) for v in vals):
+        up = [i for i in range(n) if ok(vals[i]) and ok(o[i]) and ok(c[i]) and c[i] >= o[i]]
+        dn = [i for i in range(n) if ok(vals[i]) and i not in set(up)]
+        axv.bar(up, [vals[i] for i in up], color=UP_F, width=.8)
+        axv.bar(dn, [vals[i] for i in dn], color=DN_F, width=.8)
+        last = next((v for v in reversed(vals) if ok(v)), None)
+        axv.text(.005, .97, f'成交金額（億）　{last:,.0f}', transform=axv.transAxes,
+                 ha='left', va='top', fontsize=7, color='#666')
+        axv.set_ylim(0, max(v for v in vals if ok(v)) * 1.45)   # 頂部留白放標籤，不壓到柱子
+        axv.set_yticks([])
+    else:
+        axv.text(.5, .5, '成交金額無法取得', ha='center', va='center',
+                 fontsize=8, color='#999', transform=axv.transAxes)
+        axv.set_yticks([])
+    for a in (ax, axv): a.set_xlim(-1, n)
+    idx = list(range(0, n, max(1, n // 5)))
+    ax.set_xticks(idx); ax.tick_params(labelbottom=False)
+    axv.set_xticks(idx); axv.set_xticklabels([tx[i]['date'][5:] for i in idx])
+    ax.set_title(f'加權指數　近 {n} 交易日', fontsize=10.5, loc='left', pad=6, color='#333')
+    ax.text(1., 1.02, f'MA{MA_SHORT}／MA{MA_LONG}', transform=ax.transAxes,
+            ha='right', va='bottom', fontsize=8, color='#999')
+
+def cover(pdf, mkt, sections, data_date, taiex=None, amount=None):
     fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
     rule = lambda y: fig.lines.append(
         plt.Line2D([L, RT], [y, y], color='#ddd', lw=.9, transform=fig.transFigure))
@@ -214,7 +265,16 @@ def cover(pdf, mkt, sections, data_date):
     ax2.set_yticks([]); ax2.set_xticks([]); ax2.set_xlim(0, 1); ax2.set_ylim(-.55, 2.55)
     for sp in ax2.spines.values(): sp.set_visible(False)
 
-    ax = fig.add_axes([.605, .450, .347, .295])
+    # 右欄：上＝近半年日 K，下＝當日分時
+    axk = fig.add_axes([.605, .690, .347, .150])
+    axkv = fig.add_axes([.605, .628, .347, .058])
+    taiex_kline(axk, axkv, taiex, amount, data_date)
+    for a in (axk, axkv):
+        a.tick_params(labelsize=7.5, length=2); a.grid(True, ls='--', lw=.5, color='#eee')
+        for sp in ('top', 'right'): a.spines[sp].set_visible(False)
+        for sp in ('left', 'bottom'): a.spines[sp].set_color('#ccc')
+
+    ax = fig.add_axes([.605, .430, .347, .125])
     intr = mkt.get('intraday') or []
     if intr:
         vals = [p['v'] for p in intr]
@@ -296,7 +356,10 @@ def build(data_dir, out_dir):
     watchlist = json.load(open(data_dir / 'watchlist.json'))
     mkt = json.load(open(data_dir / 'market.json'))
     cats = {w['id']: w.get('category') for w in watchlist if w.get('category')}
-    tw_close = {r['date']: r['close'] for r in json.load(open(data_dir / 'taiex.json'))}
+    taiex = json.load(open(data_dir / 'taiex.json'))
+    tw_close = {r['date']: r['close'] for r in taiex}
+    amt_path = data_dir / 'taiex_amount.json'
+    amount = json.load(open(amt_path)) if amt_path.exists() else []
 
     data_date = Counter(s['lastDate'] for s in universe).most_common(1)[0][0]
     sections, pool_n = screen(universe, data_date)
@@ -306,7 +369,7 @@ def build(data_dir, out_dir):
     out_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = out_dir / f"{data_date[2:].replace('-', '')}_價格報告.pdf"
     with PdfPages(pdf_path) as pdf:
-        cover(pdf, mkt, sections, data_date)
+        cover(pdf, mkt, sections, data_date, taiex, amount)
         for key, name, cond in section_list(sections):
             grid_pages(pdf, f'{key}.{name}　{cond}', sections[key], cats, tw_close, data_date)
     counts = {f'{k}.{name}': len(sections[k]) for k, name, _ in SECTIONS}

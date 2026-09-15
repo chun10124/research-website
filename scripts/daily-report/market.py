@@ -84,7 +84,7 @@ def _num(x):
 
 
 def _fmtqik(ym):
-    """ym: 'YYYYMM'。該月已公布的交易日 → {'YYYY-MM-DD': {'close': 收盤指數, 'chg': 漲跌點數}}。
+    """ym: 'YYYYMM'。該月已公布的交易日 → {'YYYY-MM-DD': {'close': 收盤指數, 'chg': 漲跌點數, 'amount': 成交金額(元)}}。
        欄位為 日期/成交股數/成交金額/成交筆數/發行量加權股價指數/漲跌點數。查無資料回 {}。"""
     d = get(f'https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?date={ym}01&response=json')
     if d.get('stat') != 'OK':
@@ -93,8 +93,26 @@ def _fmtqik(ym):
     for r in d.get('data') or []:
         if not r: continue
         day = roc_to_ymd(r[0])
-        if day: out[day] = {'close': _num(r[4]), 'chg': _num(r[5])}
+        if day: out[day] = {'close': _num(r[4]), 'chg': _num(r[5]), 'amount': _num(r[2])}
     return out
+
+
+def taiex_amount_series(days):
+    """days: 交易日清單（YYYY-MM-DD）。回傳 [{'date', 'amount'(元)}]，只含 FMTQIK 查得到的日子。
+       上市成交金額，與加權指數同一母體。不用 Yahoo ^TWII 的 volume：
+       收盤後當日那根 volume 是 0（9/14 實測），報告出刊時最新一天必缺。逐月查，半年約 7 次請求。"""
+    import time
+    want, out = set(days), []
+    for i, ym in enumerate(sorted({d[:7].replace('-', '') for d in days})):
+        if i: time.sleep(.4)                 # 證交所 rwd 對連續請求有頻率限制
+        for day, v in _fmtqik(ym).items():
+            if day in want and ok_num(v.get('amount')):
+                out.append({'date': day, 'amount': v['amount']})
+    return sorted(out, key=lambda r: r['date'])
+
+
+def ok_num(x):
+    return isinstance(x, (int, float))
 
 
 def _fmtqik_days(ym):
