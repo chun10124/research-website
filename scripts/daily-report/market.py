@@ -67,9 +67,15 @@ def fetch_taiex_daily(years=2):
     q = r['indicators']['quote'][0]
     out = []
     for i, t in enumerate(r['timestamp']):
+        d = datetime.datetime.fromtimestamp(t, tz)
+        # 只認開盤時刻（09:00）的 bar。2026-09-20（週日）Yahoo 多回一根時間戳 12:01:15
+        # ＝meta.regularMarketTime 的殘根，不是日 K：open 抄 9/18、high 49366(+4.6%) 是假的、
+        # volume=0。它讓 latest_trading_day() 誤判週日有開盤，兩份報告各寄了一封假的資料過期警告信。
+        # 近兩年 489 根裡 488 根都是 09:00:00；補行交易日（週六）也是 09:00，不會被誤殺。
+        if d.strftime('%H:%M:%S') != '09:00:00': continue
         c = q['close'][i]
         if c is None: continue
-        out.append({'date': datetime.datetime.fromtimestamp(t, tz).strftime('%Y-%m-%d'),
+        out.append({'date': d.strftime('%Y-%m-%d'),
                     'open': q['open'][i], 'high': q['high'][i],
                     'low': q['low'][i], 'close': c, 'volume': q['volume'][i]})
     return out
