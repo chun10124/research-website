@@ -50,6 +50,15 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
       - run: pip install -r scripts/daily-report/requirements.txt
 
+      # 法說會快照：判定「今日新增」要跟先前的清單比對，觀測站本身沒有申報日期。
+      # key 每次唯一、restore-keys 取最近一份；cache 7 天沒被讀才會被清，每日跑不會過期
+      - name: 還原法說會快照
+        uses: actions/cache/restore@v4
+        with:
+          path: scripts/daily-report/_state
+          key: conf-state-${{ github.run_id }}
+          restore-keys: conf-state-
+
       - name: 產出報告並寄信
         env:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
@@ -64,6 +73,13 @@ jobs:
           if [ "${{ github.event.inputs.force }}" = "true" ]; then ARGS="$ARGS --force"; fi
           echo "== python3 scripts/daily-report/run.py $ARGS =="
           python3 scripts/daily-report/run.py $ARGS
+
+      - name: 保存法說會快照
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: scripts/daily-report/_state
+          key: conf-state-${{ github.run_id }}
 
       - name: 保留 PDF 供下載
         if: always()

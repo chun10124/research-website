@@ -10,6 +10,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 DATA, OUT = HERE / '_data', HERE / '_out'      # 產物不進版控，見同層 .gitignore
+STATE = HERE / '_state'                         # 法說會快照；Actions 以 cache 跨 run 保存
 TZ = zoneinfo.ZoneInfo('Asia/Taipei')
 
 sys.path.insert(0, str(HERE))
@@ -51,6 +52,18 @@ def main():
     log('抓取大盤資料…')
     taiex = market.fetch_taiex_daily()
     json.dump(taiex, open(DATA / 'taiex.json', 'w'))
+
+    # 未來法說會（兩份報告都要標注）。抓不到不擋報告：寫 null，
+    # 報告端把「無法取得」與「查到 0 場」分開顯示，免得誤讀成「都沒有法說會」
+    import conference
+    try:
+        confs = conference.fetch(data_date, settings.CONF_DAYS, STATE, a.kind)
+        log(f"未來 {settings.CONF_DAYS} 日法說會 {len(confs['rows'])} 場　"
+            f"今日新增 {sum(r['new'] for r in confs['rows'])}（比對基準 {confs['baseline']}）")
+    except Exception as e:
+        log(f'⚠️ 法說會抓取失敗，標注與 D 區留白：{e}')
+        confs = None
+    json.dump(confs, open(DATA / 'conferences.json', 'w'), ensure_ascii=False)
 
     if a.kind == 'price':
         m = market.fetch(data_date)

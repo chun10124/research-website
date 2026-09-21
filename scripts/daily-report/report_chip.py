@@ -9,6 +9,7 @@
 訊號採原始嚴格參數（z>1.0、連買≥2 天），檔數少屬預期行為。
 A.首日大買＝單日 z 已過門檻但還沒連到第 2 天者；連買定義下買最兇的那一天
 只會落在這裡，故獨立成區。
+14 日內有法說會者，卡片 K 線左上角與第二頁清單標「法說 MM/DD」。
 
 用法：python3 report_chip.py <資料目錄> <輸出目錄>
 """
@@ -18,10 +19,12 @@ from pathlib import Path
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+from matplotlib.transforms import blended_transform_factory
 from matplotlib.backends.backend_pdf import PdfPages
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from flow_signal import flow_signal                                   # noqa: E402
+import conference                                                     # noqa: E402
 from report_price import (ok, clean, ma, FONT, GRID, UP_F, UP_E, DN_F, DN_E,   # noqa: E402
                           R, DR, G, DG, MUTED, BARS, COLS, ROWS_PER_PAGE, L, RT,
                           layout_for, page_head, MA_SHORT, MA_LONG)
@@ -68,7 +71,7 @@ def screen(watchlist, universe, data_date):
     return out, len(pool)
 
 # ── 卡片：K棒 / 成交量 / 法人買賣超＋外資持股 ────────────────────────────
-def card(fig, spec, w, u):
+def card(fig, spec, w, u, conf=None):
     n = min(BARS, len(u['close']))
     d, c, v = u['dates'][-n:], u['close'][-n:], u['vol'][-n:]
     o = (u.get('open') or [None] * n)[-n:]
@@ -154,6 +157,7 @@ def card(fig, spec, w, u):
     if w.get('foreignSignal') == 'B':
         axk.text(1., 1.19, f"B{w['foreignBCount']}", transform=axk.transAxes,
                  ha='right', va='baseline', fontsize=8.5, color='#ff2d87', fontweight='bold')
+    conference.badge(axk, conf)
 
     def tag(sig, name):
         if sig['active']:
@@ -180,11 +184,12 @@ def cover(pdf, inst, sections, data_date, pool_n,
 
     fig.text(L, .938, f'{data_date}　籌碼報告', fontsize=24, fontweight='bold')
 
-    rule(.912)
+    RULE_Y, K_TOP = .912, .868
+    rule(RULE_Y)
 
     # ── 大盤卡片：K 線 / 外資未平倉 / 外資買賣超 / 融資餘額 ─────────────
     gs = GridSpec(4, 1, figure=fig, height_ratios=[7.6, 2.2, 2.2, 2.2], hspace=.24,
-                  left=L, right=RT, top=.868, bottom=.055)
+                  left=L, right=RT, top=K_TOP, bottom=.055)
     axk, axo, axb, axm = (fig.add_subplot(gs[i]) for i in range(4))
 
     n = min(BARS, len(taiex or []))
@@ -208,13 +213,17 @@ def cover(pdf, inst, sections, data_date, pool_n,
         last = tx[-1]
         prev = tx[-2]['close'] if len(tx) > 1 else last['close']
         chg = last['close'] - prev
-        axk.text(0., 1.06, f'加權指數　近 {n} 交易日', transform=axk.transAxes,
-                 ha='left', va='baseline', fontsize=11, fontweight='bold')
-        axk.text(1., 1.06, f"{last['close']:,.2f}　{chg:+,.2f}　{chg/prev*100:+.2f}%",
-                 transform=axk.transAxes, ha='right', va='baseline', fontsize=11,
+        # 標題列垂直置中於上方分隔線與圖框頂之間；x 跟圖框、y 用 figure 座標。
+        # 三段字級不同（11 / 8.5），以中心對齊，小字才不會看起來往下沉
+        hdr = blended_transform_factory(axk.transAxes, fig.transFigure)
+        TY = (RULE_Y + K_TOP) / 2
+        axk.text(0., TY, f'加權指數　近 {n} 交易日', transform=hdr,
+                 ha='left', va='center', fontsize=11, fontweight='bold')
+        axk.text(1., TY, f"{last['close']:,.2f}　{chg:+,.2f}　{chg/prev*100:+.2f}%",
+                 transform=hdr, ha='right', va='center', fontsize=11,
                  fontweight='bold', color=(R if chg >= 0 else G))
-        axk.text(.5, 1.06, f'MA{MA_SHORT}／MA{MA_LONG}', transform=axk.transAxes,
-                 ha='center', va='baseline', fontsize=8.5, color='#999')
+        axk.text(.5, TY, f'MA{MA_SHORT}／MA{MA_LONG}', transform=hdr,
+                 ha='center', va='center', fontsize=8.5, color='#999')
 
     def strip(ax, title, chg_txt, chg_val, level_txt, rows, draw):
         """標題列的視覺權重：當日變動最大（每天真正要看的），存量退為輔助資訊。"""
@@ -304,7 +313,7 @@ def cover(pdf, inst, sections, data_date, pool_n,
                  fontsize=8, color=R, ha='right')
     pdf.savefig(fig); plt.close(fig)
 
-def summary_page(pdf, sections, data_date, pool_n, inst=None):
+def summary_page(pdf, sections, data_date, pool_n, inst=None, cmap=None):
     """第二頁：三大法人買賣超 + 連買訊號總覽。
        先給可掃視的數字與清單，後面才是逐檔卡片。"""
     fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
@@ -341,6 +350,8 @@ def summary_page(pdf, sections, data_date, pool_n, inst=None):
     fig.text(L + .11, .652,
              f'母體 {pool_n} 檔　追蹤表 ∩ RS≥{RS_MIN} ∩ 法人資料為最近交易日',
              fontsize=9.5, color='#999')
+    if cmap is None:
+        fig.text(RT, .652, '法說會資料無法取得，本報告未標注', fontsize=9, color=R, ha='right')
 
     def line(sig, name):
         if sig['active']:
@@ -403,10 +414,15 @@ def summary_page(pdf, sections, data_date, pool_n, inst=None):
                 fig.text(.398, y, f'{p1:+.1f}%', fontsize=10, ha='right',
                          color=(R if p1 >= 0 else G))
             fig.text(.435, y, line(w['_f'], '外資'), fontsize=9.5, color=FOREIGN_C)
-            fig.text(.695, y, line(w['_t'], '投信'), fontsize=9.5, color=TRUST_C)
+            fig.text(.645, y, line(w['_t'], '投信'), fontsize=9.5, color=TRUST_C)
             if w.get('foreignSignal') == 'B':
                 fig.text(RT, y, f"B{w['foreignBCount']}", fontsize=9.5,
                          color='#ff2d87', fontweight='bold', ha='right')
+            cf = (cmap or {}).get(u['id'])
+            if cf:
+                fig.text(RT - .045, y, conference.label(cf), fontsize=8.5, color='white',
+                         fontweight='bold', ha='right',
+                         bbox=dict(boxstyle='round,pad=.2', fc=conference.color(cf), ec='none'))
             y -= step
         y -= GAP
     fig.text(L, .042,
@@ -420,7 +436,7 @@ def summary_page(pdf, sections, data_date, pool_n, inst=None):
     pdf.savefig(fig); plt.close(fig)
 
 
-def grid_pages(pdf, title, rows, data_date):
+def grid_pages(pdf, title, rows, data_date, cmap=None):
     # 該分區今天一檔都沒有：頁還是留著（分區數固定，翻頁位置才不會每天跑掉），
     # 但要明講「今日無符合個股」——否則就是一張只有標題的空白頁，看起來像排版壞掉。
     if not rows:
@@ -439,7 +455,7 @@ def grid_pages(pdf, title, rows, data_date):
         gs = GridSpec(layout_rows, cols, figure=fig, hspace=.52, wspace=.14,
                       left=L, right=RT, top=.835, bottom=.035)
         for i, (w, u) in enumerate(chunk):
-            card(fig, gs[i // cols, i % cols], w, u)
+            card(fig, gs[i // cols, i % cols], w, u, (cmap or {}).get(u['id']))
         pdf.savefig(fig); plt.close(fig)
 
 def build(data_dir, out_dir):
@@ -450,6 +466,8 @@ def build(data_dir, out_dir):
     load = lambda f: json.load(open(data_dir / f)) if (data_dir / f).exists() else None
     fseries, oiseries, mseries = load('foreign_series.json'), load('futures_oi_series.json'), load('margin_series.json')
     taiex = load('taiex.json')
+    confs = load('conferences.json')           # null＝觀測站抓不到；不標注，頁尾註明
+    cmap = conference.by_stock(confs)
 
     data_date = Counter(s['lastDate'] for s in universe).most_common(1)[0][0]
     sections, pool_n = screen(watchlist, universe, data_date)
@@ -460,9 +478,9 @@ def build(data_dir, out_dir):
     pdf_path = out_dir / f"{data_date[2:].replace('-', '')}_籌碼報告.pdf"
     with PdfPages(pdf_path) as pdf:
         cover(pdf, inst, sections, data_date, pool_n, fseries, oiseries, mseries, taiex)
-        summary_page(pdf, sections, data_date, pool_n, inst)
+        summary_page(pdf, sections, data_date, pool_n, inst, cmap if confs is not None else None)
         for key, desc in SECTIONS:
-            grid_pages(pdf, f'{key}.{desc}', sections[key], data_date)
+            grid_pages(pdf, f'{key}.{desc}', sections[key], data_date, cmap)
     counts = {f'{k}.{d}': len(sections[k]) for k, d in SECTIONS}
     print(f'[chip] ✅ {pdf_path}')
     return str(pdf_path), data_date, counts

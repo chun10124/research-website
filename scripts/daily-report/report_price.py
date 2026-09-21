@@ -4,6 +4,8 @@
   A.創新高  6 個月(120日)新高　RS > 85　MA20 > MA50
   B.追發動  RS > 85　HL > 0.75　MA20 > MA50　當日漲停；不足 16 檔依當日漲幅補齊，全區依漲幅排序
   C.強勢股  RS 近 60 交易日上升 > 25　MA20 > MA50　RS > 80
+  D.法說會  RS ≥ 80　HL > 0.75 且未來 14 日內有法說會；不參與去重，依法說日期排列
+  所有卡片若 14 日內有法說會，K 線左上角標「法說 MM/DD」
 
 用法：python3 report_price.py <資料目錄> <輸出目錄>
 """
@@ -28,8 +30,9 @@ SITE_RS, SITE_IDX, GRID = '#c0392b', '#1565c0', '#e5e7eb'
 UP_F, UP_E, DN_F, DN_E = '#e53935', '#c62828', '#1a8a30', '#0f5c1e'
 R, DR, G, DG, MUTED = '#c62828', '#8e1b1b', '#1a8a30', '#0f5c1e', '#666'
 from settings import (BARS, COLS, ROWS_PER_PAGE, MIN_COLS, HISTORY_DAYS,     # noqa: E402
-                      MA_SHORT, MA_LONG, PRICE)
-B1, B2, B3 = PRICE['block1'], PRICE['block2'], PRICE['block3']
+                      MA_SHORT, MA_LONG, PRICE, CONF_DAYS)
+import conference                                                       # noqa: E402
+B1, B2, B3, B4 = PRICE['block1'], PRICE['block2'], PRICE['block3'], PRICE['block4']
 
 ok = lambda v: v is not None
 clean = lambda xs: [x for x in xs if ok(x)]
@@ -104,7 +107,7 @@ def screen(universe, data_date):
     return {'A': a, 'B': b, 'C': order(b3)}, len(pool)
 
 # ── 卡片 ────────────────────────────────────────────────────────────────
-def card(fig, spec, s, cat, tw_close):
+def card(fig, spec, s, cat, tw_close, conf=None):
     n = min(BARS, len(s['close']))
     ma20, ma50 = ma(s['close'], 20)[-n:], ma(s['close'], 50)[-n:]   # 含暖身段，線才畫得滿
     d, c, v = s['dates'][-n:], s['close'][-n:], s['vol'][-n:]
@@ -154,6 +157,7 @@ def card(fig, spec, s, cat, tw_close):
              transform=axk.transAxes, ha='left', va='baseline', fontsize=9, fontweight='bold')
     axk.text(1., TY, f"RS {s['rs']}　{p1:+.1f}%" if ok(p1) else f"RS {s['rs']}",
              transform=axk.transAxes, ha='right', va='baseline', fontsize=9, color='#555')
+    conference.badge(axk, conf)
 
 # ── 版面 ────────────────────────────────────────────────────────────────
 L, RT = .048, .952          # 左右留白，封面與內頁一致
@@ -166,13 +170,29 @@ SECTIONS = (
     ('B', B2['name'], f"RS > {B2['rs_min']}　HL > {B2['hl_min']}{_stack(B2)}"),
     ('C', B3['name'], f"RS 近 {B3['rs_rise_days']} 交易日上升 > {B3['rs_rise_min']}"
                       f"{_stack(B3)}　RS > {B3['rs_min']}"),
+    ('D', B4['name'], f"未來 {CONF_DAYS} 日內有法說會　RS ≥ {B4['rs_min']}　HL > {B4['hl_min']}"
+                      "　依法說日期排列"),
 )
 
-def section_list(sections):
-    """B 的條件文字補上當日實際漲停檔數（其餘是依漲幅補齊的）與排序方式。"""
+def section_list(sections, conf_ok=True):
+    """B 的條件文字補上當日實際漲停檔數（其餘是依漲幅補齊的）與排序方式；
+       D 在觀測站抓不到時明講，不讓 0 檔被讀成「都沒有法說會」。"""
     n_lu = sum(limit_up(s, c) for s, c in sections['B'])
-    return [(k, name, f'{cond}　依漲幅排列（今日漲停 {n_lu} 檔）' if k == 'B' else cond)
-            for k, name, cond in SECTIONS]
+    out = []
+    for k, name, cond in SECTIONS:
+        if k == 'B': cond = f'{cond}　依漲幅排列（今日漲停 {n_lu} 檔）'
+        if k == 'D' and not conf_ok: cond = f'{cond}　（法說會資料無法取得）'
+        out.append((k, name, cond))
+    return out
+
+def conf_rows(universe, data_date, cmap):
+    """D 區：RS ≥ rs_min、HL > hl_min 且未來有法說會。不設 K 棒長度門檻——新上市股也該看得到。"""
+    rows = [(s, s['close']) for s in universe
+            if s['lastDate'] == data_date and ok((s['close'] or [None])[-1])
+            and (s['rs'] or 0) >= B4['rs_min'] and (s['hl'] or 0) > B4['hl_min']
+            and s['id'] in cmap]
+    return sorted(rows, key=lambda t: (cmap[t[0]['id']]['date'], cmap[t[0]['id']]['time'],
+                                       -(t[0]['rs'] or 0)))
 
 def taiex_kline(ax, axv, taiex, amount, data_date):
     """加權指數近半年日 K + MA，畫法同籌碼報告封面；axv 畫上市成交金額（億）。
@@ -225,7 +245,7 @@ def taiex_kline(ax, axv, taiex, amount, data_date):
     ax.text(1., 1.02, f'MA{MA_SHORT}／MA{MA_LONG}', transform=ax.transAxes,
             ha='right', va='bottom', fontsize=8, color='#999')
 
-def cover(pdf, mkt, sections, data_date, taiex=None, amount=None):
+def cover(pdf, mkt, sections, data_date, taiex=None, amount=None, conf_ok=True, n_new=0):
     fig = plt.figure(figsize=(11.7, 8.3), facecolor='white')
     rule = lambda y: fig.lines.append(
         plt.Line2D([L, RT], [y, y], color='#ddd', lw=.9, transform=fig.transFigure))
@@ -266,15 +286,15 @@ def cover(pdf, mkt, sections, data_date, taiex=None, amount=None):
     for sp in ax2.spines.values(): sp.set_visible(False)
 
     # 右欄：上＝近半年日 K，下＝當日分時
-    axk = fig.add_axes([.605, .690, .347, .150])
-    axkv = fig.add_axes([.605, .628, .347, .058])
+    axk = fig.add_axes([.605, .635, .347, .205])
+    axkv = fig.add_axes([.605, .570, .347, .060])
     taiex_kline(axk, axkv, taiex, amount, data_date)
     for a in (axk, axkv):
         a.tick_params(labelsize=7.5, length=2); a.grid(True, ls='--', lw=.5, color='#eee')
         for sp in ('top', 'right'): a.spines[sp].set_visible(False)
         for sp in ('left', 'bottom'): a.spines[sp].set_color('#ccc')
 
-    ax = fig.add_axes([.605, .430, .347, .125])
+    ax = fig.add_axes([.605, .355, .347, .135])
     intr = mkt.get('intraday') or []
     if intr:
         vals = [p['v'] for p in intr]
@@ -297,13 +317,15 @@ def cover(pdf, mkt, sections, data_date, taiex=None, amount=None):
     for sp in ('top', 'right'): ax.spines[sp].set_visible(False)
     for sp in ('left', 'bottom'): ax.spines[sp].set_color('#ccc')
 
-    rule(.385)
-    fig.text(L, .325, '本報告分區', fontsize=13, fontweight='bold')
-    y = .245
-    for key, name, cond in section_list(sections):
+    rule(.310)
+    y = .258
+    for key, name, cond in section_list(sections, conf_ok):
         fig.text(L, y, f'{key}.{name}', fontsize=12, fontweight='bold')
         fig.text(.24, y, cond, fontsize=10.5, color='#444')
         fig.text(RT, y, f'{len(sections[key])} 檔', fontsize=12, ha='right', fontweight='bold')
+        if key == 'D' and n_new:
+            fig.text(RT - .055, y, f'今日新增 {n_new}', fontsize=10.5, ha='right',
+                     color=conference.NEW_C, fontweight='bold')
         y -= .058
     for i, w in enumerate(mkt.get('warnings', [])):
         fig.text(RT, .90 - i * .026, '⚠️ ' + w, fontsize=8, color=R, ha='right')
@@ -328,12 +350,12 @@ def page_head(title, data_date):
     return fig
 
 
-def grid_pages(pdf, title, rows, cats, tw_close, data_date):
+def grid_pages(pdf, title, rows, cats, tw_close, data_date, cmap=None, empty='本日無符合個股'):
     # 該分區今天一檔都沒有：頁還是留著（分區數固定，翻頁位置才不會每天跑掉），
     # 但要明講「本日無符合個股」——否則就是一張只有標題的空白頁，看起來像排版壞掉。
     if not rows:
         fig = page_head(title, data_date)
-        fig.text(.5, .48, '本日無符合個股', fontsize=15, color=MUTED, ha='center', va='center')
+        fig.text(.5, .48, empty, fontsize=15, color=MUTED, ha='center', va='center')
         pdf.savefig(fig); plt.close(fig)
         return
 
@@ -347,7 +369,53 @@ def grid_pages(pdf, title, rows, cats, tw_close, data_date):
         gs = GridSpec(layout_rows, cols, figure=fig, hspace=.34, wspace=.14,
                       left=L, right=RT, top=.855, bottom=.035)
         for i, (s, _c) in enumerate(chunk):
-            card(fig, gs[i // cols, i % cols], s, cats.get(s['id']), tw_close)
+            card(fig, gs[i // cols, i % cols], s, cats.get(s['id']), tw_close,
+                 (cmap or {}).get(s['id']))
+        pdf.savefig(fig); plt.close(fig)
+
+def _fit(fig, x, y, text, right, **kw):
+    """畫文字，超出 right（figure 座標）就從尾端截斷補「…」。依實際渲染寬度量，
+       不用字數估——中英混排的字寬差一倍，字數截斷必然有些列會超出頁緣。"""
+    rend = fig.canvas.get_renderer()
+    t = fig.text(x, y, text, **kw)
+    while text and t.get_window_extent(rend).x1 / fig.bbox.width > right:
+        text = text[:-1]
+        t.set_text(text.rstrip() + '…')
+    return t
+
+def conf_table(pdf, title, rows, cmap, cats, data_date, baseline=None):
+    """D 區清單頁：先給可掃視的日期表，後面才是 K 線卡片。每頁 24 列，超過續頁。
+       今日新增（與先前快照比對）者日期改紅色。"""
+    PER, TOP, STEP, GAP = 24, .862, .0335, .012
+    X_DATE, X_TIME, X_STK, X_PLACE, X_DESC = L, L + .085, L + .135, L + .345, L + .530
+    HDR = ((X_DATE, '日期'), (X_TIME, '時間'), (X_STK, '股票'), (X_PLACE, '地點'), (X_DESC, '摘要'))
+    n_new = sum(bool(cmap[s['id']].get('new')) for s, _c in rows)
+    note = (f'紅色＝今日新增 {n_new} 檔（與 {baseline} 快照比對）' if baseline
+            else '尚無先前快照，今日不標新增')
+    pages = max(1, math.ceil(len(rows) / PER))
+    for pg in range(pages):
+        fig = page_head(title + (f'（{pg + 1}/{pages}）' if pages > 1 else ''), data_date)
+        for x, h in HDR:
+            fig.text(x, .885, h, fontsize=9, color=MUTED)
+        fig.text(RT, .885, note, fontsize=8.5, color=conference.NEW_C if n_new else MUTED, ha='right')
+        for i, (s, _c) in enumerate(rows[pg * PER:(pg + 1) * PER]):
+            r, y = cmap[s['id']], TOP - i * STEP
+            if i % 2 == 0:
+                fig.patches.append(plt.Rectangle((L - .006, y - .010), RT - L + .012, STEP,
+                                                 transform=fig.transFigure, fc='#f6f6f6', ec='none'))
+            date = r['date'][5:].replace('-', '/')
+            if r['is_range']:
+                date = f"{r['start'][5:].replace('-', '/')}–{r['end'][5:].replace('-', '/')}"
+            cat = cats.get(s['id'])
+            fig.text(X_DATE, y, date, fontsize=9.5, fontweight='bold', color=conference.color(r))
+            fig.text(X_TIME, y, r['time'], fontsize=9.5)
+            _fit(fig, X_STK, y, f"{s['id']} {s['name']}" + (f"_{cat}" if cat else ''),
+                 X_PLACE - GAP, fontsize=9.5, fontweight='bold')
+            _fit(fig, X_PLACE, y, r['place'], X_DESC - GAP, fontsize=8.5, color='#444')
+            _fit(fig, X_DESC, y, r['desc'], RT, fontsize=8.5, color='#444')
+        fig.text(L, .022, '來源：公開資訊觀測站法人說明會一覽表。公司多半會前幾天才申報，'
+                 '越遠的日期越稀疏——未列出不代表不會開。日期為區間者是多場活動合併申報。',
+                 fontsize=8, color='#999')
         pdf.savefig(fig); plt.close(fig)
 
 def build(data_dir, out_dir):
@@ -360,18 +428,29 @@ def build(data_dir, out_dir):
     tw_close = {r['date']: r['close'] for r in taiex}
     amt_path = data_dir / 'taiex_amount.json'
     amount = json.load(open(amt_path)) if amt_path.exists() else []
+    conf_path = data_dir / 'conferences.json'
+    confs = json.load(open(conf_path)) if conf_path.exists() else None
+    conf_ok = confs is not None
+    cmap = conference.by_stock(confs)
+    baseline = (confs or {}).get('baseline')
 
     data_date = Counter(s['lastDate'] for s in universe).most_common(1)[0][0]
     sections, pool_n = screen(universe, data_date)
+    sections['D'] = conf_rows(universe, data_date, cmap)
     print(f'[report] 母體 {pool_n} 檔　' +
           '　'.join(f'{k} {len(v)}' for k, v in sections.items()))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = out_dir / f"{data_date[2:].replace('-', '')}_價格報告.pdf"
     with PdfPages(pdf_path) as pdf:
-        cover(pdf, mkt, sections, data_date, taiex, amount)
-        for key, name, cond in section_list(sections):
-            grid_pages(pdf, f'{key}.{name}　{cond}', sections[key], cats, tw_close, data_date)
+        n_new = sum(bool(cmap[s['id']].get('new')) for s, _c in sections['D'])
+        cover(pdf, mkt, sections, data_date, taiex, amount, conf_ok, n_new)
+        for key, name, cond in section_list(sections, conf_ok):
+            title = f'{key}.{name}　{cond}'
+            if key == 'D' and sections['D']:
+                conf_table(pdf, title, sections['D'], cmap, cats, data_date, baseline)
+            grid_pages(pdf, title, sections[key], cats, tw_close, data_date, cmap,
+                       empty='本日無符合個股' if key != 'D' or conf_ok else '法說會資料無法取得')
     counts = {f'{k}.{name}': len(sections[k]) for k, name, _ in SECTIONS}
     json.dump(counts, open(out_dir / 'price_blocks.json', 'w'), ensure_ascii=False)
     print(f'[report] ✅ {pdf_path}')
