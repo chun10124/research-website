@@ -285,6 +285,7 @@ function PerformancePage() {
   // ── UI 工具 ───────────────────────────────────────────────
   const pnlColor = (val) => ({ color: val > 0 ? 'red' : val < 0 ? 'green' : 'inherit' });
   const fmtPct = (pct) => pct != null ? `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%` : '—';
+  const fmtPct1 = (pct) => pct != null ? `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%` : '—';
   const fmtNum = (n) => Math.round(n).toLocaleString('zh-TW');
   const thTdStyle = { padding: '8px 10px', textAlign: 'center', fontSize: '0.8rem' };
 
@@ -531,7 +532,10 @@ function PerformancePage() {
           <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>尚無完整月份資料</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem', minWidth: 420 }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem', tableLayout: 'fixed', width: '100%', minWidth: 624 }}>
+              <colgroup>
+                {Array.from({ length: 13 }, (_, i) => <col key={i} style={{ width: `${100 / 13}%` }} />)}
+              </colgroup>
               <thead>
                 <tr>
                   <th style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>年</th>
@@ -566,11 +570,11 @@ function PerformancePage() {
                             textAlign: 'center',
                             background: bg,
                             color,
-                            minWidth: 46,
+                            whiteSpace: 'nowrap',
                           }}
                           title={pct != null ? `${year}年${m}月：${fmtPct(pct)}` : ''}
                         >
-                          {pct != null ? fmtPct(pct) : '—'}
+                          {pct != null ? fmtPct1(pct) : '—'}
                         </td>
                       );
                     })}
