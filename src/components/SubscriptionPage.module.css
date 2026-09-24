@@ -262,8 +262,16 @@
   .priceNum { font-size: 18px; }
   .overlay { padding: max(12px, env(safe-area-inset-top)) 8px max(12px, env(safe-area-inset-bottom)); }
   .modal, .settings { border-radius: 12px; padding: 12px; }
-  .modalHead { flex-wrap: wrap; }
+  .modalHead { flex-wrap: wrap; padding-right: 36px; } /* 右上留位置給固定的關閉鈕 */
   .headBtns { flex-wrap: wrap; justify-content: flex-end; }
+  /* 關閉鈕固定在螢幕右上角：標題列換行時不會被擠下去，往下捲也按得到 */
+  .closeBtn {
+    position: fixed; z-index: 5; right: 14px; top: calc(max(12px, env(safe-area-inset-top)) + 6px);
+    width: 32px; height: 32px; padding: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+    color: var(--app-text); background: var(--app-surface-2); border: 1px solid var(--app-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
 }
 
 /* 觸控裝置（手機、平板）：iOS Safari 點進字級 < 16px 的輸入框會自動放大整頁且不縮回，
