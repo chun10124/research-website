@@ -85,6 +85,33 @@ function toFinmindStockId(stockCode) {
   return s.replace(/\.(TW|TWO)$/i, '') || s;
 }
 
+/**
+ * FinMind 原始收盤：回傳 { map, status }。map 為 { dateStr: price }；
+ * 查詢失敗時 map = null（與「區間內無資料」的 {} 區分），status 為 HTTP 狀態（402 = 額度用盡）或 'error'。
+ */
+const fetchFinmindCloseMap = async (code, start, end) => {
+  try {
+    const url = getFinmindPriceUrl(code, start, end || undefined);
+    const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
+    const res = await fetch(fullUrl);
+    if (!res.ok) return { map: null, status: res.status };
+    const json = await res.json();
+    if (json?.status === 402) return { map: null, status: 402 };
+    const data = json?.data;
+    if (!Array.isArray(data)) return { map: null, status: 'error' };
+    const map = {};
+    data.forEach((row) => {
+      const d = (row.date || row.Date || '').toString().slice(0, 10);
+      const c = Number(row.close);
+      if (d && c > 0) map[d] = c;
+    });
+    return { map, status: 200 };
+  } catch (e) {
+    console.warn(`fetchHistoricalPriceMap(${code}) failed:`, e?.message);
+    return { map: null, status: 'error' };
+  }
+};
+
 /** 某檔股票歷史收盤價 { dateStr: price }，供績效頁每日淨值含未實現用 */
 export const fetchHistoricalPriceMap = async (stockCode, startStr, endStr) => {
   const code = toFinmindStockId(String(stockCode || '').trim());
@@ -92,98 +119,64 @@ export const fetchHistoricalPriceMap = async (stockCode, startStr, endStr) => {
   const start = (startStr || '').slice(0, 10);
   const end = (endStr || '').slice(0, 10);
   if (!start) return {};
-  try {
-    const url = getFinmindPriceUrl(code, start, end || undefined);
-    const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
-    const res = await fetch(fullUrl);
-    if (!res.ok) return {};
-    const json = await res.json();
-    const data = json?.data;
-    if (!Array.isArray(data)) return {};
-    const map = {};
-    data.forEach((row) => {
-      const d = (row.date || row.Date || '').toString().slice(0, 10);
-      const c = Number(row.close);
-      if (d && c > 0) map[d] = c;
-    });
-    return map;
-  } catch (e) {
-    console.warn(`fetchHistoricalPriceMap(${stockCode}) failed:`, e?.message);
-    return {};
-  }
+  return (await fetchFinmindCloseMap(code, start, end)).map || {};
 };
+
+/** 清掉舊版「每檔每日、依區間分鍵」的淨值股價快取（rw-navpx_…），只做一次 */
+let legacyNavPriceCacheCleared = false;
+function clearLegacyNavPriceCache() {
+  if (legacyNavPriceCacheCleared) return;
+  legacyNavPriceCacheCleared = true;
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith('rw-navpx_'))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch (_) {}
+}
 
 /**
  * NAV 盯市專用歷史收盤：一律走 FinMind 原始收盤（不追溯除權調整），
  * 與 ibdRsRatings.priceMap（為 RS 而調整過的價）區隔，避免除權後歷史價被回調污染 NAV。
- * 以 localStorage 做「每檔每日」快取，避免每次進頁面重打 FinMind。
+ *
+ * 原始收盤一經公布就不會再變，所以 localStorage 以「每檔一份」累積快取：
+ *   - 已出清（frozenAfter = 最後交易日）：只需要到最後交易日；抓取日晚於該日即定案，永不重抓。
+ *   - 持有中：保留已抓的歷史，每天只從快取最後一個價格日補抓到今天。
+ *   - 快取起始日晚於所需起始日（補登了更早的交易）才整段重抓。
+ * 補抓失敗時先回傳舊快取（盯市會 forward-fill），不寫入，下次再試。
+ * 回傳 { map, failed, status }：failed = 查詢失敗且沒有任何快取可用（該檔盯市只能以成本計）。
  */
-export const fetchHistoricalPriceMapForNav = async (stockCode, startStr, endStr) => {
+export const fetchHistoricalPriceMapForNav = async (stockCode, startStr, endStr, { frozenAfter = null } = {}) => {
   const code = toFinmindStockId(String(stockCode || '').trim());
-  if (!code) return {};
+  const empty = { map: {}, failed: false, status: 200 };
+  if (!code) return empty;
   const start = (startStr || '').slice(0, 10);
   const end = (endStr || '').slice(0, 10);
-  if (!start) return {};
+  if (!start) return empty;
+  clearLegacyNavPriceCache();
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-  const cacheKey = `rw-navpx_${code}_${start}_${end}`;
-  try {
-    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-    if (cached && cached.date === todayStr && cached.map) return cached.map;
-  } catch (_) {}
-  const map = await fetchHistoricalPriceMap(code, start, end);
-  if (Object.keys(map).length > 0) {
-    try { localStorage.setItem(cacheKey, JSON.stringify({ date: todayStr, map })); } catch (_) {}
-  }
-  return map;
-};
+  const needEnd = frozenAfter && (!end || frozenAfter < end) ? frozenAfter : end;
+  const cacheKey = `rw-navpx2_${code}`;
+  const save = (entry) => {
+    try { localStorage.setItem(cacheKey, JSON.stringify(entry)); } catch (_) {}
+  };
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch (_) {}
 
-const DIVIDEND_FETCH_TIMEOUT_MS = 10000;
-
-/**
- * 某檔股票 startStr 之後的除權息事件（FinMind TaiwanStockDividend），供交易日誌／績效頁計入股利。
- * 回傳 { events, status }：events 為 [{ code, exDate, cash?: 每股現金股利, stock?: 每股配股數 }]，
- * 失敗時 events = null、status 為 HTTP 狀態（402 = FinMind 額度用盡）或 'timeout' / 'error'。
- * 以 localStorage 做「每檔每日」快取；失敗不寫快取。
- * frozenAfter：已出清標的的最後交易日——快取抓取日晚於此日即視為定案，不再每日重抓。
- */
-export const fetchDividendEvents = async (stockCode, startStr, { frozenAfter = null } = {}) => {
-  const code = toFinmindStockId(String(stockCode || '').trim());
-  const start = (startStr || '').slice(0, 10);
-  if (!code || !start) return { events: [], status: 200 };
-  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-  const cacheKey = `rw-div_${code}_${start}`;
-  try {
-    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-    const fresh = cached && (cached.date === todayStr || (frozenAfter && cached.date > frozenAfter));
-    if (fresh && Array.isArray(cached.events)) return { events: cached.events, status: 200 };
-  } catch (_) {}
-  // 代理偶爾不回應，不設逾時會讓整批載入永遠卡住
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DIVIDEND_FETCH_TIMEOUT_MS);
-  try {
-    const params = new URLSearchParams({ dataset: 'TaiwanStockDividend', data_id: code, start_date: start, token: TOKEN });
-    const res = await fetch(`${PROXY_BASE}${encodeURIComponent(`${FINMIND_BASE}?${params.toString()}`)}`, { signal: controller.signal });
-    if (!res.ok) return { events: null, status: res.status };
-    const json = await res.json();
-    if (json?.status === 402) return { events: null, status: 402 };
-    if (!Array.isArray(json?.data)) return { events: null, status: 'error' };
-    const events = [];
-    json.data.forEach((r) => {
-      const cash = (Number(r.CashEarningsDistribution) || 0) + (Number(r.CashStatutorySurplus) || 0);
-      const stock = ((Number(r.StockEarningsDistribution) || 0) + (Number(r.StockStatutorySurplus) || 0)) / 10;
-      const cashDate = String(r.CashExDividendTradingDate || '').slice(0, 10);
-      const stockDate = String(r.StockExDividendTradingDate || '').slice(0, 10);
-      if (cash > 0 && cashDate) events.push({ code, exDate: cashDate, cash });
-      if (stock > 0 && stockDate) events.push({ code, exDate: stockDate, stock });
-    });
-    try { localStorage.setItem(cacheKey, JSON.stringify({ date: todayStr, events })); } catch (_) {}
-    return { events, status: 200 };
-  } catch (e) {
-    console.warn(`fetchDividendEvents(${stockCode}) failed:`, e?.message);
-    return { events: null, status: e?.name === 'AbortError' ? 'timeout' : 'error' };
-  } finally {
-    clearTimeout(timer);
+  if (cached && cached.map && cached.start && cached.start <= start) {
+    if (cached.fetchedOn === todayStr) return { map: cached.map, failed: false, status: 200 };
+    if (frozenAfter && cached.fetchedOn > frozenAfter) return { map: cached.map, failed: false, status: 200 };
+    const lastDate = Object.keys(cached.map).sort().pop() || start;
+    const inc = await fetchFinmindCloseMap(code, lastDate, needEnd);
+    if (!inc.map) return { map: cached.map, failed: false, status: inc.status };
+    const map = { ...cached.map, ...inc.map };
+    save({ start: cached.start, fetchedOn: todayStr, map });
+    return { map, failed: false, status: 200 };
   }
+
+  const res = await fetchFinmindCloseMap(code, start, needEnd);
+  if (!res.map) return { map: {}, failed: true, status: res.status };
+  if (Object.keys(res.map).length > 0) save({ start, fetchedOn: todayStr, map: res.map });
+  return { map: res.map, failed: false, status: 200 };
 };
 
 /**

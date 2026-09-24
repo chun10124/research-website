@@ -11,7 +11,7 @@ import {
   fetchHistoricalPriceMapForNav,
 } from '../features/StockAnalysis/api/stockApi';
 import { calculatePnlSummary, calcUnrealizedPnl } from '../utils/pnlCalculator';
-import useJournalDividends from './useJournalDividends';
+import useJournalDividends, { getJournalCodeSpans } from './useJournalDividends';
 import { formatPnl } from '../utils/formatting';
 import {
   autoDetectCashFlows,
@@ -48,6 +48,7 @@ function PerformancePage() {
   const [chartNormalized, setChartNormalized] = useState(false);
   const [historicalPricesByCode, setHistoricalPricesByCode] = useState({});
   const [historicalPricesLoading, setHistoricalPricesLoading] = useState(false);
+  const [priceFailure, setPriceFailure] = useState({ count: 0, quota: false });
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -66,7 +67,8 @@ function PerformancePage() {
 
   // ── 自動識別入金 ──────────────────────────────────────────
   // 除權息事件（現金股利扣減持有成本、配股併入現股；淨值曲線於除息日入帳）
-  const { dividends, dividendsLoading, failedCodes: dividendFailedCodes, quotaExceeded: dividendQuotaExceeded } = useJournalDividends(entries);
+  const { dividends, dividendsLoading, failedSources: dividendFailedSources } = useJournalDividends(entries);
+  const QUOTA_NOTE = '（FinMind 額度用盡）';
 
   const autoCashFlows = useMemo(
     () => autoDetectCashFlows(entries, { dividends }),
@@ -178,6 +180,13 @@ function PerformancePage() {
     return { start: dates.sort()[0], end: todayStr };
   }, [entries, todayStr]);
 
+  // 已出清標的的最後交易日：歷史股價只需抓到該日，快取定案後不再重抓
+  const codeSpans = useMemo(() => getJournalCodeSpans(entries), [entries]);
+  const frozenKey = useMemo(
+    () => curveCodes.map((c) => (codeSpans[c]?.closed ? `${c}:${codeSpans[c].last}` : c)).join(','),
+    [curveCodes, codeSpans]
+  );
+
   useEffect(() => {
     if (!curveDateRange || curveCodes.length === 0) {
       setHistoricalPricesByCode({});
@@ -187,17 +196,26 @@ function PerformancePage() {
     const { start, end } = curveDateRange;
     const load = async () => {
       const results = await Promise.all(
-        curveCodes.map((code) =>
-          fetchHistoricalPriceMapForNav(code, start, end).then((map) => [code, map])
-        )
+        curveCodes.map((code) => {
+          const span = codeSpans[code];
+          const frozenAfter = span?.closed ? span.last : null;
+          return fetchHistoricalPriceMapForNav(code, start, end, { frozenAfter }).then((r) => [code, r]);
+        })
       );
       const next = {};
-      results.forEach(([code, map]) => { if (Object.keys(map).length > 0) next[code] = map; });
+      let failedCount = 0;
+      let quota = false;
+      results.forEach(([code, r]) => {
+        if (Object.keys(r.map).length > 0) next[code] = r.map;
+        if (r.failed) failedCount++;
+        if (r.status === 402) quota = true;
+      });
       setHistoricalPricesByCode(next);
+      setPriceFailure({ count: failedCount, quota });
       setHistoricalPricesLoading(false);
     };
     load();
-  }, [curveDateRange?.start, curveDateRange?.end, curveCodes.join(',')]);
+  }, [curveDateRange?.start, curveDateRange?.end, frozenKey]);
 
   const priceMapWithToday = useMemo(() => {
     const m = {};
@@ -314,9 +332,9 @@ function PerformancePage() {
         const showUnrealized = !pendingPrices;
         const showTotalAssets = !pendingPrices && !pendingCurve && !dividendsLoading;
         const dividendNote = dividendsLoading
-          ? '股利載入中…（目前數字尚未含股利）'
-          : dividendFailedCodes.length > 0
-            ? `⚠ ${dividendFailedCodes.length} 檔股利資料取得失敗、未計入（${dividendQuotaExceeded ? 'FinMind 本小時額度已用完，約一小時後重新整理' : '稍後重新整理再試'}）`
+          ? null // 標題已標示「股利載入中…」
+          : dividendFailedSources.length > 0
+            ? `⚠ ${dividendFailedSources.join('、')}股利未取得，未計入`
             : null;
         return (
           <div style={{ ...sectionStyle, display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
@@ -426,6 +444,11 @@ function PerformancePage() {
             ? '以首筆資產為 100，觀察相對成長曲線。'
             : '每日總資產 = Cash + Σ(持股×當日收盤價)，按日盯市；週末沿用前一交易日收盤價。無歷史價時以成本計。'}
           {historicalPricesLoading && <span style={{ marginLeft: 6, color: '#f90' }}>載入歷史價中…</span>}
+          {!historicalPricesLoading && priceFailure.count > 0 && (
+            <span style={{ marginLeft: 6, color: '#f90' }}>
+              ⚠ {priceFailure.count} 檔股價未取得，以成本計{priceFailure.quota ? QUOTA_NOTE : ''}
+            </span>
+          )}
         </p>
         {curveCodes.length > 0 && historicalPricesLoading ? (
           <div style={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
@@ -478,6 +501,11 @@ function PerformancePage() {
         <h4 style={{ margin: '0 0 8px 0' }}>NAV 曲線（單位淨值）</h4>
         <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: '#888' }}>
           以首日 NAV 為 100，觀察單位淨值相對走勢。入金不改變 NAV，僅反映交易損益。
+          {!historicalPricesLoading && priceFailure.count > 0 && (
+            <span style={{ marginLeft: 6, color: '#f90' }}>
+              ⚠ {priceFailure.count} 檔股價未取得，以成本計{priceFailure.quota ? QUOTA_NOTE : ''}
+            </span>
+          )}
         </p>
         {curveCodes.length > 0 && historicalPricesLoading ? (
           <div style={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
