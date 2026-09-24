@@ -66,7 +66,7 @@ function PerformancePage() {
 
   // ── 自動識別入金 ──────────────────────────────────────────
   // 除權息事件（現金股利扣減持有成本、配股併入現股；淨值曲線於除息日入帳）
-  const { dividends } = useJournalDividends(entries);
+  const { dividends, dividendsLoading, failedCodes: dividendFailedCodes } = useJournalDividends(entries);
 
   const autoCashFlows = useMemo(
     () => autoDetectCashFlows(entries, { dividends }),
@@ -312,15 +312,20 @@ function PerformancePage() {
         const pendingPrices = holdingCodes.length > 0 && pricesLoading;
         const pendingCurve = curveCodes.length > 0 && historicalPricesLoading;
         const showUnrealized = !pendingPrices;
-        const showTotalAssets = !pendingPrices && !pendingCurve;
+        const showTotalAssets = !pendingPrices && !pendingCurve && !dividendsLoading;
+        const dividendNote = dividendsLoading
+          ? '股利載入中…（目前數字尚未含股利）'
+          : dividendFailedCodes.length > 0
+            ? `⚠ ${dividendFailedCodes.length} 檔股利資料取得失敗、未計入（可能是 FinMind 額度用盡，稍後重新整理）`
+            : null;
         return (
           <div style={{ ...sectionStyle, display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
             {[
               {
-                label: '總已實現損益',
+                label: `總已實現損益${dividendsLoading ? ' (股利載入中…)' : ''}`,
                 value: formatPnl(totalRealizedPnl),
                 style: pnlColor(totalRealizedPnl),
-                sub: null,
+                sub: dividendNote,
               },
               {
                 label: `總未實現損益${pricesLoading ? ' (載入中…)' : ''}`,

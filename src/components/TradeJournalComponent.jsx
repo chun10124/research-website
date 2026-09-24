@@ -283,7 +283,7 @@ function TradeJournal() {
 
 
   // 除權息事件（現金股利扣減持有成本、配股併入現股）
-  const { dividends } = useJournalDividends(journalEntries);
+  const { dividends, dividendsLoading, failedCodes: dividendFailedCodes } = useJournalDividends(journalEntries);
 
   // 4. P&L 摘要的計算核心
   const pnlSummary = useMemo(
@@ -618,6 +618,17 @@ function TradeJournal() {
                 <p style={{ margin: 0, fontSize: '1.5em', ...pnlColorStyle }}>
                     {formatPnl(totalRealizedPnl)}
                 </p>
+                {dividendsLoading && (
+                    <p style={{ margin: '4px 0 0 0', fontSize: '0.78em', color: 'var(--ifm-color-emphasis-600)' }}>
+                        股利載入中…（目前數字尚未含股利）
+                    </p>
+                )}
+                {!dividendsLoading && dividendFailedCodes.length > 0 && (
+                    <p style={{ margin: '4px 0 0 0', fontSize: '0.78em', color: 'var(--ifm-color-warning-darkest)' }}
+                       title={dividendFailedCodes.join(', ')}>
+                        ⚠ {dividendFailedCodes.length} 檔股利資料取得失敗、未計入（可能是 FinMind 額度用盡，稍後重新整理）
+                    </p>
+                )}
             </div>
             <div className={styles.pnlSummaryCard} style={{ flex: '1 1 160px', minWidth: '140px', padding: '15px', border: '1px solid #ccc', borderRadius: '5px'}}> 
                 <h4 style={{ margin: '0 0 5px 0' }}>未實現損益</h4>

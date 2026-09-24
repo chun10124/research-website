@@ -9,7 +9,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /**
  * 交易日誌所有標的、自首次交易日起的除權息事件（供 pnlCalculator / 淨值引擎計入股利）。
  * 已出清的標的把最後交易日傳給 fetchDividendEvents 當 frozenAfter，快取定案後不再重抓。
- * @returns {{ dividends: Array, dividendsLoading: boolean }}
+ * @returns {{ dividends: Array, dividendsLoading: boolean, failedCodes: string[] }}
+ *   failedCodes：重試後仍取不到的標的（常見原因：FinMind 每小時額度用盡），其股利未計入損益
  */
 export default function useJournalDividends(entries) {
   // code -> { first, last, net }；net 為各型態淨股數（買 − 賣），≈ 0 視為已出清
@@ -37,11 +38,13 @@ export default function useJournalDividends(entries) {
 
   const [dividends, setDividends] = useState([]);
   const [dividendsLoading, setDividendsLoading] = useState(false);
+  const [failedCodes, setFailedCodes] = useState([]);
 
   useEffect(() => {
     const codes = Object.keys(spans);
     if (codes.length === 0) {
       setDividends([]);
+      setFailedCodes([]);
       return undefined;
     }
     let cancelled = false;
@@ -56,8 +59,10 @@ export default function useJournalDividends(entries) {
         if (events) return events.map((ev) => ({ ...ev, code }));
       }
       console.warn(`[股利] ${code} 除權息資料取得失敗，損益暫未計入該檔股利`);
+      failed.push(code);
       return [];
     };
+    const failed = [];
     const load = async () => {
       const results = [];
       let next = 0;
@@ -70,11 +75,12 @@ export default function useJournalDividends(entries) {
       await Promise.all(Array.from({ length: CONCURRENCY }, worker));
       if (cancelled) return;
       setDividends(results);
+      setFailedCodes(failed.sort());
       setDividendsLoading(false);
     };
     load();
     return () => { cancelled = true; };
   }, [spanKey]);
 
-  return { dividends, dividendsLoading };
+  return { dividends, dividendsLoading, failedCodes };
 }
