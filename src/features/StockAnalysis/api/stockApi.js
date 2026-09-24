@@ -4,8 +4,8 @@ import { updateAnalysisField, deleteAnalysisDoc } from './watchlist';
 import { getTaiwanStockDisplayName } from './rsStockList';
 import { calculateSingleStockIndicators } from '../utils/analysisUtils';
 import { normalizeYmdToTaiwanTradingDay, taipeiYmdAddDays } from '../utils/rsCalculator';
-import { getDoc, doc } from 'firebase/firestore';
-import { RS_RATINGS_COLLECTION, STOCK_WATCHLIST_COLLECTION } from '../../../utils/firebaseConfig';
+import { getDoc, doc, setDoc } from 'firebase/firestore';
+import { RS_RATINGS_COLLECTION, STOCK_WATCHLIST_COLLECTION, NAV_CACHE_COLLECTION } from '../../../utils/firebaseConfig';
 
 // 與 rsApi.js 的 getTaiwanYmd() 相同邏輯：14:00 前取前一交易日，14:00 後取當日
 function getLatestTradingYmd() {
@@ -138,7 +138,8 @@ function clearLegacyNavPriceCache() {
  * NAV 盯市專用歷史收盤：一律走 FinMind 原始收盤（不追溯除權調整），
  * 與 ibdRsRatings.priceMap（為 RS 而調整過的價）區隔，避免除權後歷史價被回調污染 NAV。
  *
- * 原始收盤一經公布就不會再變，所以 localStorage 以「每檔一份」累積快取：
+ * 原始收盤一經公布就不會再變，所以以「每檔一份」累積快取，
+ * 依序查：本機 localStorage → Firestore navHistory/px_代碼（跨裝置共用）→ FinMind；抓到後兩層都寫回。
  *   - 已出清（frozenAfter = 最後交易日）：只需要到最後交易日；抓取日晚於該日即定案，永不重抓。
  *   - 持有中：保留已抓的歷史，每天只從快取最後一個價格日補抓到今天。
  *   - 快取起始日晚於所需起始日（補登了更早的交易）才整段重抓。
@@ -156,15 +157,42 @@ export const fetchHistoricalPriceMapForNav = async (stockCode, startStr, endStr,
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
   const needEnd = frozenAfter && (!end || frozenAfter < end) ? frozenAfter : end;
   const cacheKey = `rw-navpx2_${code}`;
-  const save = (entry) => {
+  const sharedRef = doc(NAV_CACHE_COLLECTION, `px_${code}`);
+  const saveLocal = (entry) => {
     try { localStorage.setItem(cacheKey, JSON.stringify(entry)); } catch (_) {}
   };
+  // 寫入共用快取成功後，本機副本標 shared，避免重複上傳；本機既有但未上傳的快取也會補傳一次
+  const save = (entry) => {
+    saveLocal(entry);
+    const { shared: _ignored, ...data } = entry;
+    setDoc(sharedRef, data)
+      .then(() => saveLocal({ ...data, shared: true }))
+      .catch((e) => console.warn(`[淨值股價] ${code} 寫入共用快取失敗:`, e?.message));
+  };
+  const usable = (c) => c && c.map && c.start && c.start <= start;
+  const fresh = (c) => usable(c) && (c.fetchedOn === todayStr || (frozenAfter && c.fetchedOn > frozenAfter));
+
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch (_) {}
+  if (!fresh(cached)) {
+    // 本機沒有或過期：看其他裝置是否已抓過（較新者為準）
+    try {
+      const snap = await getDoc(sharedRef);
+      const shared = snap.exists() ? snap.data() : null;
+      if (usable(shared) && (!usable(cached) || shared.fetchedOn > cached.fetchedOn)) {
+        cached = { ...shared, shared: true };
+        saveLocal(cached);
+      }
+    } catch (e) {
+      console.warn(`[淨值股價] ${code} 讀取共用快取失敗:`, e?.message);
+    }
+  }
 
-  if (cached && cached.map && cached.start && cached.start <= start) {
-    if (cached.fetchedOn === todayStr) return { map: cached.map, failed: false, status: 200 };
-    if (frozenAfter && cached.fetchedOn > frozenAfter) return { map: cached.map, failed: false, status: 200 };
+  if (usable(cached)) {
+    if (fresh(cached)) {
+      if (!cached.shared) save(cached);
+      return { map: cached.map, failed: false, status: 200 };
+    }
     const lastDate = Object.keys(cached.map).sort().pop() || start;
     const inc = await fetchFinmindCloseMap(code, lastDate, needEnd);
     if (!inc.map) return { map: cached.map, failed: false, status: inc.status };

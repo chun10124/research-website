@@ -131,23 +131,45 @@ async function fetchTwseEvents(start, end, codeSet) {
 const eventKey = (ev) => `${ev.code}|${ev.exDate}|${ev.cash != null ? 'c' : 's'}`;
 
 /**
- * 交易日誌代碼自 startStr 起的除權息事件，localStorage 快取（只存篩選後的事件）：
+ * 交易日誌代碼自 startStr 起的除權息事件（只存篩選後的事件）：
+ *   快取依序查本機 localStorage → shared（跨裝置共用，由呼叫端提供，例如 Firestore）→ 官方。
  *   - 首次（或新增代碼、起始日提前）：整段查詢。
  *   - 之後每天：只查「上次查到的日期 − 7 天」到今天，合併去重。
+ * shared：{ load: () => Promise<entry|null>, save: (entry) => void }，可省略。
  * 回傳 { events, failedSources }：failedSources 為取不到資料的來源（'證交所' / '櫃買'）；
  *   補抓失敗但有快取時沿用快取，不列為失敗。
  */
-export async function fetchOfficialDividendEvents(codes, startStr) {
+export async function fetchOfficialDividendEvents(codes, startStr, shared = null) {
   const codeSet = new Set((codes || []).map(bare).filter(Boolean));
   const start = String(startStr || '').slice(0, 10);
   if (codeSet.size === 0 || !start) return { events: [], failedSources: [] };
   const today = taipeiToday();
 
+  const usable = (c) => c && Array.isArray(c.events) && c.start <= start
+    && [...codeSet].every((code) => (c.codes || []).includes(code));
+  const saveLocal = (entry) => {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(entry)); } catch (_) {}
+  };
+
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (_) {}
-  const cacheUsable = cached && Array.isArray(cached.events) && cached.start <= start
-    && [...codeSet].every((c) => (cached.codes || []).includes(c));
+  if (!(usable(cached) && cached.through === today) && shared?.load) {
+    // 本機沒有或過期：看其他裝置是否已查過（較新者為準）
+    try {
+      const s = await shared.load();
+      if (usable(s) && (!usable(cached) || s.through > cached.through)) {
+        cached = { ...s, shared: true };
+        saveLocal(cached);
+      }
+    } catch (_) {}
+  }
+  const cacheUsable = usable(cached);
   if (cacheUsable && cached.through === today) {
+    if (!cached.shared && shared?.save) {
+      // 本機既有但尚未上傳的快取：補傳一次
+      const { shared: _ignored, ...data } = cached;
+      Promise.resolve(shared.save(data)).then(() => saveLocal({ ...data, shared: true })).catch(() => {});
+    }
     return { events: cached.events.filter((ev) => codeSet.has(ev.code)), failedSources: [] };
   }
 
@@ -166,9 +188,11 @@ export async function fetchOfficialDividendEvents(codes, startStr) {
   const events = [...merged.values()].sort((a, b) => a.exDate.localeCompare(b.exDate));
 
   if (failedSources.length === 0) {
-    try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ start, through: today, codes: [...codeSet], events }));
-    } catch (_) {}
+    const entry = { start, through: today, codes: [...codeSet], events };
+    saveLocal(entry);
+    if (shared?.save) {
+      Promise.resolve(shared.save(entry)).then(() => saveLocal({ ...entry, shared: true })).catch(() => {});
+    }
     return { events, failedSources };
   }
   // 部分來源失敗：有快取就沿用快取（只是少了最近幾天），不寫入，下次重試
