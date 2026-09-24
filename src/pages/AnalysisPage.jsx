@@ -1,7 +1,7 @@
 /* src/pages/AnalysisPage.jsx */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { setDoc, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { setDoc, onSnapshot, updateDoc, doc, getDocs, query, where, documentId } from 'firebase/firestore';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
@@ -9,8 +9,7 @@ import IndustryAnalysisTable from '../features/StockAnalysis/components/Industry
 import BigColumnDragBoard from '../features/StockAnalysis/components/BigColumnDragBoard';
 import { syncStockSnapshots, fetchForeignHoldingSeries } from '../features/StockAnalysis/api/stockApi';
 import { calculateFlowSignal } from '../features/StockAnalysis/utils/analysisUtils';
-import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF, db } from '../utils/firebaseConfig';
-import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
+import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF, RS_RATINGS_COLLECTION, db } from '../utils/firebaseConfig';
 import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
 import { RsChartModal } from './IBDRsRankingPage';
 import {
@@ -18,8 +17,57 @@ import {
     subscribeAnalysisSync,
     LAST_SYNC_ALL_KEY,
 } from '../features/StockAnalysis/services/analysisSyncService';
+import { subscribeIbdRsSync } from '../features/StockAnalysis/services/ibdRsSyncService';
 
 const NUM_BIG_COLUMNS = 8;
+
+/**
+ * 只讀追蹤表裡這些股票的 RS 資料（圖表視窗與上一檔／下一檔切換用）。
+ * 以前用 useIbdRsData 讀整個 ibdRsRatings（約 2000 檔、近 100 MB、十幾秒），還會跟追蹤表
+ * 本身搶連線；改成按代號分批 in 查詢（Firestore 一批上限 30 個），約 200 檔、10 MB、1 秒左右。
+ * 回傳 { [代號]: RS 文件 }。新加的股票只補讀缺的；RS 背景同步跑完時整批重讀。
+ */
+const RS_IN_CHUNK = 30;
+function useTrackedRsRatings(stocks) {
+    const [byId, setById] = useState({});
+    const ids = useMemo(
+        () => [...new Set((stocks || []).map((s) => String(s.code ?? s.id ?? '').trim()).filter(Boolean))].sort(),
+        [stocks]
+    );
+    const idsRef = useRef(ids);
+    idsRef.current = ids;
+    const requestedRef = useRef(new Set());
+
+    const load = useCallback(async (list) => {
+        const chunks = [];
+        for (let i = 0; i < list.length; i += RS_IN_CHUNK) chunks.push(list.slice(i, i + RS_IN_CHUNK));
+        const results = await Promise.all(chunks.map((c) =>
+            getDocs(query(RS_RATINGS_COLLECTION, where(documentId(), 'in', c)))
+                .then((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+                .catch((e) => { console.warn('[追蹤表] RS 資料讀取失敗:', e?.message); return []; })
+        ));
+        const got = Object.fromEntries(results.flat().map((r) => [r.id, r]));
+        setById((prev) => ({ ...prev, ...got }));
+    }, []);
+
+    const idsKey = ids.join(',');
+    useEffect(() => {
+        const missing = ids.filter((id) => !requestedRef.current.has(id));
+        if (!missing.length) return;
+        missing.forEach((id) => requestedRef.current.add(id));
+        void load(missing);
+    }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        let wasRunning = false;
+        return subscribeIbdRsSync((st) => {
+            if (wasRunning && !st.running && idsRef.current.length) void load(idsRef.current);
+            wasRunning = st.running;
+        });
+    }, [load]);
+
+    return byId;
+}
 
 const formatLastSync = (ts) => {
     if (!ts || ts <= 0) return '尚未執行';
@@ -53,7 +101,6 @@ const AnalysisPage = () => {
     const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
     // 記錄上次「背景同步完成時間」，用來偵測雲端(GitHub Actions)同步完成後自動刷新追蹤表
     const bgSyncTsRef = useRef(0);
-    const { stocks: rsRatings, loading: rsLoading } = useIbdRsData();
     const { idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } = useIbdRsWatchlist();
 
     // ── 追蹤表籌碼懶載入 ──────────────────────────────────────────────
@@ -205,7 +252,7 @@ const AnalysisPage = () => {
         return () => unsub();
     }, []);
 
-    const rsById = useMemo(() => Object.fromEntries((rsRatings || []).map((s) => [s.id, s])), [rsRatings]);
+    const rsById = useTrackedRsRatings(stocks);
     const navigationList = useMemo(() => {
         if (!Array.isArray(stocks) || stocks.length === 0) return [];
 

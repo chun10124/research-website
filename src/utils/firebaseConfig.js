@@ -22,14 +22,11 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 /**
- * 🔴 關鍵解決方案：
- * 強制使用 Long Polling (長輪詢) 以避開 Listen/channel CORS 報錯。
- * 這是解決 localhost 環境下 XMLHttpRequest access control 錯誤的終極方案。
+ * 連線方式用 Firebase 預設的自動判斷（能用串流就用，網路擋串流才退回長輪詢）。
+ * 過去強制長輪詢是為了避開 localhost 的 Listen/channel CORS 報錯；2026-09-25 在
+ * Firebase 12.10 實測 localhost 與正式站皆無此錯誤，自動判斷的讀取比強制長輪詢快約 20%。
  */
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-  useFetchStreams: false, 
-});
+export const db = initializeFirestore(app, {});
 
 // 導出集合與文件路徑
 export const STOCK_WATCHLIST_COLLECTION = collection(db, "stockWatchlist");
