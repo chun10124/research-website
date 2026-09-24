@@ -3,9 +3,11 @@
  *
  * 入金自動識別：依「真實現金流」掃描，現金不足則缺口記為入金；多餘現金回流。僅能推估「最少」入金。
  *   - 現股：BUY 出全額、SELL 入全額（現金換部位）。
- *   - 融資：BUY 只出自付 40%（借的 60% 非自有資金）；SELL 入「價金 − 償還借款本金」。
+ *   - 融資：BUY 只出自付 40%（借的 60% 非自有資金）；SELL 入「價金 − 償還借款本金」（借款依先進先出逐批償還）。
  *   - 融券：開倉(SELL) 出保證金 90%（賣出價金被鎖為擔保，非可用現金）；
  *           回補(BUY) 入「釋放保證金 + 已實現損益」。
+ *   - 每筆另扣當下付出的手續費、證交稅、融資利息、借券費（與 pnlCalculator 同一套規則）。
+ *   - 除息日入帳現金股利（空單為補償支出）。
  *   ⇒ 開槓桿不會被誤判為入金，總資產 = 真實權益，曝險可正確 > 100%。
  *
  * 正確資產定義：
@@ -24,6 +26,7 @@ import {
   MARGIN_LONG_SELF_RATIO,
   MARGIN_LONG_LOAN_RATIO,
   MARGIN_SHORT_DEPOSIT_RATIO,
+  createLedgerContext,
 } from './pnlCalculator';
 
 const EPSILON = 1e-10;
@@ -40,9 +43,10 @@ const TRADE_EPSILON = 1e-6;
  * 並維護各標的的融資／融券未平倉池，平倉時才知道要償還的借款／釋放的保證金。
  *
  * @param {Array} entries 交易日誌 entries（同 Firestore 格式）
+ * @param {{ dividends?, asOfDate? }} options 除權息事件（見 pnlCalculator runLedger）
  * @returns {{ id, date, amount, type: 'deposit' }[]}  自動識別的入金清單
  */
-export function autoDetectCashFlows(entries) {
+export function autoDetectCashFlows(entries, options = {}) {
   const sorted = [...(entries || [])].sort((a, b) => {
     const da = new Date(a.date).getTime();
     const db = new Date(b.date).getTime();
@@ -51,14 +55,42 @@ export function autoDetectCashFlows(entries) {
   });
 
   // 各標的未平倉池（僅融資多頭與融券空頭需要，現股全額進出不必追蹤成本）
-  const pools = {}; // code -> { mlq, mlc, msq, msc, msDeposit }
-  const getPool = (code) => (pools[code] || (pools[code] = { mlq: 0, mlc: 0, msq: 0, msc: 0, msDeposit: 0 }));
+  const pools = {}; // code -> { mlLots: [{ qty, price }], msq, msc, msDeposit }
+  const getPool = (code) => (pools[code] || (pools[code] = { mlLots: [], msq: 0, msc: 0, msDeposit: 0 }));
 
+  const { tradeCost, dividendEffects } = createLedgerContext(sorted, options);
+  let nextDiv = 0;
   let cashBalance = 0;
   const deposits = [];
 
+  // 出金且現金不足 → 缺口記為外部入金
+  const applyCash = (cashDelta, dateStr) => {
+    if (cashDelta < -TRADE_EPSILON) {
+      const need = -cashDelta;
+      if (cashBalance < need - TRADE_EPSILON) {
+        const missing = need - cashBalance;
+        deposits.push({
+          id: `auto-${dateStr}-${deposits.length}`,
+          date: dateStr,
+          amount: Math.round(missing * 100) / 100,
+          type: 'deposit',
+        });
+        cashBalance += missing;
+      }
+    }
+    cashBalance += cashDelta;
+    cashBalance = Math.max(0, cashBalance); // 浮點數保護
+  };
+  const applyDividendsUpTo = (dateStr) => {
+    while (nextDiv < dividendEffects.length && dividendEffects[nextDiv].date <= dateStr) {
+      const d = dividendEffects[nextDiv++];
+      applyCash(d.cash, d.date);
+    }
+  };
+
   for (const e of sorted) {
     if (e.direction !== 'BUY' && e.direction !== 'SELL') continue;
+    applyDividendsUpTo((e.date || '').slice(0, 10));
     const qty = Number(e.quantity);
     const price = Number(e.price);
     if (isNaN(qty) || qty <= TRADE_EPSILON || isNaN(price) || price < 0.5) continue;
@@ -72,20 +104,22 @@ export function autoDetectCashFlows(entries) {
     if (tradeType === 'MARGIN_LONG') {
       if (e.direction === 'BUY') {
         // 開融資多頭：只出自付部分，借款 60% 進池
-        p.mlq += qty;
-        p.mlc += amount;
+        p.mlLots.push({ qty, price });
         cashDelta = -amount * MARGIN_LONG_SELF_RATIO;
       } else {
-        // 融資平多：收價金、償還對應借款本金（按池內均價）
-        const closedQty = Math.min(qty, p.mlq);
-        if (closedQty > TRADE_EPSILON) {
-          const avgFullCost = p.mlc / p.mlq;
-          const loanRepaid = avgFullCost * closedQty * MARGIN_LONG_LOAN_RATIO;
-          cashDelta = price * closedQty - loanRepaid;
-          p.mlc -= avgFullCost * closedQty;
-          p.mlq -= closedQty;
-          if (p.mlq < TRADE_EPSILON) { p.mlq = 0; p.mlc = 0; }
+        // 融資平多：收價金、依先進先出逐批償還借款本金
+        let remain = qty;
+        let loanRepaid = 0;
+        while (remain > TRADE_EPSILON && p.mlLots.length > 0) {
+          const lot = p.mlLots[0];
+          const q = Math.min(remain, lot.qty);
+          loanRepaid += lot.price * q * MARGIN_LONG_LOAN_RATIO;
+          lot.qty -= q;
+          remain -= q;
+          if (lot.qty <= TRADE_EPSILON) p.mlLots.shift();
         }
+        const closedQty = qty - remain;
+        if (closedQty > TRADE_EPSILON) cashDelta = price * closedQty - loanRepaid;
       }
     } else if (tradeType === 'MARGIN_SHORT') {
       if (e.direction === 'SELL') {
@@ -113,26 +147,10 @@ export function autoDetectCashFlows(entries) {
       // 現股：全額換部位
       cashDelta = e.direction === 'BUY' ? -amount : amount;
     }
-
-    const dateStr = (e.date || '').slice(0, 10);
-
-    // 出金且現金不足 → 缺口記為外部入金
-    if (cashDelta < -TRADE_EPSILON) {
-      const need = -cashDelta;
-      if (cashBalance < need - TRADE_EPSILON) {
-        const missing = need - cashBalance;
-        deposits.push({
-          id: `auto-${dateStr}-${deposits.length}`,
-          date: dateStr,
-          amount: Math.round(missing * 100) / 100,
-          type: 'deposit',
-        });
-        cashBalance += missing;
-      }
-    }
-    cashBalance += cashDelta;
-    cashBalance = Math.max(0, cashBalance); // 浮點數保護
+    cashDelta -= tradeCost(e);
+    applyCash(cashDelta, (e.date || '').slice(0, 10));
   }
+  applyDividendsUpTo('9999-12-31');
 
   return deposits;
 }

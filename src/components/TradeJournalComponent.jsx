@@ -10,9 +10,10 @@ import { JOURNAL_DOC_REF } from '../utils/firebaseConfig';
 import { PNL_COLOR, GOLDEN_BORDER_COLOR, formatQuantity, formatAvgCost, formatPnl } from '../utils/formatting';
 
 // 3. 引入核心計算邏輯
-import { calculatePnlSummary, getStartDate, MARGIN_LONG_LOAN_RATIO, MARGIN_LONG_SELF_RATIO, MARGIN_LONG_ANNUAL_RATE, MARGIN_SHORT_DEPOSIT_RATIO } from '../utils/pnlCalculator';
+import { calculatePnlSummary, calcUnrealizedPnl, getStartDate, MARGIN_LONG_LOAN_RATIO, MARGIN_LONG_SELF_RATIO, MARGIN_LONG_ANNUAL_RATE, MARGIN_SHORT_DEPOSIT_RATIO } from '../utils/pnlCalculator';
 import { autoDetectCashFlows, getCumulativeCFUpTo } from '../utils/periodReturns';
 import { fetchCurrentPrice } from '../features/StockAnalysis/api/stockApi';
+import useJournalDividends from './useJournalDividends';
 import {
   buildJournalNameMismatchReport,
   fetchTaiwanStockListFromDb,
@@ -281,10 +282,13 @@ function TradeJournal() {
   }, [journalEntries, historyFilterRange, historyFilterStock]);
 
 
-  // 4. P&L 摘要的計算核心 (保持不變)
+  // 除權息事件（現金股利扣減持有成本、配股併入現股）
+  const { dividends } = useJournalDividends(journalEntries);
+
+  // 4. P&L 摘要的計算核心
   const pnlSummary = useMemo(
-    () => calculatePnlSummary(journalEntries, pnlFilterRange),
-    [journalEntries, pnlFilterRange]
+    () => calculatePnlSummary(journalEntries, pnlFilterRange, { dividends }),
+    [journalEntries, pnlFilterRange, dividends]
   );
 
   // 持倉代碼（有淨部位者）用於拉現價
@@ -312,18 +316,22 @@ function TradeJournal() {
       .finally(() => setPositionPricesLoading(false));
   }, [positionCodes.join(',')]);
 
-  // 總未實現損益（持倉 × (現價 - 成本)）
+  // 總未實現損益（淨額：已扣預估平倉手續費、證交稅與融資應計利息）
   const totalUnrealizedPnl = useMemo(() => {
+    const nowMs = Date.now();
     return pnlSummary.byStock.reduce((sum, s) => {
       if (s.netQuantity === 0) return sum;
       const price = positionPrices[s.code];
       if (price == null) return sum;
-      return sum + (price - s.avgCost) * s.netQuantity;
+      return sum + calcUnrealizedPnl(s, price, nowMs);
     }, 0);
   }, [pnlSummary.byStock, positionPrices]);
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const autoCashFlows = useMemo(() => autoDetectCashFlows(journalEntries), [journalEntries]);
+  const autoCashFlows = useMemo(
+    () => autoDetectCashFlows(journalEntries, { dividends }),
+    [journalEntries, dividends]
+  );
   /** 交易明細自動識別之累計入金 */
   const totalDeposits = useMemo(
     () => getCumulativeCFUpTo(autoCashFlows, todayStr),
@@ -332,8 +340,8 @@ function TradeJournal() {
 
   /** 全時段已實現損益（淨額） */
   const allTimePnlSummary = useMemo(
-    () => calculatePnlSummary(journalEntries, 'ALL'),
-    [journalEntries]
+    () => calculatePnlSummary(journalEntries, 'ALL', { dividends }),
+    [journalEntries, dividends]
   );
 
   /** 總持倉市值：有現價用現價，否則用平均成本估算 */

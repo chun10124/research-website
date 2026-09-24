@@ -10,7 +10,8 @@ import {
   fetchYahooPrice,
   fetchHistoricalPriceMapForNav,
 } from '../features/StockAnalysis/api/stockApi';
-import { calculatePnlSummary } from '../utils/pnlCalculator';
+import { calculatePnlSummary, calcUnrealizedPnl } from '../utils/pnlCalculator';
+import useJournalDividends from './useJournalDividends';
 import { formatPnl } from '../utils/formatting';
 import {
   autoDetectCashFlows,
@@ -64,7 +65,13 @@ function PerformancePage() {
   }, []);
 
   // ── 自動識別入金 ──────────────────────────────────────────
-  const autoCashFlows = useMemo(() => autoDetectCashFlows(entries), [entries]);
+  // 除權息事件（現金股利扣減持有成本、配股併入現股；淨值曲線於除息日入帳）
+  const { dividends } = useJournalDividends(entries);
+
+  const autoCashFlows = useMemo(
+    () => autoDetectCashFlows(entries, { dividends }),
+    [entries, dividends]
+  );
 
   const totalAutoDeposit = useMemo(
     () => autoCashFlows.reduce((s, c) => s + c.amount, 0),
@@ -73,8 +80,8 @@ function PerformancePage() {
 
   // ── P&L（全時段，用於持倉與總損益） ─────────────────────
   const allTimeSummary = useMemo(
-    () => calculatePnlSummary(entries, 'ALL'),
-    [entries]
+    () => calculatePnlSummary(entries, 'ALL', { dividends }),
+    [entries, dividends]
   );
 
   const holdings = useMemo(
@@ -132,14 +139,9 @@ function PerformancePage() {
 
   const holdingsWithPnl = useMemo(() => {
     return holdings.map((s) => {
-      const qty = s.netQuantity;
       const mktPrice = prices[s.code] ?? null;
-      let unrealizedPnl = 0;
-      if (mktPrice != null && mktPrice > 0) {
-        unrealizedPnl = qty > 0
-          ? (mktPrice - s.avgCost) * qty
-          : (s.avgCost - mktPrice) * Math.abs(qty);
-      }
+      // 淨額：已扣預估平倉手續費、證交稅與融資應計利息
+      const unrealizedPnl = mktPrice != null && mktPrice > 0 ? calcUnrealizedPnl(s, mktPrice) : 0;
       return { ...s, mktPrice, unrealizedPnl };
     });
   }, [holdings, prices]);
@@ -212,8 +214,8 @@ function PerformancePage() {
   }, [historicalPricesByCode, prices, todayStr]);
 
   const dailyNavCurve = useMemo(
-    () => buildDailyNAVCurve(entries, todayStr, priceMapWithToday),
-    [entries, todayStr, priceMapWithToday]
+    () => buildDailyNAVCurve(entries, todayStr, priceMapWithToday, { dividends }),
+    [entries, todayStr, priceMapWithToday, dividends]
   );
 
   // NAV 歷史一律以即時計算的 dailyNavCurve 為準（盯市價來自 FinMind 原始收盤，

@@ -138,6 +138,46 @@ export const fetchHistoricalPriceMapForNav = async (stockCode, startStr, endStr)
 };
 
 /**
+ * 某檔股票 startStr 之後的除權息事件（FinMind TaiwanStockDividend），供交易日誌／績效頁計入股利。
+ * 回傳 [{ code, exDate, cash?: 每股現金股利, stock?: 每股配股數 }]。
+ * 以 localStorage 做「每檔每日」快取；查詢失敗回傳 null（呼叫端視為無資料，不寫快取）。
+ * frozenAfter：已出清標的的最後交易日——快取抓取日晚於此日即視為定案，不再每日重抓。
+ */
+export const fetchDividendEvents = async (stockCode, startStr, { frozenAfter = null } = {}) => {
+  const code = toFinmindStockId(String(stockCode || '').trim());
+  const start = (startStr || '').slice(0, 10);
+  if (!code || !start) return [];
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const cacheKey = `rw-div_${code}_${start}`;
+  try {
+    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+    const fresh = cached && (cached.date === todayStr || (frozenAfter && cached.date > frozenAfter));
+    if (fresh && Array.isArray(cached.events)) return cached.events;
+  } catch (_) {}
+  try {
+    const params = new URLSearchParams({ dataset: 'TaiwanStockDividend', data_id: code, start_date: start, token: TOKEN });
+    const res = await fetch(`${PROXY_BASE}${encodeURIComponent(`${FINMIND_BASE}?${params.toString()}`)}`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!Array.isArray(json?.data)) return null;
+    const events = [];
+    json.data.forEach((r) => {
+      const cash = (Number(r.CashEarningsDistribution) || 0) + (Number(r.CashStatutorySurplus) || 0);
+      const stock = ((Number(r.StockEarningsDistribution) || 0) + (Number(r.StockStatutorySurplus) || 0)) / 10;
+      const cashDate = String(r.CashExDividendTradingDate || '').slice(0, 10);
+      const stockDate = String(r.StockExDividendTradingDate || '').slice(0, 10);
+      if (cash > 0 && cashDate) events.push({ code, exDate: cashDate, cash });
+      if (stock > 0 && stockDate) events.push({ code, exDate: stockDate, stock });
+    });
+    try { localStorage.setItem(cacheKey, JSON.stringify({ date: todayStr, events })); } catch (_) {}
+    return events;
+  } catch (e) {
+    console.warn(`fetchDividendEvents(${stockCode}) failed:`, e?.message);
+    return null;
+  }
+};
+
+/**
  * 優先從 Firestore ibdRsRatings.priceMap 取歷史收盤價（非除息調整的 quote.close）；
  * 若 Firestore 資料未覆蓋 startStr 起始日（超過 15 個月舊資料），fallback 至 FinMind。
  */
