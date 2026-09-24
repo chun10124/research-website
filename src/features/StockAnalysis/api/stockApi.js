@@ -137,29 +137,36 @@ export const fetchHistoricalPriceMapForNav = async (stockCode, startStr, endStr)
   return map;
 };
 
+const DIVIDEND_FETCH_TIMEOUT_MS = 10000;
+
 /**
  * 某檔股票 startStr 之後的除權息事件（FinMind TaiwanStockDividend），供交易日誌／績效頁計入股利。
- * 回傳 [{ code, exDate, cash?: 每股現金股利, stock?: 每股配股數 }]。
- * 以 localStorage 做「每檔每日」快取；查詢失敗回傳 null（呼叫端視為無資料，不寫快取）。
+ * 回傳 { events, status }：events 為 [{ code, exDate, cash?: 每股現金股利, stock?: 每股配股數 }]，
+ * 失敗時 events = null、status 為 HTTP 狀態（402 = FinMind 額度用盡）或 'timeout' / 'error'。
+ * 以 localStorage 做「每檔每日」快取；失敗不寫快取。
  * frozenAfter：已出清標的的最後交易日——快取抓取日晚於此日即視為定案，不再每日重抓。
  */
 export const fetchDividendEvents = async (stockCode, startStr, { frozenAfter = null } = {}) => {
   const code = toFinmindStockId(String(stockCode || '').trim());
   const start = (startStr || '').slice(0, 10);
-  if (!code || !start) return [];
+  if (!code || !start) return { events: [], status: 200 };
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
   const cacheKey = `rw-div_${code}_${start}`;
   try {
     const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
     const fresh = cached && (cached.date === todayStr || (frozenAfter && cached.date > frozenAfter));
-    if (fresh && Array.isArray(cached.events)) return cached.events;
+    if (fresh && Array.isArray(cached.events)) return { events: cached.events, status: 200 };
   } catch (_) {}
+  // 代理偶爾不回應，不設逾時會讓整批載入永遠卡住
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DIVIDEND_FETCH_TIMEOUT_MS);
   try {
     const params = new URLSearchParams({ dataset: 'TaiwanStockDividend', data_id: code, start_date: start, token: TOKEN });
-    const res = await fetch(`${PROXY_BASE}${encodeURIComponent(`${FINMIND_BASE}?${params.toString()}`)}`);
-    if (!res.ok) return null;
+    const res = await fetch(`${PROXY_BASE}${encodeURIComponent(`${FINMIND_BASE}?${params.toString()}`)}`, { signal: controller.signal });
+    if (!res.ok) return { events: null, status: res.status };
     const json = await res.json();
-    if (!Array.isArray(json?.data)) return null;
+    if (json?.status === 402) return { events: null, status: 402 };
+    if (!Array.isArray(json?.data)) return { events: null, status: 'error' };
     const events = [];
     json.data.forEach((r) => {
       const cash = (Number(r.CashEarningsDistribution) || 0) + (Number(r.CashStatutorySurplus) || 0);
@@ -170,10 +177,12 @@ export const fetchDividendEvents = async (stockCode, startStr, { frozenAfter = n
       if (stock > 0 && stockDate) events.push({ code, exDate: stockDate, stock });
     });
     try { localStorage.setItem(cacheKey, JSON.stringify({ date: todayStr, events })); } catch (_) {}
-    return events;
+    return { events, status: 200 };
   } catch (e) {
     console.warn(`fetchDividendEvents(${stockCode}) failed:`, e?.message);
-    return null;
+    return { events: null, status: e?.name === 'AbortError' ? 'timeout' : 'error' };
+  } finally {
+    clearTimeout(timer);
   }
 };
 

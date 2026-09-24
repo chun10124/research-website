@@ -283,7 +283,7 @@ function TradeJournal() {
 
 
   // 除權息事件（現金股利扣減持有成本、配股併入現股）
-  const { dividends, dividendsLoading, failedCodes: dividendFailedCodes } = useJournalDividends(journalEntries);
+  const { dividends, dividendsLoading, failedCodes: dividendFailedCodes, quotaExceeded: dividendQuotaExceeded } = useJournalDividends(journalEntries);
 
   // 4. P&L 摘要的計算核心
   const pnlSummary = useMemo(
@@ -626,7 +626,8 @@ function TradeJournal() {
                 {!dividendsLoading && dividendFailedCodes.length > 0 && (
                     <p style={{ margin: '4px 0 0 0', fontSize: '0.78em', color: 'var(--ifm-color-warning-darkest)' }}
                        title={dividendFailedCodes.join(', ')}>
-                        ⚠ {dividendFailedCodes.length} 檔股利資料取得失敗、未計入（可能是 FinMind 額度用盡，稍後重新整理）
+                        ⚠ {dividendFailedCodes.length} 檔股利資料取得失敗、未計入
+                        （{dividendQuotaExceeded ? 'FinMind 本小時額度已用完，約一小時後重新整理' : '稍後重新整理再試'}）
                     </p>
                 )}
             </div>

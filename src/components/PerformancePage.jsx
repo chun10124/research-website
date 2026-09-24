@@ -66,7 +66,7 @@ function PerformancePage() {
 
   // ── 自動識別入金 ──────────────────────────────────────────
   // 除權息事件（現金股利扣減持有成本、配股併入現股；淨值曲線於除息日入帳）
-  const { dividends, dividendsLoading, failedCodes: dividendFailedCodes } = useJournalDividends(entries);
+  const { dividends, dividendsLoading, failedCodes: dividendFailedCodes, quotaExceeded: dividendQuotaExceeded } = useJournalDividends(entries);
 
   const autoCashFlows = useMemo(
     () => autoDetectCashFlows(entries, { dividends }),
@@ -316,7 +316,7 @@ function PerformancePage() {
         const dividendNote = dividendsLoading
           ? '股利載入中…（目前數字尚未含股利）'
           : dividendFailedCodes.length > 0
-            ? `⚠ ${dividendFailedCodes.length} 檔股利資料取得失敗、未計入（可能是 FinMind 額度用盡，稍後重新整理）`
+            ? `⚠ ${dividendFailedCodes.length} 檔股利資料取得失敗、未計入（${dividendQuotaExceeded ? 'FinMind 本小時額度已用完，約一小時後重新整理' : '稍後重新整理再試'}）`
             : null;
         return (
           <div style={{ ...sectionStyle, display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
