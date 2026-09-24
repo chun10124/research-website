@@ -51,6 +51,8 @@ export const WHITEBOARD_DOC_REF = doc(db, "whiteboard", "my_whiteboard");
 export const MINDMAP_DOC_REF = doc(db, "mindmaps", "mindmap_list");
 export const CALENDAR_DOC_REF = doc(db, "investor_calendar", "my_calendar");
 export const ANALYSIS_LAYOUT_DOC_REF = doc(db, "analysis_layout", "layout");
+/** 長線訂閱清單（單一文件 items 陣列）；僅擁有者可讀寫 */
+export const SUBSCRIPTIONS_DOC_REF = doc(db, "subscriptions", "main");
 
 /**
  * Firebase Auth（僅瀏覽器端初始化；SSR/build 時為 null）。

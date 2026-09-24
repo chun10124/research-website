@@ -1,0 +1,278 @@
+/* 訂閱頁。主色：低彩度的鋼藍（試過靛紫、灰藍紫、綠之後定案），只作用於本頁，不動全站香檳金；
+   台股慣例漲紅跌綠。色票在 .root 上定義，暗色於下方覆蓋。 */
+.root {
+  --sub-accent: #4f7cac;          /* 鋼藍：毛利率線、最新一期長條、按鈕 */
+  --sub-accent-2: #4f7cac;        /* 不用漸層，保留變數給按鈕 */
+  --sub-accent-text: #35577d;     /* 淺底上的標題字 */
+  --sub-accent-soft: rgba(79, 124, 172, 0.10);
+  --sub-alert: #3f6a96;           /* 提醒框與標籤 */
+  --sub-alert-soft: rgba(79, 124, 172, 0.12);
+  --sub-on-accent: #ffffff;
+  --sub-up: #c0392b;
+  --sub-down: #15803d;
+  --sub-fire: #b91c1c;
+  --sub-bar: #dde6f0;              /* 很淡的灰藍：一般長條 */
+  --sub-line: #c0392b;
+  --sub-yoy: #d9a400;              /* 營收圖上的 YoY 線：黃（淺底用深一點的黃才看得到） */
+  --sub-grid: #e5e7eb;
+  --sub-overlay: rgba(15, 23, 42, 0.45);
+
+  width: 100%; /* Layout 的 main 是 flex，不寫會縮成內容寬 */
+  box-sizing: border-box;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 12px 16px 48px;
+  color: var(--app-text);
+}
+:global([data-theme='dark']) .root {
+  --sub-accent: #7ea3cc;          /* 深底用亮一階的鋼藍 */
+  --sub-accent-2: #7ea3cc;
+  --sub-accent-text: #a9c2de;
+  --sub-accent-soft: rgba(126, 163, 204, 0.12);
+  --sub-alert: #9bb8d8;
+  --sub-alert-soft: rgba(126, 163, 204, 0.14);
+  --sub-on-accent: #0e1a28;
+  --sub-up: #ef5350;
+  --sub-down: #4ade80;
+  --sub-fire: #f87171;
+  --sub-bar: #334255;              /* 深灰藍 */
+  --sub-line: #ef5350;
+  --sub-yoy: #facc15;
+  --sub-grid: #3a3c3e;
+  --sub-overlay: rgba(0, 0, 0, 0.6);
+}
+
+/* ── 右上角訂閱框 ── */
+.notice { font-size: 12px; color: var(--sub-fire); margin-bottom: 8px; }
+/* 固定在格線最後一欄第一列；dense 讓卡片自動補滿其他格 */
+.addCell { grid-column: -2 / -1; grid-row: 1; display: flex; justify-content: flex-end; align-items: flex-start; margin-right: -12px; }
+.addBox { position: relative; display: flex; gap: 4px; flex-shrink: 0; }
+.codeInput {
+  width: 76px; height: 28px; box-sizing: border-box; padding: 0 8px; font-size: 13px; font-family: inherit;
+  background: var(--app-surface); color: var(--app-text);
+  border: 1px solid var(--app-border); border-radius: 6px;
+}
+.codeInput:focus { outline: none; border-color: var(--sub-accent); }
+.addBtn {
+  height: 28px; padding: 0 12px; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap;
+  background: linear-gradient(135deg, var(--sub-accent), var(--sub-accent-2)); color: var(--sub-on-accent); border: none; border-radius: 6px;
+}
+.addBtn:hover { filter: brightness(1.06); }
+.addHint { position: absolute; top: 100%; right: 0; margin-top: 3px; font-size: 12px; color: var(--app-text-soft); white-space: nowrap; }
+
+.input, .textarea, .dateInput, .numInput {
+  background: var(--app-surface-2); color: var(--app-text);
+  border: 1px solid var(--app-border); border-radius: 6px;
+  padding: 6px 8px; font-size: 13px; font-family: inherit;
+}
+.textarea:focus, .dateInput:focus, .numInput:focus { outline: none; border-color: var(--sub-accent); }
+.numInput { width: 56px; padding: 3px 6px; }
+.numWide { width: 90px; }
+.textarea { width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical; line-height: 1.6; }
+.btn {
+  border: 1px solid var(--app-border); background: var(--app-surface-2); color: var(--app-text);
+  border-radius: 6px; padding: 5px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; font-family: inherit;
+}
+.btn:hover { border-color: var(--sub-accent); }
+.btnSm { padding: 3px 8px; font-size: 12px; }
+.btnDanger { color: var(--sub-fire); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.hint { font-size: 12px; color: var(--app-text-soft); }
+.errText { font-size: 12px; color: var(--sub-fire); margin-bottom: 6px; }
+.empty { padding: 60px 12px; text-align: center; color: var(--app-text-soft); font-size: 14px; }
+
+.up { color: var(--sub-up); }
+.down { color: var(--sub-down); }
+.muted { color: var(--app-text-soft); }
+.stockName { font-weight: 800; }
+.stockId { color: var(--app-text-soft); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+
+/* ── 正方形卡片 ── */
+.cardGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); grid-auto-flow: dense; gap: 10px; }
+.card {
+  display: flex; flex-direction: column; gap: 4px;
+  text-align: left; font-family: inherit; color: var(--app-text);
+  background: var(--app-surface); border: 1px solid var(--app-border); border-radius: 10px;
+  padding: 10px 12px; cursor: pointer; min-width: 0;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.card:hover { border-color: var(--sub-accent); transform: translateY(-1px); }
+.card:focus-visible { outline: 2px solid var(--sub-accent); outline-offset: 2px; }
+/* 有待確認提醒：金色實線框＋右上標籤（不用光暈） */
+.cardAlert { border-color: var(--sub-alert); box-shadow: inset 0 0 0 1px var(--sub-alert); }
+.cardAlerts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.cardAlerts span { font-size: 11px; font-weight: 700; line-height: 1.4; border-radius: 4px; padding: 1px 6px; color: var(--sub-alert); background: var(--sub-alert-soft); }
+.cardTop { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+.cardName { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; min-width: 0; font-size: 14px; line-height: 1.3; }
+.cardPrice { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.priceNum { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.priceChg { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cardStats { display: flex; flex-direction: column; gap: 1px; font-size: 12px; }
+.statLine { display: flex; justify-content: space-between; gap: 6px; font-variant-numeric: tabular-nums; }
+
+/* ── 個股視窗 ── */
+.overlay {
+  position: fixed; inset: 0; z-index: 1000; background: var(--sub-overlay);
+  display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto;
+}
+.overlayTop { z-index: 1100; align-items: center; }
+.modal, .settings {
+  width: 100%; background: var(--app-surface); color: var(--app-text);
+  border: 1px solid var(--app-border); border-radius: 14px; padding: 18px 20px 20px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25); box-sizing: border-box;
+}
+.modal { max-width: 1040px; padding: 14px 16px 16px; } /* 個股視窗整體縮約 15%，一屏看到更多 */
+.settings { max-width: 800px; padding: 14px 16px 14px; } /* 提醒設定整體縮約 15% */
+.settings .modalHead { margin-bottom: 8px; }
+.settings .modalTitle { font-size: 15px; }
+.settings .closeBtn { font-size: 24px; }
+.settings .btn { padding: 3px 9px; font-size: 11px; }
+.settings .dateInput { padding: 3px 6px; font-size: 12px; }
+.settings .addBtn { height: 26px; font-size: 12px; padding: 0 12px; }
+.modalHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.modalTitle { font-size: 17px; font-weight: 800; }
+.modalPrice { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+.modalPrice .priceNum { font-size: 18px; }
+.headBtns { display: flex; align-items: center; gap: 8px; }
+.closeBtn {
+  border: none; background: transparent; color: var(--app-text-soft); font-size: 28px; line-height: 1;
+  cursor: pointer; padding: 0 4px; font-family: inherit;
+}
+.closeBtn:hover { color: var(--app-text); }
+
+.alertInline { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; }
+.alertTag {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 11px; font-weight: 700; line-height: 1.4; border-radius: 4px; padding: 2px 2px 2px 7px;
+  color: var(--sub-alert); background: var(--sub-alert-soft);
+}
+/* 單則清除的小叉叉：平常淡，滑過才明顯 */
+.alertX {
+  border: none; background: none; cursor: pointer; font: inherit; font-size: 13px; line-height: 1;
+  color: inherit; opacity: 0.5; padding: 0 4px; border-radius: 3px;
+}
+.alertX:hover { opacity: 1; background: var(--sub-alert-soft); }
+.ackBtn {
+  flex-shrink: 0; height: 24px; padding: 0 10px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer;
+  background: linear-gradient(135deg, var(--sub-accent), var(--sub-accent-2)); color: var(--sub-on-accent); border: none; border-radius: 6px;
+}
+
+/* 數字格照內容寬度排，不撐滿整列 */
+.statGrid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.statGrid > div { background: var(--app-surface-2); border-radius: 6px; padding: 4px 12px 4px 8px; display: flex; flex-direction: column; flex: 0 0 auto; min-width: 84px; }
+.statGrid span { font-size: 10px; color: var(--app-text-soft); }
+.statGrid b { font-size: 13px; font-variant-numeric: tabular-nums; }
+
+.chartGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.chartCard { border: 1px solid var(--app-border); border-radius: 8px; padding: 8px 8px 4px; min-width: 0; }
+.chartHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 2px; min-height: 17px; }
+.chartTitle { font-size: 12px; font-weight: 800; color: var(--sub-accent-text); white-space: nowrap; }
+.chartInfo { font-size: 11px; color: var(--app-text-soft); text-align: right; font-variant-numeric: tabular-nums; }
+.chartInfo b { font-weight: 700; }
+.chartInfo b:not(.up):not(.down) { color: var(--app-text); } /* 漲跌值保留紅綠 */
+.chartBox { height: 170px; }
+.chartEmpty { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--app-text-soft); }
+
+/* 法說格與左邊毛利率圖同高，多的捲動；筆記獨佔最下方整列 */
+/* 筆記在右下：縱跨兩列，height:0 + min-height:100% 讓高度由左邊兩格決定，筆記多了只在格內捲動 */
+.sideBox { box-sizing: border-box; grid-row: span 3; height: 0; min-height: 100%; overflow-y: auto; } /* 右側縱跨毛利率、法說、重訊三列 */
+.confCell { min-width: 0; }
+/* 重大訊息：一行一則，點主旨展開全文 */
+.newsItem { border-left: 3px solid var(--app-border); margin-bottom: 4px; }
+.newsHead {
+  display: flex; gap: 8px; width: 100%; text-align: left; background: none; border: none; cursor: pointer;
+  padding: 3px 0 3px 8px; font: inherit; font-size: 12px; line-height: 1.45; color: var(--app-text);
+}
+.newsHead:hover .newsSubject { color: var(--sub-accent-text); }
+.newsDate { flex-shrink: 0; color: var(--app-text-soft); font-variant-numeric: tabular-nums; }
+.newsSubject { min-width: 0; }
+.newsBody {
+  padding: 4px 8px 8px 8px; font-size: 12px; line-height: 1.6; color: var(--app-text-soft);
+  white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow-y: auto;
+}
+.linkBtn { background: none; border: none; padding: 2px 0; font: inherit; font-size: 12px; color: var(--sub-accent-text); cursor: pointer; }
+.box { border: 1px solid var(--app-border); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.boxTitle { font-size: 12px; font-weight: 800; color: var(--sub-accent-text); margin-bottom: 6px; }
+.confItem { border-left: 3px solid var(--app-border); padding: 2px 0 2px 8px; margin-bottom: 6px; font-size: 12px; line-height: 1.45; }
+.confUpcoming { border-left-color: var(--sub-accent); }
+.confNew { background: var(--sub-accent-soft); }
+.confMeta { font-size: 11px; color: var(--app-text-soft); }
+.confMeta a { color: var(--sub-accent-text); } /* 全站連結是香檳金，這頁跟著藍色主色 */
+.confDesc { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.boxHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.boxHead .boxTitle { margin-bottom: 0; }
+.noteInput {
+  display: block; width: 100%; box-sizing: border-box; resize: none; overflow: hidden;
+  border: none; border-bottom: 1px solid var(--app-border); border-radius: 0; background: transparent;
+  color: var(--app-text); font: inherit; font-size: 12px; line-height: 1.6; padding: 4px 0; min-height: 26px;
+}
+.noteInput:focus { outline: none; border-bottom-color: var(--sub-accent); }
+.noteInput::placeholder { color: var(--app-text-soft); opacity: 0.7; }
+.noteActions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin: 4px 0 2px; }
+.note { padding: 6px 0; }
+.note + .note { border-top: 1px solid var(--app-border); }
+.noteHead { display: flex; justify-content: space-between; align-items: center; }
+.noteDate { color: var(--app-text-soft); font-size: 11px; font-variant-numeric: tabular-nums; }
+.noteDel { border: none; background: none; color: var(--app-text-soft); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; }
+.noteDel:hover { color: var(--sub-fire); }
+.noteText { font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
+.modalFoot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+.modal .btn { padding: 4px 10px; font-size: 12px; }
+.modal .hint { font-size: 11px; }
+.modal .textarea { font-size: 12px; min-height: 52px; padding: 5px 8px; }
+
+/* ── 提醒設定視窗 ── */
+.setGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 20px; border-top: 1px solid var(--app-border); }
+.setCol { min-width: 0; }
+.setGroup { padding: 8px 0; }
+.setCol > .setGroup + .setGroup { border-top: 1px dashed var(--app-border); }
+.setTitle { font-size: 12px; font-weight: 800; color: var(--sub-accent-text); margin-bottom: 6px; }
+.setRow { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.setRow input[type='checkbox'] { accent-color: var(--sub-accent); }
+.setRow .numInput { width: 38px; padding: 2px 5px; font-size: 12px; }
+.setRow .numWide { width: 72px; }
+.setHint { font-size: 11px; color: var(--app-text-soft); }
+.setLabel { font-size: 12px; color: var(--app-text-soft); flex-shrink: 0; }
+.setSub { font-size: 11px; color: var(--app-text-soft); margin: 4px 0 5px; }
+.numInput::placeholder { color: var(--app-text-soft); opacity: 0.55; } /* 預設值提示要淡 */
+.textInput {
+  flex: 1; min-width: 0; background: var(--app-surface-2); color: var(--app-text);
+  border: 1px solid var(--app-border); border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 11px;
+}
+.textInput:focus { outline: none; border-color: var(--sub-accent); }
+.textInput::placeholder { color: var(--app-text-soft); opacity: 0.55; } /* 提示字要淡，別跟真的值混淆 */
+.dateChips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.dateChip {
+  display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-variant-numeric: tabular-nums;
+  border-radius: 4px; padding: 1px 2px 1px 7px; background: var(--sub-accent-soft); color: var(--sub-accent-text);
+}
+.dateChip button { background: none; border: none; cursor: pointer; color: inherit; font-size: 14px; line-height: 1; padding: 0 4px; }
+.dateChipDue { background: var(--sub-alert-soft); color: var(--sub-alert); font-weight: 700; }
+.setFoot { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid var(--app-border); }
+
+@media (max-width: 860px) {
+  .chartGrid, .setGrid { grid-template-columns: 1fr; }
+  .sideBox { grid-row: auto; height: auto; min-height: 0; max-height: 360px; }
+}
+@media (max-width: 480px) {
+  .addCell { margin-right: 0; } /* 手機保留邊距，不往右推 */
+  .priceNum { font-size: 18px; }
+  .overlay { padding: 0; }
+  .overlayTop { padding: 16px; }
+  .modal { border-radius: 0; min-height: 100%; padding: 14px 16px; }
+  .modalHead { flex-wrap: wrap; }
+  .headBtns { flex-wrap: wrap; justify-content: flex-end; }
+}
+
+/* 其他頁的全域規則 [data-theme=dark] textarea 會蓋成黑底白框（含 !important），這裡蓋回來 */
+:global([data-theme='dark']) .root .textarea {
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border) !important;
+  color: var(--app-text) !important;
+}
+:global([data-theme='dark']) .root .textarea:focus { border-color: var(--sub-accent) !important; }
+:global([data-theme='dark']) .root .noteInput {
+  background: transparent; color: var(--app-text) !important;
+  border: none !important; border-bottom: 1px solid var(--app-border) !important;
+}
+:global([data-theme='dark']) .root .noteInput:focus { border-bottom-color: var(--sub-accent) !important; }

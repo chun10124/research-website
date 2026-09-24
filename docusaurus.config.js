@@ -107,6 +107,11 @@ const config = {
             position: 'left', // 放在左側
           },
           {
+            to: '/subscriptions',
+            label: '訂閱',
+            position: 'left',
+          },
+          {
             to: '/whiteboard', // 指向白板頁面
             label: '白板', // 導航欄上顯示的名稱
             position: 'left', // 放在左側

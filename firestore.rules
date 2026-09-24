@@ -35,6 +35,7 @@ service cloud.firestore {
     match /whiteboard/{doc}        { allow read, write: if isOwner(); }  // 白板、已完成便利貼
     match /mindmaps/{doc}          { allow read, write: if isOwner(); }  // 心智圖
     match /investor_calendar/{doc} { allow read, write: if isOwner(); }  // 日曆
+    match /subscriptions/{doc}     { allow read, write: if isOwner(); }  // 長線訂閱
 
     // 未列出的 collection 一律拒絕（這也是 Firestore 的預設行為，寫出來只是提醒）。
     // ⚠️ 若資料庫裡還有此檔未涵蓋的 collection，它們會被擋掉——
