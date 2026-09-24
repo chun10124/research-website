@@ -113,9 +113,12 @@
 /* ── 個股視窗 ── */
 .overlay {
   position: fixed; inset: 0; z-index: 1000; background: var(--sub-overlay);
-  display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto;
+  display: flex; align-items: flex-start; justify-content: center; overflow-y: auto;
+  /* 上下留白並避開 iPhone 瀏海／底部橫條 */
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
 }
-.overlayTop { z-index: 1100; align-items: center; }
+.overlayTop { z-index: 1100; }
+.overlayTop > .settings { margin: auto 0; } /* 矮於螢幕時置中；高於螢幕時從頂端排、可捲動 */
 .modal, .settings {
   width: 100%; background: var(--app-surface); color: var(--app-text);
   border: 1px solid var(--app-border); border-radius: 14px; padding: 18px 20px 20px;
@@ -257,11 +260,19 @@
 @media (max-width: 480px) {
   .addCell { margin-right: 0; } /* 手機保留邊距，不往右推 */
   .priceNum { font-size: 18px; }
-  .overlay { padding: 0; }
-  .overlayTop { padding: 16px; }
-  .modal { border-radius: 0; min-height: 100%; padding: 14px 16px; }
+  .overlay { padding: max(12px, env(safe-area-inset-top)) 8px max(12px, env(safe-area-inset-bottom)); }
+  .modal, .settings { border-radius: 12px; padding: 12px; }
   .modalHead { flex-wrap: wrap; }
   .headBtns { flex-wrap: wrap; justify-content: flex-end; }
+}
+
+/* 觸控裝置（手機、平板）：iOS Safari 點進字級 < 16px 的輸入框會自動放大整頁且不縮回，
+   視窗就像「超出螢幕」。輸入框一律 16px，欄寬跟著放寬；電腦版維持原本的小字。 */
+@media (hover: none) and (pointer: coarse) {
+  .root input, .root textarea, .root select { font-size: 16px !important; }
+  .codeInput { width: 88px; }
+  .setRow .numInput { width: 52px; }
+  .setRow .numWide { width: 88px; }
 }
 
 /* 其他頁的全域規則 [data-theme=dark] textarea 會蓋成黑底白框（含 !important），這裡蓋回來 */
