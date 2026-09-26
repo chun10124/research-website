@@ -340,13 +340,27 @@ export async function fetchRsPriceData(stockCode, market) {
   }
   // openMap/highMap/lowMap/volumeMap 只存最近 120 天（K 線 + VCP 夠用）
   // priceMap 維持完整（RS 計算需要 15 個月）
+  // 註：寫入用 merge，Firestore 逐鍵合併，舊日期不會被刪 —— 資料庫實際累積的天數比這裡多
   return {
-    priceMap: result.priceMap,
+    priceMap: roundPriceMap(result.priceMap),
     volumeMap: trimMapToLastN(result.volumeMap, 120),
-    openMap: trimMapToLastN(openMap, 120),
-    highMap: trimMapToLastN(result.highMap, 120),
-    lowMap: trimMapToLastN(result.lowMap, 120),
+    openMap: roundPriceMap(trimMapToLastN(openMap, 120)),
+    highMap: roundPriceMap(trimMapToLastN(result.highMap, 120)),
+    lowMap: roundPriceMap(trimMapToLastN(result.lowMap, 120)),
   };
+}
+
+/**
+ * 價格四捨五入到小數 4 位。Yahoo 價格帶 float32 雜訊（24.2 → 24.200000762939453），
+ * 一個數字十幾個字元，佔 ibdRsRatings 約三成大小；4 位小數相對誤差 < 0.001%。
+ */
+export function roundPriceMap(map) {
+  if (!map) return map;
+  const out = {};
+  for (const [k, v] of Object.entries(map)) {
+    out[k] = typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 1e4) / 1e4 : v;
+  }
+  return out;
 }
 
 /** 只保留 map 中日期最新的 n 筆 */
