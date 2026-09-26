@@ -16,6 +16,9 @@
   --sub-yoy: #d9a400;              /* 營收圖上的 YoY 線：黃（淺底用深一點的黃才看得到） */
   --sub-grid: #e5e7eb;
   --sub-overlay: rgba(15, 23, 42, 0.45);
+  --sub-badge: #ff3b30;            /* 提醒數量：iPhone 通知紅 */
+  --sub-tip-bg: #f1f5fa;           /* 圖表浮動提示框：比面板深一階的淺鋼藍，和圖表底分得開 */
+  --sub-tip-border: #c7d5e5;
 
   width: 100%; /* Layout 的 main 是 flex，不寫會縮成內容寬 */
   box-sizing: border-box;
@@ -38,14 +41,34 @@
   --sub-bar: #334255;              /* 深灰藍 */
   --sub-line: #ef5350;
   --sub-yoy: #facc15;
-  --sub-grid: #3a3c3e;
-  --sub-overlay: rgba(0, 0, 0, 0.6);
+  --sub-grid: #2c333c;
+  --sub-overlay: rgba(4, 8, 14, 0.66);
+  --sub-badge: #ff453a;            /* 暗色用 iOS 暗色模式的紅 */
+  --sub-tip-bg: #323d4b;           /* 提示框比面板亮一階 */
+  --sub-tip-border: #4a5a6e;
+  /* 本頁暗色面板改用帶一點鋼藍的深灰（全站是中性灰 #242526，配鋼藍主色顯得髒），只作用在本頁 */
+  --app-surface: #1f242b;
+  --app-surface-2: #272e37;
+  --app-border: #343d48;
 }
 
 /* ── 右上角訂閱框 ── */
 .notice { font-size: 12px; color: var(--sub-fire); margin-bottom: 8px; }
-/* 固定在格線最後一欄第一列；dense 讓卡片自動補滿其他格 */
-.addCell { grid-column: -2 / -1; grid-row: 1; display: flex; justify-content: flex-end; align-items: flex-start; gap: 6px; margin-right: -12px; } /* 排序鈕＋訂閱框同一行（控制項縮小到放得進一格） */
+.addCell { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-bottom: 10px; } /* 卡片上方一行，每一欄都留給卡片 */
+/* 提醒摘要：佔左邊剩餘空間，單行，放不下時橫向捲動（不撐高、不換行） */
+.alertSummary {
+  flex: 1 1 auto; min-width: 0; margin-right: auto; display: flex; align-items: center; gap: 4px;
+  overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+}
+.alertSummary::-webkit-scrollbar { display: none; }
+.alertSummary .alertTag { flex-shrink: 0; font-weight: 400; }
+.alertSummary .alertOpen b { font-weight: 700; color: var(--app-text); } /* 股名比提醒粗，用主文字色（暗色＝白） */
+.alertCount { flex-shrink: 1; min-width: 0; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; color: var(--app-text); margin-right: 2px; }
+.alertCount .cardBadge { margin: 0; }
+.alertCount > span { flex-shrink: 0; }
+.alertCount > .alertNames { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: -5px; } /* 緊貼後面的「，」 */ /* 檔數多時股名截斷，滑鼠停上去看全部 */
+.alertOpen { border: none; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.alertOpen:hover { text-decoration: underline; }
 .addBox { position: relative; display: flex; gap: 4px; flex-shrink: 0; }
 /* 排序切換：兩段式小按鈕，放在訂閱框左邊 */
 .sortToggle { display: flex; border: 1px solid var(--app-border); border-radius: 6px; overflow: hidden; height: 28px; flex-shrink: 0; }
@@ -56,7 +79,7 @@
 .sortToggle button + button { border-left: 1px solid var(--app-border); }
 .sortToggle .sortOn { background: var(--sub-accent-soft); color: var(--sub-accent-text); font-weight: 700; }
 .codeInput {
-  width: 60px; height: 28px; box-sizing: border-box; padding: 0 7px; font-size: 12px; font-family: inherit;
+  width: 96px; height: 28px; box-sizing: border-box; padding: 0 8px; font-size: 12px; font-family: inherit;
   background: var(--app-surface); color: var(--app-text);
   border: 1px solid var(--app-border); border-radius: 6px;
 }
@@ -95,25 +118,112 @@
 .stockName { font-weight: 800; }
 .stockId { color: var(--app-text-soft); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
 
+/* ── 電腦版表格（手機版改顯示卡片） ── */
+/* 表格放在一張圓角面板裡，和頁面其他區塊（個股視窗、卡片）同一套外觀 */
+.tableWrap {
+  background: var(--app-surface); border: 1px solid var(--app-border); border-radius: 10px;
+  overflow-x: auto; padding: 0 2px 2px; /* 視窗窄時表格可左右滑，不會被切掉 */
+}
+.table { display: table; overflow: visible; width: 100%; margin: 0; border-collapse: collapse; font-size: 14px; line-height: 1.3; font-variant-numeric: tabular-nums; }
+/* 蓋掉站台預設表格樣式（display:block、外框、斑馬紋） */
+.table tr { background: none; border: none; }
+.table th, .table td { text-align: right; white-space: nowrap; border: none; }
+.table td { padding: 7px 10px; border-bottom: 1px solid var(--sub-grid); }
+.table tbody tr:last-child td { border-bottom: none; }
+.table th { padding: 0; background: none; font-weight: 600; }
+/* 上排分組標題：置中、細底線 */
+.tGroupRow th { padding: 8px 6px 0; text-align: center; font-size: 12px; letter-spacing: 0.08em; color: var(--app-text-soft); }
+.tGroupRow th span { display: block; padding-bottom: 4px; border-bottom: 1px solid var(--app-border); }
+.table thead tr:last-child th button {
+  width: 100%; border: none; background: none; font: inherit; font-size: 12.5px; font-weight: 500; text-align: inherit;
+  color: var(--app-text-soft); padding: 5px 10px 6px; cursor: pointer; white-space: nowrap;
+}
+.table thead tr:last-child th { border-bottom: 1px solid var(--app-border); }
+.table thead tr:last-child th button:hover { color: var(--app-text); }
+.table thead tr:last-child th[aria-sort] button { color: var(--sub-accent-text); font-weight: 700; }
+.table .gStart { border-left: 1px solid var(--sub-grid); }
+.table .tName { text-align: left; }
+.table td.tName b { font-size: 14px; }
+.table td.tName .tSub { margin-left: 6px; }
+.table tbody tr { cursor: pointer; transition: background 0.12s; }
+.table tbody tr:hover { background: var(--sub-accent-soft); }
+.tSub { font-size: 12px; color: var(--app-text-soft); font-weight: 400; margin-right: 5px; }
+.table td.tAlert, .table th.tAlert { text-align: left; }
+/* 提醒欄吃掉剩下的寬度，內容過長就截斷（max-width:0 讓表格不被撐寬） */
+.table td.tAlert { width: 100%; max-width: 0; min-width: 160px; }
+/* 有提醒：左側一條提醒色，不整行上色 */
+.tRowAlert td:first-child { box-shadow: inset 3px 0 0 var(--sub-alert); }
+.tAlertChip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%; box-sizing: border-box; padding: 1px 7px 1px 1px;
+  border-radius: 11px; background: var(--sub-alert-soft); color: var(--sub-alert); font-size: 13px;
+}
+.tAlertText { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tBadge {
+  flex-shrink: 0; min-width: 19px; height: 19px; padding: 0 5px; box-sizing: border-box;
+  border-radius: 10px; font-size: 11.5px; font-weight: 700; line-height: 19px; text-align: center;
+  color: var(--app-surface); background: var(--sub-alert);
+}
+/* 「股票」欄名旁的編輯鈕；編輯模式下整行可拖曳 */
+.tNameHead { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-right: 6px; }
+.table .tNameHead > button:first-child { width: auto; }
+.table thead th button:disabled { cursor: default; }
+.table thead th button:disabled:hover { color: var(--app-text-soft); }
+.table .tNameHead .tEditBtn {
+  width: auto; flex-shrink: 0; padding: 1px 8px; border: 1px solid var(--app-border); border-radius: 5px;
+  font-size: 11.5px; color: var(--app-text-soft); background: none;
+}
+.table .tNameHead .tEditBtn:hover { color: var(--app-text); border-color: var(--sub-accent); }
+.table .tNameHead .tEditOn { background: var(--sub-accent); border-color: var(--sub-accent); color: var(--sub-on-accent); font-weight: 700; }
+.table .tNameHead .tEditOn:hover { color: var(--sub-on-accent); }
+.table tbody tr.tRowEdit { cursor: grab; }
+.table tbody tr.tRowEdit:active { cursor: grabbing; }
+.tGrip { color: var(--app-text-soft); margin-right: 6px; font-size: 13px; }
+.tRowDragging { opacity: 0.35; }
+.table tbody tr.tDropBefore td { box-shadow: inset 0 2px 0 var(--sub-accent); }
+.table tbody tr.tDropAfter td { box-shadow: inset 0 -2px 0 var(--sub-accent); }
+/* 表格左上角的訂閱框 */
+.tGroupRow th.tAddCell { text-align: left; padding: 4px 4px 2px 6px; vertical-align: bottom; }
+.tAddCell .codeInput, .tAddCell .addBtn { height: 28px; font-size: 13px; }
+.tAddCell .codeInput { width: 62px; padding: 0 7px; }
+.tAddCell .addBtn { padding: 0 8px; }
+.tAddCell .addHint { left: 0; right: auto; z-index: 2; padding: 2px 8px; border-radius: 6px; background: var(--app-surface); border: 1px solid var(--app-border); font-weight: 400; }
+/* 電腦版：不顯示卡片、上方提醒摘要與週／月切換（表格欄名可排序、提醒在表格裡） */
+
 /* ── 正方形卡片 ── */
-.cardGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); grid-auto-flow: dense; gap: 10px; }
+.cardGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); grid-auto-flow: dense; gap: 10px; }
 .card {
   display: flex; flex-direction: column; gap: 4px;
-  height: 150px; box-sizing: border-box; overflow: hidden; /* 所有卡片固定同一大小，不隨提醒多寡伸縮 */
+  height: 110px; box-sizing: border-box; overflow: hidden; /* 所有卡片固定同一大小，不隨提醒多寡伸縮 */
   text-align: left; font-family: inherit; color: var(--app-text);
   background: var(--app-surface); border: 1px solid var(--app-border); border-radius: 10px;
   padding: 10px 12px; cursor: pointer; min-width: 0;
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
+.cardFlash { border-color: var(--sub-accent); box-shadow: 0 0 0 2px var(--sub-accent); } /* 「移動至」跳到這張時短暫標出 */
+/* 自訂排序：卡片可拖曳；放置位置在目標卡片左或右邊畫一條線 */
+.cardDraggable { cursor: grab; }
+.cardDraggable:active { cursor: grabbing; }
+.cardDragging { opacity: 0.35; }
+.cardDropSwap { border-color: var(--sub-accent); box-shadow: 0 0 0 2px var(--sub-accent); } /* 放在這張上＝互換 */
+/* 自訂排列：固定列高，空的列也保留高度；空格平常隱形，拖曳時才出現虛線框 */
+.cardGridCustom { grid-auto-rows: 110px; }
+.slotCell { border-radius: 10px; }
+.slotCellActive { border: 1px dashed var(--app-border); }
+.slotCellOver { border: 2px dashed var(--sub-accent); background: var(--sub-accent-soft); }
 .card:hover { border-color: var(--sub-accent); transform: translateY(-1px); }
 .card:focus-visible { outline: 2px solid var(--sub-accent); outline-offset: 2px; }
 /* 有待確認提醒：金色實線框＋右上標籤（不用光暈） */
 .cardAlert { border-color: var(--sub-alert); box-shadow: inset 0 0 0 1px var(--sub-alert); }
-.cardAlerts { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; margin-top: auto; height: 38px; }
-.cardAlerts span {
-  max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 11px; font-weight: 700; line-height: 1.4; border-radius: 4px; padding: 1px 6px;
-  color: var(--sub-alert); background: var(--sub-alert-soft);
+/* 提醒數量（卡片右下角、上方「提醒」旁共用） */
+.cardBadge {
+  flex-shrink: 0; min-width: 22px; height: 22px; padding: 0 6px; margin: -2px -2px 0 0; box-sizing: border-box;
+  border-radius: 11px; font-size: 13px; font-weight: 700; line-height: 22px; text-align: center;
+  color: #fff; background: var(--sub-badge); /* 紅底白字，兩種主題都一樣 */
+}
+.card { position: relative; overflow: visible; }
+.cardBadgeCorner {
+  position: absolute; right: -8px; bottom: -9px; margin: 0; z-index: 1;
+  box-shadow: 0 0 0 2px var(--ifm-background-color); /* 和頁面底色之間留一圈，像 iPhone 通知紅點 */
 }
 .cardTop { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
 .cardName { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; min-width: 0; font-size: 14px; line-height: 1.3; }
@@ -137,7 +247,7 @@
   border: 1px solid var(--app-border); border-radius: 14px; padding: 18px 20px 20px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25); box-sizing: border-box;
 }
-.modal { max-width: 1040px; padding: 14px 16px 16px; } /* 個股視窗整體縮約 15%，一屏看到更多 */
+.modal { max-width: 960px; padding: 13px 15px 15px; } /* 個股視窗整體縮小；不用 zoom（部分瀏覽器會讓圖表滑鼠位置對不準），各尺寸直接縮 */
 .settings { max-width: 800px; padding: 14px 16px 14px; } /* 提醒設定整體縮約 15% */
 .settings .modalHead { margin-bottom: 8px; }
 .settings .modalTitle { font-size: 15px; }
@@ -146,7 +256,7 @@
 .settings .dateInput { padding: 3px 6px; font-size: 12px; }
 .settings .addBtn { height: 26px; font-size: 12px; padding: 0 12px; }
 .modalHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
-.modalTitle { font-size: 17px; font-weight: 800; }
+.modalTitle { font-size: 16px; font-weight: 800; }
 .modalPrice { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12px; font-variant-numeric: tabular-nums; }
 .modalPrice .priceNum { font-size: 18px; }
 .headBtns { display: flex; align-items: center; gap: 8px; }
@@ -157,6 +267,14 @@
 .closeBtn:hover { color: var(--app-text); }
 
 .alertInline { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; }
+/* 個股視窗的提醒列：標題下方，標籤同高靠左排，換行也對齊 */
+.alertStrip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 10px; }
+.alertStrip .alertTag { height: 22px; box-sizing: border-box; padding: 0 2px 0 8px; font-size: 11.5px; border-radius: 11px; }
+.alertClearAll {
+  margin-left: 4px; border: none; background: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--app-text-soft); text-decoration: underline; text-underline-offset: 2px;
+}
+.alertClearAll:hover { color: var(--app-text); }
 .alertTag {
   display: inline-flex; align-items: center; gap: 2px;
   font-size: 11px; font-weight: 700; line-height: 1.4; border-radius: 4px; padding: 2px 2px 2px 7px;
@@ -174,10 +292,10 @@
 }
 
 /* 數字格照內容寬度排，不撐滿整列 */
-.statGrid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.statGrid > div { background: var(--app-surface-2); border-radius: 6px; padding: 4px 12px 4px 8px; display: flex; flex-direction: column; flex: 0 0 auto; min-width: 84px; }
-.statGrid span { font-size: 10px; color: var(--app-text-soft); }
-.statGrid b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.statGrid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.statGrid > div { background: var(--app-surface-2); border-radius: 7px; padding: 5px 14px 6px 10px; display: flex; flex-direction: column; gap: 1px; flex: 0 0 auto; min-width: 96px; }
+.statGrid span { font-size: 11px; color: var(--app-text-soft); }
+.statGrid b { font-size: 14px; font-variant-numeric: tabular-nums; }
 
 .chartGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 .chartCard { border: 1px solid var(--app-border); border-radius: 8px; padding: 8px 8px 4px; min-width: 0; }
@@ -186,7 +304,7 @@
 .chartInfo { font-size: 11px; color: var(--app-text-soft); text-align: right; font-variant-numeric: tabular-nums; }
 .chartInfo b { font-weight: 700; }
 .chartInfo b:not(.up):not(.down) { color: var(--app-text); } /* 漲跌值保留紅綠 */
-.chartBox { height: 170px; }
+.chartBox { height: 158px; }
 .chartEmpty { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--app-text-soft); }
 
 /* 法說格與左邊毛利率圖同高，多的捲動；筆記獨佔最下方整列 */
@@ -208,7 +326,7 @@
 }
 .linkBtn { background: none; border: none; padding: 2px 0; font: inherit; font-size: 12px; color: var(--sub-accent-text); cursor: pointer; }
 .box { border: 1px solid var(--app-border); border-radius: 8px; padding: 8px 10px; min-width: 0; }
-.boxTitle { font-size: 12px; font-weight: 800; color: var(--sub-accent-text); margin-bottom: 6px; }
+.boxTitle { font-size: 11.5px; font-weight: 800; color: var(--sub-accent-text); margin-bottom: 6px; }
 .confItem { border-left: 3px solid var(--app-border); padding: 2px 0 2px 8px; margin-bottom: 6px; font-size: 12px; line-height: 1.45; }
 .confUpcoming { border-left-color: var(--sub-accent); }
 .confNew { background: var(--sub-accent-soft); }
@@ -233,7 +351,7 @@
 .noteDel:hover { color: var(--sub-fire); }
 .noteText { font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
 .modalFoot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
-.modal .btn { padding: 4px 10px; font-size: 12px; }
+.modal .btn { padding: 3px 9px; font-size: 11.5px; }
 .modal .hint { font-size: 11px; }
 .modal .textarea { font-size: 12px; min-height: 52px; padding: 5px 8px; }
 
@@ -271,18 +389,17 @@
   .sideBox { grid-row: auto; height: auto; min-height: 0; max-height: 360px; }
 }
 @media (max-width: 480px) {
-  /* 手機：訂閱框自己一行靠右（兩欄時若佔右上格，旁邊高卡片會在它下面留一大塊空白） */
-  .addCell { margin-right: 0; grid-column: 1 / -1; }
+  .addCell { margin-bottom: 8px; flex-wrap: wrap; }
+  .alertSummary { order: 2; flex-basis: 100%; } /* 手機：提醒摘要換到控制項下面自成一行 */
   /* 手機固定兩欄：卡片最小 210px 會變成一排一張，太浪費 */
   .cardGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .card { padding: 8px 10px; height: 136px; }
+  .card { padding: 8px 10px; height: 100px; }
+  .cardGridCustom { grid-auto-rows: 100px; }
   .cardName { font-size: 13px; }
   .cardName .stockId { font-size: 11px; }
   .card .priceNum { font-size: 16px; }
   .card .priceChg { font-size: 12px; }
   .cardStats { font-size: 11px; }
-  .cardAlerts { height: 34px; }
-  .cardAlerts span { font-size: 10px; }
   .priceNum { font-size: 18px; }
   .overlay { padding: max(12px, env(safe-area-inset-top)) 8px max(12px, env(safe-area-inset-bottom)); }
   .modal, .settings { border-radius: 12px; padding: 12px; }

@@ -551,6 +551,25 @@ export const DEFAULT_TRIGGERS = {
   newNews: { on: true, include: '', exclude: '' }, // 只有設定關鍵字（include）才會提醒
 };
 
+/**
+ * 各條件產生的提醒 key 樣式（對應 computeAlerts）。改了某條件的設定時，用它把該條件已確認（刪掉）的提醒清掉，
+ * 讓同樣的提醒能再出現。法說／重訊不在內：一重設會把整年法說、三個月重訊全部重新跳出來。
+ */
+const ACK_PATTERNS = {
+  revNew: /^rev:new:/, revAth: /^rev:ath:/, revAbove: /^rev:above[^:]*:/, yoyAbove: /^rev:yoy(?!up)[^:]*:/,
+  yoyUpPp: /^rev:yoyup:/, revMom: /^rev:mom:/,
+  finNew: /^fin:new:/, gmAbove: /^fin:gm(?!up)[^:]*:/, gmUpPp: /^fin:gmup:/, epsAbove: /^fin:eps(?!ath|yoy|qoq)[^:]*:/,
+  epsAth: /^fin:epsath:/, epsYoy: /^fin:epsyoy/, epsQoq: /^fin:epsqoq:/,
+  priceAbove: /^price:above:/, priceBelow: /^price:below:/,
+  priceRun: /^price:run5:/, priceRunM: /^price:runM:/, priceRun2: /^price:run\d+d:/,
+};
+
+/** 從已確認清單移除這些條件產生的提醒 key */
+export function releaseAck(ack, triggerKeys) {
+  const pats = triggerKeys.map((k) => ACK_PATTERNS[k]).filter(Boolean);
+  return (ack || []).filter((key) => !pats.some((re) => re.test(key)));
+}
+
 const numOf = (v) => (v === '' || v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 const fmt = (v, d = 1) => (v == null ? '—' : v.toFixed(d));
 const thresholdOf = (cond, field = 'value') => numOf(cond?.[field]);
