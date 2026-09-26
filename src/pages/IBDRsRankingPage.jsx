@@ -3028,7 +3028,7 @@ async function downloadWatchlistJson(items) {
   URL.revokeObjectURL(url);
 }
 
-function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, onMeasure, mobileLayout = false, onDownload, pctShortDays = 5, pctLongDays = 20 }) {
+function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, onMeasure, mobileLayout = false, onDownload, pctShortDays = 5, pctLongDays = 20, pending = false }) {
   const { key, title, subtitle, items, totalCount, emptyText } = section;
   const cardRef = useRef(null);
   const [cardPage, setCardPage] = useState(0);
@@ -3100,7 +3100,7 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
         }}
       >
         <strong style={{ color: '#0f766e', fontSize: 13 }}>{title}</strong>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{totalCount} 檔</span>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{pending ? '— 檔' : `${totalCount} 檔`}</span>
         {subtitle ? <span style={{ fontSize: 11, color: '#94a3b8' }}>{subtitle}</span> : null}
         {onDownload ? (
           <button
@@ -3195,7 +3195,9 @@ function HomeStockSectionCard({ section, onPickStock, newIdSet, uniformHeight, o
           paddingRight: 12,
         }}
       >
-        {items.length === 0 ? (
+        {pending ? (
+          <div style={{ padding: '14px 12px', fontSize: 12, color: '#94a3b8' }}>載入中…</div>
+        ) : items.length === 0 ? (
           <div style={{ padding: '14px 12px', fontSize: 12, color: '#94a3b8' }}>{emptyText || '今日無符合條件股票'}</div>
         ) : (
           <table style={{ width: '100%', minWidth: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -5735,6 +5737,11 @@ export default function IBDRsRankingPage() {
                     onMeasure={handleHomeCardMeasure}
                     pctShortDays={pctShortDaysResolved}
                     pctLongDays={pctLongDaysResolved}
+                    // 資料未到時不可顯示「0 檔／今日無符合條件」，會被誤讀成真實結果
+                    pending={
+                      (loading && stocks.length === 0)
+                      || ((sec.key === 'watchlist' || sec.key === 'watchlistStar1') && !rsWatchlistReady)
+                    }
                     onPickStock={(s) => {
                       setChartNavOverride({
                         list: sec.items,
