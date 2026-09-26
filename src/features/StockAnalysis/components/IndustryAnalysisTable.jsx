@@ -80,34 +80,8 @@ const getChangeHeatmap = (changePercent) => {
 // 相容舊呼叫：只取背景色
 const getChangeHeatmapBg = (changePercent) => getChangeHeatmap(changePercent).bg;
 
-// --- 輔助函式：可編輯儲存格 ---
-const EditableCell = ({ initialValue, onSave, type = "text", style = {} }) => {
-    const [localValue, setLocalValue] = useState(initialValue || '');
-    useEffect(() => { setLocalValue(initialValue || ''); }, [initialValue]);
-    return (
-        <input
-            type={type}
-            value={localValue}
-            onChange={(e) => setLocalValue(e.target.value)}
-            onBlur={() => {
-                const rawValue = String(localValue).replace(/,/g, '');
-                if (rawValue.trim() === '') { onSave(null); return; }
-
-
-                const isPureNumber = /^-?\d*\.?\d+$/.test(rawValue);
-                const finalValue = isPureNumber ? parseFloat(rawValue) : rawValue;
-                
-                onSave(finalValue);
-            }}
-            style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', textAlign: 'center', padding: '1px 2px', borderRadius: '2px', boxSizing: 'border-box', minWidth: '0', fontSize: 'inherit', ...style }}
-        />
-    );
-};
-
-/** @type {'main'|'chip'}  main=一般欄位(不含籌碼)  chip=籌碼欄位 */
-const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loading, columnsMode = 'main', bigColumnConfig = {}, columnLabels = [], onColumnLabelChange, onStockNameClick, onFlowDotClick }) => {
+const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnConfig = {}, columnLabels = [], onColumnLabelChange, onStockNameClick, onFlowDotClick }) => {
     const [showColor, setShowColor] = useState(true);
-    const isChipMode = columnsMode === 'chip';
 
     if (loading && stocks.length === 0) return <p>載入中... 請稍候</p>;
 
@@ -115,11 +89,6 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
     const processedStocks = stocks.map(stock => {
         const indicators = calculateSingleStockIndicators(stock);
         const price = parseFloat(stock.currentPrice) || 0;
-        const eps = stock.estimatedEPS; 
-        const target = stock.targetPrice;
-
-        const forwardPE = (price > 0 && eps && eps > 0) ? (price / eps).toFixed(1) : '--';
-        const potentialUpside = (target && target > 0 && price > 0) ? ((target / price - 1) * 100).toFixed(1) : null;
 
         const formatNumber = (num, digits = 0) => {
             if (num === null || num === undefined || isNaN(num) || num === 0) return ''; 
@@ -130,11 +99,7 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
             ...stock,
             ...indicators,
             displayPrice: formatNumber(price, 0),
-            displayEPS: formatNumber(eps, 1),
-            displayTarget: formatNumber(target, 0),
             displayHoldingGrowth: indicators.HoldingGrowth_M ? indicators.HoldingGrowth_M : '0',
-            forwardPE,
-            potentialUpside
         };
     });
 
@@ -295,150 +260,46 @@ const IndustryAnalysisTable = ({ stocks = [], updateStockField, refreshData, loa
 
     return (
         <div style={{ padding: '6px', zoom: 0.9 }}>
-            
-            {/* 籌碼頁：頂部產業標籤；一般頁：多欄並排、無獨立產業列（產業標題在表格內各欄） */}
-            {isChipMode && (
-            <div style={{ marginBottom: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {categories.map(cat => (
-                    <button 
-                        key={cat}
-                        onClick={() => {
-                            const element = document.getElementById(`cat-${cat}`);
-                            if (!element) return;
-
-                            // 🟢 判斷是否為手機版 (寬度小於 768px)
-                            const isMobile = window.innerWidth <= 768;
-
-                            if (isMobile) {
-                                // --- 手機版邏輯：使用原生 scrollIntoView 確保移動 ---
-                                element.scrollIntoView({
-                                    behavior: 'smooth',
-                                    block: 'start'
-                                });
-                                
-                            } else {
-                                // --- 電腦版邏輯：維持你原本最順暢的公式 ---
-                                const offset = 85; // 維持原樣
-                                const bodyRect = document.body.getBoundingClientRect().top;
-                                const elementRect = element.getBoundingClientRect().top;
-                                const elementPosition = elementRect - bodyRect;
-                                const offsetPosition = elementPosition - offset;
-
-                                window.scrollTo({
-                                    top: offsetPosition,
-                                    behavior: 'smooth'
-                                });
-                            }
-                        }}
-                        style={{ 
-                            padding: '2px 8px', borderRadius: '10px', border: '1px solid #64a0ddff',
-                            backgroundColor: 'var(--app-surface)', cursor: 'pointer', fontSize: '11px', color: 'var(--app-text)'
-                        }}
-                    >
-                        {cat} ({groupedData[cat].length})
-                    </button>
-                ))}
-            </div>
-            )}
-
-            {!isChipMode ? (
-                <div style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 0 }}>
-                    {columnItems.map((items, c) => (
-                        <div key={c} style={{ flex: '0 0 auto', marginLeft: c > 0 ? '-2px' : 0, border: '2px solid var(--app-border)' }}>
-                            <table style={{ width: `${BIG_COL_WIDTH_PX}px`, borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600, display: 'table', overflow: 'visible', margin: 0 }}>
-                                <colgroup>
-                                    {SUB_COL_WIDTHS_PX.map((w, i) => <col key={i} style={{ width: `${w}px`, minWidth: `${w}px` }} />)}
-                                </colgroup>
-                                <thead>
-                                    <tr style={{ ...trStyle, height: '36px', maxHeight: '36px' }}>
-                                        <th colSpan={SUB_COL_WIDTHS.length} style={{ height: '36px', maxHeight: '36px', padding: '2px 8px', border: 'none', borderBottom: '2px solid var(--app-border)', background: 'var(--app-surface)', boxSizing: 'border-box', fontWeight: 700, fontSize: '15px', color: 'var(--app-text)', textAlign: 'left', overflow: 'hidden' }}>
-                                            <input
-                                                value={columnLabels[c] ?? ''}
-                                                onChange={e => onColumnLabelChange?.(c, e.target.value)}
-                                                placeholder={`第 ${c + 1} 欄`}
-                                                style={{ width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: '15px', fontWeight: 700, color: 'var(--app-text)', padding: 0, textAlign: 'left', cursor: 'text', boxSizing: 'border-box' }}
-                                            />
-                                        </th>
-                                    </tr>
-                                    <tr style={{ backgroundColor: 'var(--app-surface)', color: '#8a8a8a', fontWeight: 500, ...trStyle }}>
-                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[0], minWidth: SUB_COL_WIDTHS[0], maxWidth: SUB_COL_WIDTHS[0] }) }}>代號</th>
-                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[1], minWidth: SUB_COL_WIDTHS[1], maxWidth: SUB_COL_WIDTHS[1], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>名稱</th>
-                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2] }) }}>現價</th>
-                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3] }) }}>漲跌</th>
-                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4] }) }}>量</th>
-                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5] }) }}>外資</th>
-                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6] }) }}>月增</th>
-                                        <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7] }) }}>法人</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {items.map((item, r) => (
-                                        <tr key={r} style={item._isHeader ? { ...trStyle, height: '32px', maxHeight: '32px' } : trStyle}>
-                                            {renderMainCellBlock(item, c)}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <div style={{ position: 'relative', display: 'inline-block' }}>
-                    <table style={{ borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600, display: 'table', overflow: 'visible' }}>
-                        <thead>
-                            <tr style={{ backgroundColor: 'var(--app-surface)', color: '#8a8a8a', fontWeight: 500, ...trStyle }}>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'38px', boxSizing: 'border-box', verticalAlign: 'middle'}}>PE</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'48px', boxSizing: 'border-box', verticalAlign: 'middle', backgroundColor: '#f8bc43ff'}}>估EPS</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'52px', boxSizing: 'border-box', verticalAlign: 'middle', backgroundColor: '#f8bc43ff'}}>目標價</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'52px', boxSizing: 'border-box', verticalAlign: 'middle' }}>潛在漲幅</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', width:'48px', boxSizing: 'border-box', verticalAlign: 'middle' }}>前瞻PE</th>
-                                <th style={{ minHeight: rowH, height: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', minWidth: '60px', boxSizing: 'border-box', verticalAlign: 'middle'}}>備註</th>
-                            </tr>
-                        </thead>
-                        {categories.map(cat => (
-                            <tbody key={cat}>
-                                <tr id={`cat-${cat}`} style={{ backgroundColor: 'var(--app-th-bg)', scrollMarginTop: '80px', WebkitScrollMarginTop: '80px'}}>
-                                    <td colSpan={9} style={{ minHeight: rowH, height: rowH, padding: '2px 8px', fontWeight: 'bold', textAlign: 'left', borderLeft: '4px solid #37c5e4ff', fontSize: '10.5px', boxSizing: 'border-box', verticalAlign: 'middle' }}>
-                                        {cat} (共 {groupedData[cat].length} 檔)
-                                    </td>
+            <div style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 0 }}>
+                {columnItems.map((items, c) => (
+                    <div key={c} style={{ flex: '0 0 auto', marginLeft: c > 0 ? '-2px' : 0, border: '2px solid var(--app-border)' }}>
+                        <table style={{ width: `${BIG_COL_WIDTH_PX}px`, borderCollapse: 'collapse', fontSize: '12px', lineHeight: '1.15', tableLayout: 'fixed', fontWeight: 600, display: 'table', overflow: 'visible', margin: 0 }}>
+                            <colgroup>
+                                {SUB_COL_WIDTHS_PX.map((w, i) => <col key={i} style={{ width: `${w}px`, minWidth: `${w}px` }} />)}
+                            </colgroup>
+                            <thead>
+                                <tr style={{ ...trStyle, height: '36px', maxHeight: '36px' }}>
+                                    <th colSpan={SUB_COL_WIDTHS.length} style={{ height: '36px', maxHeight: '36px', padding: '2px 8px', border: 'none', borderBottom: '2px solid var(--app-border)', background: 'var(--app-surface)', boxSizing: 'border-box', fontWeight: 700, fontSize: '15px', color: 'var(--app-text)', textAlign: 'left', overflow: 'hidden' }}>
+                                        <input
+                                            value={columnLabels[c] ?? ''}
+                                            onChange={e => onColumnLabelChange?.(c, e.target.value)}
+                                            placeholder={`第 ${c + 1} 欄`}
+                                            style={{ width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: '15px', fontWeight: 700, color: 'var(--app-text)', padding: 0, textAlign: 'left', cursor: 'text', boxSizing: 'border-box' }}
+                                        />
+                                    </th>
                                 </tr>
-                                {groupedData[cat].map(stock => (
-                                    <tr key={stock.id}>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 3px', border: '1px solid var(--app-border)', fontWeight: 'bold', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.code ?? stock.id}</td>
-                                        <td
-                                            style={{
-                                                minHeight: rowH,
-                                                height: rowH,
-                                                padding: '1px 3px',
-                                                border: '1px solid var(--app-border)',
-                                                width:'50px',
-                                                maxWidth:'50px',
-                                                boxSizing: 'border-box',
-                                                verticalAlign: 'middle',
-                                                whiteSpace: 'nowrap',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                cursor: onStockNameClick ? 'pointer' : undefined,
-                                            }}
-                                            onClick={() => onStockNameClick?.(stock)}
-                                            title={stock.name || undefined}
-                                        >
-                                            {stock.name}
-                                        </td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', textAlign: 'right', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.displayPrice}</td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle'}}>{stock.realTimePE}</td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayEPS} onSave={(val) => updateStockField(stock.id, 'estimatedEPS', val)} /></td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle'}}><EditableCell initialValue={stock.displayTarget} onSave={(val) => updateStockField(stock.id, 'targetPrice', val)} /></td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', textAlign: 'center', fontWeight: 'bold', color: stock.potentialUpside > 0 ? 'red' : 'green', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.potentialUpside}%</td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', textAlign: 'center', boxSizing: 'border-box', verticalAlign: 'middle' }}>{stock.forwardPE}</td>
-                                        <td style={{ minHeight: rowH, height: rowH, padding: '1px 2px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle' }}><EditableCell initialValue={stock.notes} onSave={(val) => updateStockField(stock.id, 'notes', val)} style={{textAlign: 'left'}} /></td>
+                                <tr style={{ backgroundColor: 'var(--app-surface)', color: '#8a8a8a', fontWeight: 500, ...trStyle }}>
+                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[0], minWidth: SUB_COL_WIDTHS[0], maxWidth: SUB_COL_WIDTHS[0] }) }}>代號</th>
+                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[1], minWidth: SUB_COL_WIDTHS[1], maxWidth: SUB_COL_WIDTHS[1], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>名稱</th>
+                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2] }) }}>現價</th>
+                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3] }) }}>漲跌</th>
+                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4] }) }}>量</th>
+                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5] }) }}>外資</th>
+                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6] }) }}>月增</th>
+                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7] }) }}>法人</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.map((item, r) => (
+                                    <tr key={r} style={item._isHeader ? { ...trStyle, height: '32px', maxHeight: '32px' } : trStyle}>
+                                        {renderMainCellBlock(item, c)}
                                     </tr>
                                 ))}
                             </tbody>
-                        ))}
-                    </table>
-                </div>
-            )}
+                        </table>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 };

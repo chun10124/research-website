@@ -81,11 +81,7 @@ const formatLastSync = (ts) => {
     return new Date(ts).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', year: 'numeric' });
 };
 
-const TAB_MAIN = 'main';
-const TAB_CHIP = 'chip';
-
 const AnalysisPage = () => {
-    const [trackingTab, setTrackingTab] = useState(TAB_MAIN);
     const [testCode, setTestCode] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
     const [syncingAll, setSyncingAll] = useState(false);
@@ -410,51 +406,13 @@ const AnalysisPage = () => {
                         <IndustryAnalysisTable
                             stocks={stocks}
                             loading={loading}
-                            updateStockField={updateStockField}
                             refreshData={refreshData}
-                            columnsMode={trackingTab}
                             bigColumnConfig={bigColumnConfig}
                             columnLabels={columnLabels}
                             onColumnLabelChange={saveColumnLabel}
                             onStockNameClick={openStockModal}
                             onFlowDotClick={handleFlowDotClick}
                         />
-                    </div>
-
-                    {/* 一般 / 籌碼 切換 */}
-                    <div style={{ marginBottom: '16px', display: 'flex', gap: '4px' }}>
-                        <button
-                            type="button"
-                            onClick={() => setTrackingTab(TAB_MAIN)}
-                            style={{
-                                padding: '6px 14px',
-                                border: `2px solid ${trackingTab === TAB_MAIN ? '#25c2a0' : 'var(--app-border)'}`,
-                                borderRadius: '8px',
-                                background: trackingTab === TAB_MAIN ? '#25c2a0' : 'var(--app-surface)',
-                                color: trackingTab === TAB_MAIN ? '#fff' : 'var(--app-text)',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                fontSize: '13px',
-                            }}
-                        >
-                            一般
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setTrackingTab(TAB_CHIP)}
-                            style={{
-                                padding: '6px 14px',
-                                border: `2px solid ${trackingTab === TAB_CHIP ? '#25c2a0' : 'var(--app-border)'}`,
-                                borderRadius: '8px',
-                                background: trackingTab === TAB_CHIP ? '#25c2a0' : 'var(--app-surface)',
-                                color: trackingTab === TAB_CHIP ? '#fff' : 'var(--app-text)',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                fontSize: '13px',
-                            }}
-                        >
-                            籌碼
-                        </button>
                     </div>
 
                     {/*  2. 輸入區 */}
@@ -596,13 +554,13 @@ const AnalysisPage = () => {
                                 {syncingMode === 'holdingsRevenue' ? `更新外資/營收中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新外資/營收'}
                             </button>
                             {stocks.length > 0 && !syncingAll && (
-                                <span style={{ fontSize: '0.85em', color: '#888' }}>
+                                <span style={{ fontSize: '0.85em', color: 'var(--app-text-soft)' }}>
                                     {stocks.length} 檔
                                 </span>
                             )}
                         </div>
                         <div style={{ marginTop: '24px', padding: '16px 20px', backgroundColor: 'var(--app-surface-2)', borderRadius: '8px', border: '1px solid var(--app-border)' }}>
-                            <div style={{ fontSize: '0.85em', color: '#555', marginBottom: '8px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                            <div style={{ fontSize: '0.85em', color: 'var(--app-text-soft)', marginBottom: '8px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                                 <span><strong>上一輪全體更新</strong> {mounted ? formatLastSync(lastSyncAllAt) : '—'}</span>
                                 <span><strong>此頁資料載入</strong> {mounted && lastFetchedAt ? formatLastSync(lastFetchedAt) : '—'}</span>
                                 {mounted && needReload && (
@@ -615,7 +573,7 @@ const AnalysisPage = () => {
                                     type="button"
                                     onClick={() => refreshData()}
                                     disabled={loading}
-                                    style={{ marginLeft: '4px', padding: '4px 10px', fontSize: '12px', cursor: loading ? 'wait' : 'pointer', border: '1px solid var(--app-border)', borderRadius: '4px', background: 'var(--app-surface)' }}
+                                    style={{ marginLeft: '4px', padding: '4px 10px', fontSize: '12px', cursor: loading ? 'wait' : 'pointer', border: '1px solid var(--app-border)', borderRadius: '4px', background: 'var(--app-surface)', color: 'var(--app-text)' }}
                                 >
                                     {loading ? '載入中…' : '重新載入'}
                                 </button>
@@ -710,14 +668,14 @@ const AnalysisPage = () => {
                                     { label: '營收', has: hasRevenueAll, text: () => latestRevenueDateStr ? `最新：${formatRevenueMonth(latestRevenueDateStr)}${countStr(revenueOk, total)}` : '尚無資料' },
                                 ];
                                 return (
-                                    <div style={{ fontSize: '0.85em', color: '#555' }}>
+                                    <div style={{ fontSize: '0.85em', color: 'var(--app-text-soft)' }}>
                                         <strong style={{ display: 'block', marginBottom: '6px' }}>API 資料狀態</strong>
                                         <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: 1.6 }}>
                                             {fields.map(f => (
                                                 <li key={f.label}>
                                                     <span style={{ color: f.has ? '#27ae60' : '#888' }}>{f.has ? '✓' : '－'}</span>
                                                     <span style={{ marginLeft: '6px' }}>{f.label}</span>
-                                                    <span style={{ marginLeft: '6px', color: '#888', fontSize: '0.95em' }}>
+                                                    <span style={{ marginLeft: '6px', color: 'var(--app-text)', fontSize: '0.95em' }}>
                                                         {f.text(f)}
                                                     </span>
                                                 </li>
