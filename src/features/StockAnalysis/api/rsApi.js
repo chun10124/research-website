@@ -19,7 +19,7 @@
  *   - 其餘欄位見下方註解
  */
 
-import { doc, setDoc, getDocs, writeBatch, query, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
+import { doc, getDoc, setDoc, getDocs, writeBatch, query, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
 import { db, RS_RATINGS_COLLECTION } from '../../../utils/firebaseConfig';
 import { fetchYahooHistoricalPriceMap, fetchHistoricalPriceMap, fetchYahooHistoricalPriceVolumeMaps } from './stockApi';
 import { fetchTaiwanStockList } from './rsStockList';
@@ -1317,10 +1317,12 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
 
   let rating = null;
   const priceDays = Object.keys(priceMap).length;
+  let existingMap = null;
 
   if (rsRaw != null) {
     onProgress({ phase: 'rank', done: 0, total: 1, msg: `rsRaw=${rsRaw.toFixed(4)}，與全市場排名…` });
-    const existingMap = await readExistingRsData();
+    // 排名需要全市場 ibdRsRaw，只能整份讀（網頁版 SDK 無法只讀單一欄位）
+    existingMap = await readExistingRsData();
     const pool = Object.entries(existingMap)
       .filter(([id]) => id !== stockId)
       .map(([id, ex]) => ({ id, rsRaw: ex.ibdRsRaw ?? null }));
@@ -1334,7 +1336,10 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
   }
 
   onProgress({ phase: 'write', done: 0, total: 1, msg: `寫入 ${stockId} RS=${rating ?? '—'}…` });
-  const existingDoc = (await readExistingRsData())[stockId] ?? {};
+  // 排名時已讀過就沿用；沒排名（價不足 12 個月）才只讀這一檔。讀取失敗會直接拋錯，不會拿空歷史去覆蓋
+  const existingDoc = existingMap
+    ? (existingMap[stockId] ?? {})
+    : ((await getDoc(doc(RS_RATINGS_COLLECTION, stockId))).data() ?? {});
   const prevHistory = Array.isArray(existingDoc.ibdRsHistory) ? existingDoc.ibdRsHistory : [];
   const anchorStr = historyAnchorYmd(todayStr);
   const withoutSlot = prevHistory.filter((h) => historyAnchorYmd(h.d) !== anchorStr);
