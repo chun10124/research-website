@@ -45,16 +45,24 @@
 /* ── 右上角訂閱框 ── */
 .notice { font-size: 12px; color: var(--sub-fire); margin-bottom: 8px; }
 /* 固定在格線最後一欄第一列；dense 讓卡片自動補滿其他格 */
-.addCell { grid-column: -2 / -1; grid-row: 1; display: flex; justify-content: flex-end; align-items: flex-start; margin-right: -12px; }
+.addCell { grid-column: -2 / -1; grid-row: 1; display: flex; justify-content: flex-end; align-items: flex-start; gap: 6px; margin-right: -12px; } /* 排序鈕＋訂閱框同一行（控制項縮小到放得進一格） */
 .addBox { position: relative; display: flex; gap: 4px; flex-shrink: 0; }
+/* 排序切換：兩段式小按鈕，放在訂閱框左邊 */
+.sortToggle { display: flex; border: 1px solid var(--app-border); border-radius: 6px; overflow: hidden; height: 28px; flex-shrink: 0; }
+.sortToggle button {
+  border: none; background: var(--app-surface); color: var(--app-text-soft); font: inherit; font-size: 11px;
+  padding: 0 6px; cursor: pointer; white-space: nowrap;
+}
+.sortToggle button + button { border-left: 1px solid var(--app-border); }
+.sortToggle .sortOn { background: var(--sub-accent-soft); color: var(--sub-accent-text); font-weight: 700; }
 .codeInput {
-  width: 76px; height: 28px; box-sizing: border-box; padding: 0 8px; font-size: 13px; font-family: inherit;
+  width: 60px; height: 28px; box-sizing: border-box; padding: 0 7px; font-size: 12px; font-family: inherit;
   background: var(--app-surface); color: var(--app-text);
   border: 1px solid var(--app-border); border-radius: 6px;
 }
 .codeInput:focus { outline: none; border-color: var(--sub-accent); }
 .addBtn {
-  height: 28px; padding: 0 12px; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap;
+  height: 28px; padding: 0 10px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap;
   background: linear-gradient(135deg, var(--sub-accent), var(--sub-accent-2)); color: var(--sub-on-accent); border: none; border-radius: 6px;
 }
 .addBtn:hover { filter: brightness(1.06); }
@@ -91,6 +99,7 @@
 .cardGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); grid-auto-flow: dense; gap: 10px; }
 .card {
   display: flex; flex-direction: column; gap: 4px;
+  height: 150px; box-sizing: border-box; overflow: hidden; /* 所有卡片固定同一大小，不隨提醒多寡伸縮 */
   text-align: left; font-family: inherit; color: var(--app-text);
   background: var(--app-surface); border: 1px solid var(--app-border); border-radius: 10px;
   padding: 10px 12px; cursor: pointer; min-width: 0;
@@ -100,8 +109,12 @@
 .card:focus-visible { outline: 2px solid var(--sub-accent); outline-offset: 2px; }
 /* 有待確認提醒：金色實線框＋右上標籤（不用光暈） */
 .cardAlert { border-color: var(--sub-alert); box-shadow: inset 0 0 0 1px var(--sub-alert); }
-.cardAlerts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.cardAlerts span { font-size: 11px; font-weight: 700; line-height: 1.4; border-radius: 4px; padding: 1px 6px; color: var(--sub-alert); background: var(--sub-alert-soft); }
+.cardAlerts { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; margin-top: auto; height: 38px; }
+.cardAlerts span {
+  max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; font-weight: 700; line-height: 1.4; border-radius: 4px; padding: 1px 6px;
+  color: var(--sub-alert); background: var(--sub-alert-soft);
+}
 .cardTop { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
 .cardName { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; min-width: 0; font-size: 14px; line-height: 1.3; }
 .cardPrice { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
@@ -258,7 +271,18 @@
   .sideBox { grid-row: auto; height: auto; min-height: 0; max-height: 360px; }
 }
 @media (max-width: 480px) {
-  .addCell { margin-right: 0; } /* 手機保留邊距，不往右推 */
+  /* 手機：訂閱框自己一行靠右（兩欄時若佔右上格，旁邊高卡片會在它下面留一大塊空白） */
+  .addCell { margin-right: 0; grid-column: 1 / -1; }
+  /* 手機固定兩欄：卡片最小 210px 會變成一排一張，太浪費 */
+  .cardGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .card { padding: 8px 10px; height: 136px; }
+  .cardName { font-size: 13px; }
+  .cardName .stockId { font-size: 11px; }
+  .card .priceNum { font-size: 16px; }
+  .card .priceChg { font-size: 12px; }
+  .cardStats { font-size: 11px; }
+  .cardAlerts { height: 34px; }
+  .cardAlerts span { font-size: 10px; }
   .priceNum { font-size: 18px; }
   .overlay { padding: max(12px, env(safe-area-inset-top)) 8px max(12px, env(safe-area-inset-bottom)); }
   .modal, .settings { border-radius: 12px; padding: 12px; }

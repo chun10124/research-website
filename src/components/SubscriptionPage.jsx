@@ -30,6 +30,7 @@ import {
 import styles from './SubscriptionPage.module.css';
 
 const LOCAL_KEY = 'rw-subscriptions-local';
+const SORT_KEY = 'rw-subscriptions-sort';
 const MAX_ITEMS = 50;
 const SOURCES = ['rev', 'fin', 'price', 'conf', 'news'];
 
@@ -149,6 +150,14 @@ export default function SubscriptionPage() {
   const [openId, setOpenId] = useState(null);
   const [addCode, setAddCode] = useState('');
   const [addErr, setAddErr] = useState('');
+  // 卡片排序：週漲幅（預設）／月漲幅，記在這台裝置
+  const [sortBy, setSortBy] = useState(() => {
+    try { return localStorage.getItem(SORT_KEY) === 'm' ? 'm' : 'w'; } catch (_) { return 'w'; }
+  });
+  const changeSort = (v) => {
+    setSortBy(v);
+    try { localStorage.setItem(SORT_KEY, v); } catch (_) {}
+  };
   const today = todayYmd();
   const itemsRef = useRef(null);
   itemsRef.current = items;
@@ -304,7 +313,18 @@ export default function SubscriptionPage() {
       const alerts = computeAlerts(it, d, today).filter((a) => !ack.has(a.key));
       return { it, i, d, alerts, stats: d?.rev ? computeRevenueStats(d.rev) : null };
     })
-    .sort((a, b) => (b.alerts.length > 0) - (a.alerts.length > 0) || a.i - b.i), [items, data, today]);
+    // 有待確認提醒的排最前面；其餘依週／月漲幅由高到低，還沒有股價的排最後
+    .sort((a, b) => {
+      const alertDiff = (b.alerts.length > 0) - (a.alerts.length > 0);
+      if (alertDiff) return alertDiff;
+      const field = sortBy === 'm' ? 'chg1m' : 'chg1w';
+      const va = a.d?.quote?.[field];
+      const vb = b.d?.quote?.[field];
+      if (va == null && vb == null) return a.i - b.i;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return vb - va || a.i - b.i;
+    }), [items, data, today, sortBy]);
 
   if (!items) return <div className={styles.root} ref={rootRef}><div className={styles.empty}>載入訂閱清單中…</div></div>;
 
@@ -318,6 +338,11 @@ export default function SubscriptionPage() {
       <div className={styles.cardGrid}>
         {cards.map((c) => <StockCard key={c.it.id} {...c} onOpen={() => setOpenId(c.it.id)} />)}
         <div className={styles.addCell}>
+          <div className={styles.sortToggle} role="group" aria-label="排序">
+            {[['w', '週漲幅'], ['m', '月漲幅']].map(([v, label]) => (
+              <button key={v} type="button" className={sortBy === v ? styles.sortOn : ''} onClick={() => changeSort(v)} aria-pressed={sortBy === v}>{label}</button>
+            ))}
+          </div>
           <div className={styles.addBox}>
             <input
               className={styles.codeInput} placeholder="股號" value={addCode} inputMode="numeric" aria-label="股號"
@@ -376,9 +401,19 @@ function StockCard({ it, d, alerts, onOpen }) {
         <div className={styles.statLine}><span className={styles.muted}>近一月</span><span className={signCls(q?.chg1m)}>{fmtPct(q?.chg1m)}</span></div>
       </div>
 
-      {alerts.length > 0 && (
-        <div className={styles.cardAlerts}>{alertLabels(alerts).map((a) => <span key={a.key}>{a.label}</span>)}</div>
-      )}
+      {/* 固定兩行提醒區：沒提醒也留著，卡片大小才一致；超過兩則顯示第一則＋「+N 則提醒」 */}
+      <div className={styles.cardAlerts}>
+        {(() => {
+          const labels = alertLabels(alerts);
+          const shown = labels.length > 2 ? labels.slice(0, 1) : labels;
+          return (
+            <>
+              {shown.map((a) => <span key={a.key} title={a.label}>{a.label}</span>)}
+              {labels.length > 2 && <span>+{labels.length - 1} 則提醒</span>}
+            </>
+          );
+        })()}
+      </div>
     </button>
   );
 }
@@ -478,6 +513,8 @@ function StockModal({ it, d, stats: s, alerts, colors, today, onClose, onUpdate,
     return { rows, domain: [from, lastT], ticks: epsQs.map((r) => qMid(r.q)), barSize };
   })();
   // 今年（最新一季所在年度）已公布各季 EPS 加總；最近一季 EPS 與其 ×4 年化
+  // 今年（最新營收月所在年度）已公布各月營收加總
+  const revYtd = s ? { year: s.latest.year, sum: s.rows.filter((r) => r.year === s.latest.year).reduce((a, r) => a + r.revenue, 0) } : null;
   const epsYtd = (() => {
     const fin = d?.fin || [];
     if (!fin.length) return null;
@@ -560,6 +597,7 @@ function StockModal({ it, d, stats: s, alerts, colors, today, onClose, onUpdate,
           <div className={styles.statGrid}>
             <div><span>{s.latest.ym} 營收</span><b>{fmtYi(s.latest.revenue)} 億</b></div>
             <div><span>YoY</span><b className={signCls(s.latest.yoy)}>{fmtPct(s.latest.yoy)}</b></div>
+            <div><span>{revYtd.year} 累計營收</span><b>{fmtYi(revYtd.sum)} 億</b></div>
             <div><span>{epsYtd ? `${epsYtd.year} 累計 EPS` : '累計 EPS'}</span><b>{epsYtd ? epsYtd.sum.toFixed(2) : '—'}</b></div>
             <div><span>{epsLast ? `${qLabel(epsLast.q)} EPS / 年化` : '最近一季 EPS / 年化'}</span><b>{epsLast ? `${epsLast.eps.toFixed(2)} / ${(epsLast.eps * 4).toFixed(2)}` : '—'}</b></div>
           </div>
