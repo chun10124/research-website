@@ -31,7 +31,6 @@ import styles from './SubscriptionPage.module.css';
 
 const LOCAL_KEY = 'rw-subscriptions-local';
 const SORT_KEY = 'rw-subscriptions-sort';
-const TSORT_KEY = 'rw-subscriptions-tsort';
 const MAX_ITEMS = 50;
 const SOURCES = ['rev', 'fin', 'price', 'conf', 'news'];
 
@@ -171,15 +170,6 @@ export default function SubscriptionPage() {
   const changeSort = (v) => {
     setSortBy(v);
     try { localStorage.setItem(SORT_KEY, v); } catch (_) {}
-  };
-  // 電腦版表格：點欄名排序（由大到小 → 由小到大 → 回預設），記在這台裝置
-  const [tSort, setTSort] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(TSORT_KEY) || 'null'); } catch (_) { return null; }
-  });
-  const clickSort = (key) => {
-    const next = tSort?.key !== key ? { key, dir: -1 } : tSort.dir === -1 ? { key, dir: 1 } : null;
-    setTSort(next);
-    try { localStorage.setItem(TSORT_KEY, JSON.stringify(next)); } catch (_) {}
   };
   const today = todayYmd();
   const itemsRef = useRef(null);
@@ -329,18 +319,6 @@ export default function SubscriptionPage() {
     setAddCode('');
   };
 
-  // 編輯模式拖曳：把 fromId 移到 toId 的前面或後面（after），順序存進清單本身
-  const moveItem = (fromId, toId, after) => {
-    const cur = itemsRef.current || [];
-    const moving = cur.find((x) => x.id === fromId);
-    if (!moving || fromId === toId) return;
-    const rest = cur.filter((x) => x.id !== fromId);
-    const at = rest.findIndex((x) => x.id === toId);
-    if (at < 0) return;
-    rest.splice(after ? at + 1 : at, 0, moving);
-    persist(rest);
-  };
-
   const removeStock = (id) => {
     const it = items.find((x) => x.id === id);
     if (!window.confirm(`取消訂閱 ${id} ${it?.name || ''}？筆記會一起刪除。`)) return;
@@ -432,7 +410,7 @@ export default function SubscriptionPage() {
 
   const open = openId && cards.find((c) => c.it.id === openId);
 
-  // 訂閱框：電腦版放在表格左上角那格，手機版（卡片）放在上方一行
+  // 訂閱框（卡片上方一行）
   const existing = (items || []).find((it) => it.id === addCode.trim()) || null;
   const addBox = (
     <div className={styles.addBox}>
@@ -454,7 +432,7 @@ export default function SubscriptionPage() {
     <div className={styles.root} ref={rootRef}>
       {saveErr && <div className={styles.notice}>{saveErr}</div>}
 
-      {/* 卡片上方一行：左邊只顯示提醒數量（內容看卡片／個股視窗），右邊排序鈕＋訂閱框 */}
+      {/* 卡片上方一行：左邊有提醒的股名與總則數，右邊排序鈕＋訂閱框 */}
       <div className={styles.addCell}>
         {alertCount > 0 && (
           <div className={styles.alertSummary}>
@@ -551,196 +529,6 @@ function StockCard({ it, d, alerts, flash, onOpen, style, dnd, dragging, dropTar
       {alerts.length > 0 && <span className={`${styles.cardBadge} ${styles.cardBadgeCorner}`} aria-label={`${alertLabels(alerts).length} 則提醒`}>{alertLabels(alerts).length}</span>}
 
     </button>
-  );
-}
-
-/* ── 電腦版表格 ─────────────────────────────────────────────────────── */
-
-const qIndex = (q) => Number(q.slice(0, 4)) * 4 + Number(q.slice(-1));
-
-/**
- * 表格一行要顯示的數字，重點在「轉折」：看變化而不是規模（都來自已載入的資料，不另外打 API）。
- * 月資料有缺月、季資料有缺季時，需要連續期間的欄位留空，不硬算。
- */
-function rowMetrics({ it, d, stats: s, alerts }, today) {
-  const q = d?.quote;
-  const rows = s?.rows || [];
-  const L = rows[rows.length - 1];
-  const fin = d?.fin || [];
-  const byQ = new Map(fin.map((r) => [r.q, r]));
-  const prevQ = (qq, n) => { const k = qIndex(qq) - n; return byQ.get(`${Math.floor((k - 1) / 4)}-Q${((k - 1) % 4) + 1}`); };
-  const gmLast = [...fin].reverse().find((r) => r.gm != null) || null;
-  const gmPrev = gmLast && prevQ(gmLast.q, 1);
-  const epsLast = [...fin].reverse().find((r) => r.eps != null) || null;
-  const epsYear = epsLast && prevQ(epsLast.q, 4);
-  let epsYoy = null;
-  let epsYoyText = null;
-  if (epsLast && epsYear?.eps != null) {
-    if (epsYear.eps > 0) epsYoy = ((epsLast.eps - epsYear.eps) / epsYear.eps) * 100;
-    else epsYoyText = epsLast.eps > 0 ? '轉盈' : '虧損';
-  }
-  // 近四季 EPS：最新一季往回連續四季都要有
-  const four = epsLast ? [0, 1, 2, 3].map((n) => (n ? prevQ(epsLast.q, n) : epsLast)) : [];
-  const ttm = four.length === 4 && four.every((r) => r?.eps != null) ? four.reduce((a, r) => a + r.eps, 0) : null;
-  const next = (d?.conf || []).filter((c) => c.end >= today).sort((a, b) => a.start.localeCompare(b.start))[0] || null;
-  const labels = alertLabels(alerts);
-  return {
-    name: it.id,
-    price: q?.price ?? null,
-    w: q?.chg1w ?? null,
-    m: q?.chg1m ?? null,
-    revYm: L?.ym || null,
-    yoy: L?.yoy ?? null,
-    mom: L?.mom ?? null,
-    gm: gmLast?.gm ?? null,
-    gmDelta: gmLast && gmPrev?.gm != null ? gmLast.gm - gmPrev.gm : null,
-    epsQ: epsLast?.q || null,
-    epsYoy,
-    epsYoyText,
-    ttm,
-    pe: ttm > 0 && q?.price != null ? q.price / ttm : null,
-    conf: next?.start || null,
-    alerts: labels.length || null,
-    alertText: labels.map((a) => a.label).join('；'),
-  };
-}
-
-// g：欄位群組（表頭上排的分組標題）；每組第一欄左邊畫分隔線
-const COL_GROUPS = [
-  { key: 'stock', label: '', span: 1 },
-  { key: 'px', label: '股價', span: 3 },
-  { key: 'rev', label: '月營收', span: 2 },
-  { key: 'fin', label: '季財報', span: 5 },
-  { key: 'evt', label: '事件', span: 2 },
-];
-const COLS = [
-  { key: 'name', label: '股票', cls: 'tName' },
-  { key: 'price', label: '收盤', g: 1 },
-  { key: 'w', label: '近一週' },
-  { key: 'm', label: '近一月' },
-  { key: 'yoy', label: 'YoY', g: 1 },
-  { key: 'mom', label: 'MoM' },
-  { key: 'gm', label: '毛利率', g: 1 },
-  { key: 'gmDelta', label: '較前季' },
-  { key: 'epsYoy', label: 'EPS YoY' },
-  { key: 'ttm', label: '近四季 EPS' },
-  { key: 'pe', label: '本益比' },
-  { key: 'conf', label: '法說', g: 1 },
-  { key: 'alerts', label: '提醒', cls: 'tAlert' },
-];
-
-/** 變化量（百分點）：▲▼ 加數值，台股慣例漲紅跌綠 */
-function Delta({ v }) {
-  if (v == null) return <span className={styles.muted}>—</span>;
-  const r = Math.round(v * 10) / 10;
-  return <span className={signCls(r)}>{r > 0 ? '▲' : r < 0 ? '▼' : ''}{Math.abs(r).toFixed(1)}</span>;
-}
-
-function StockTable({ cards, today, sort, onSort, onOpen, addSlot, onMove }) {
-  // 編輯模式：拖曳整行改變上下順序；沒有指定欄位排序時，表格就照這個順序
-  const [editing, setEditing] = useState(false);
-  const [drag, setDrag] = useState(null); // { id, over, after }
-  const rows = cards.map((c) => ({ c, v: rowMetrics(c, today) }));
-  if (editing || !sort) rows.sort((a, b) => a.c.i - b.c.i);
-  else {
-    // 指定欄位排序時照數值排，沒有資料的一律放最後
-    rows.sort((a, b) => {
-      const x = a.v[sort.key];
-      const y = b.v[sort.key];
-      if (x == null && y == null) return a.c.i - b.c.i;
-      if (x == null) return 1;
-      if (y == null) return -1;
-      const r = typeof x === 'string' ? x.localeCompare(y) : x - y;
-      return r * sort.dir || a.c.i - b.c.i;
-    });
-  }
-  const muted = (t) => <span className={styles.tSub}>{t}</span>;
-  // 最新營收月份／財報季別：多數股票相同，放到分組標題；只有跟多數不同的那檔才在該格標出
-  const mode = (list) => {
-    const n = new Map();
-    list.filter(Boolean).forEach((x) => n.set(x, (n.get(x) || 0) + 1));
-    return [...n.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-  };
-  const revYm = mode(rows.map((r) => r.v.revYm));
-  const epsQ = mode(rows.map((r) => r.v.epsQ));
-  const groupLabel = (g) => (g.key === 'rev' && revYm ? `月營收 · ${Number(revYm.slice(5))}月`
-    : g.key === 'fin' && epsQ ? `季財報 · ${qLabel(epsQ)}` : g.label);
-  const gCls = (col) => [col.cls && styles[col.cls], col.g && styles.gStart].filter(Boolean).join(' ') || undefined;
-  return (
-    <div className={styles.tableWrap}>
-      <table className={styles.table}>
-        <thead>
-          <tr className={styles.tGroupRow}>
-            {COL_GROUPS.map((g, k) => (
-              <th key={g.key} colSpan={g.span} className={k ? styles.gStart : styles.tAddCell}>{k ? <span>{groupLabel(g)}</span> : addSlot}</th>
-            ))}
-          </tr>
-          <tr>
-            {COLS.map((col) => {
-              const sorted = !editing && sort?.key === col.key;
-              return (
-                <th key={col.key} className={gCls(col)} title={col.title} aria-sort={sorted ? (sort.dir < 0 ? 'descending' : 'ascending') : undefined}>
-                  <div className={col.key === 'name' ? styles.tNameHead : undefined}>
-                    <button type="button" onClick={() => !editing && onSort(col.key)} disabled={editing}>
-                      {col.label}{sorted ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}
-                    </button>
-                    {col.key === 'name' && (
-                      <button type="button" className={`${styles.tEditBtn} ${editing ? styles.tEditOn : ''}`} onClick={() => { setEditing(!editing); setDrag(null); }}>
-                        {editing ? '完成' : '編輯'}
-                      </button>
-                    )}
-                  </div>
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ c, v }) => (
-            <tr
-              key={c.it.id}
-              className={[
-                v.alerts && styles.tRowAlert, editing && styles.tRowEdit,
-                drag?.id === c.it.id && styles.tRowDragging,
-                drag?.over === c.it.id && drag.id !== c.it.id && (drag.after ? styles.tDropAfter : styles.tDropBefore),
-              ].filter(Boolean).join(' ') || undefined}
-              onClick={() => !editing && onOpen(c.it.id)}
-              draggable={editing}
-              onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', c.it.id); setDrag({ id: c.it.id }); }}
-              onDragOver={(e) => {
-                if (!drag) return;
-                e.preventDefault();
-                const r = e.currentTarget.getBoundingClientRect();
-                const after = e.clientY > r.top + r.height / 2;
-                if (drag.over !== c.it.id || drag.after !== after) setDrag({ ...drag, over: c.it.id, after });
-              }}
-              onDrop={(e) => { e.preventDefault(); if (drag?.over) onMove(drag.id, drag.over, drag.after); setDrag(null); }}
-              onDragEnd={() => setDrag(null)}
-            >
-              <td className={styles.tName}>{editing && <span className={styles.tGrip} aria-hidden>⠿</span>}<b>{c.it.name}</b>{muted(c.it.id)}</td>
-              <td className={styles.gStart}>{fmtPrice(v.price)}</td>
-              <td className={signCls(v.w)}>{fmtPct(v.w)}</td>
-              <td className={signCls(v.m)}>{fmtPct(v.m)}</td>
-              <td className={styles.gStart}>{v.revYm && v.revYm !== revYm && muted(`${Number(v.revYm.slice(5))}月`)}<span className={signCls(v.yoy)}>{fmtPct(v.yoy)}</span></td>
-              <td className={signCls(v.mom)}>{fmtPct(v.mom)}</td>
-              <td className={styles.gStart}>{v.gm == null ? <span className={styles.muted}>—</span> : `${v.gm.toFixed(1)}%`}</td>
-              <td><Delta v={v.gmDelta} /></td>
-              <td>{v.epsQ && v.epsQ !== epsQ && muted(qLabel(v.epsQ))}<span className={v.epsYoyText ? styles.muted : signCls(v.epsYoy)}>{v.epsYoyText || fmtPct(v.epsYoy)}</span></td>
-              <td>{v.ttm == null ? <span className={styles.muted}>—</span> : v.ttm.toFixed(2)}</td>
-              <td>{v.pe == null ? <span className={styles.muted}>—</span> : v.pe.toFixed(1)}</td>
-              <td className={styles.gStart}>{v.conf ? v.conf.slice(5).replace('-', '/') : <span className={styles.muted}>—</span>}</td>
-              <td className={styles.tAlert}>
-                {v.alerts > 0 && (
-                  <span className={styles.tAlertChip} title={v.alertText}>
-                    <span className={styles.tBadge}>{v.alerts}</span><span className={styles.tAlertText}>{v.alertText}</span>
-                  </span>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }
 
