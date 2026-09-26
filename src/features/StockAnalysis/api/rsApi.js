@@ -1248,7 +1248,7 @@ export async function runIbdRsHistoryBackfill({
 
         await setDoc(
           doc(RS_RATINGS_COLLECTION, stockId),
-          { ibdRsHistory: merged },
+          { ibdRsHistory: merged, updatedAt: Date.now() },
           { merge: true }
         );
         writeDone++;
@@ -1583,7 +1583,7 @@ export async function quickPatchMissingRsDays({
           const merged = [...prevHistory, ...toAdd]
             .sort((a, b) => (a.d < b.d ? -1 : 1))
             .slice(-RS_HISTORY_MAX);
-          await setDoc(doc(RS_RATINGS_COLLECTION, id), { ibdRsHistory: merged }, { merge: true });
+          await setDoc(doc(RS_RATINGS_COLLECTION, id), { ibdRsHistory: merged, updatedAt: Date.now() }, { merge: true });
           patchedCount++;
         }
         writeDone++;

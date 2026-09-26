@@ -5964,9 +5964,9 @@ export default function IBDRsRankingPage() {
             </button>
             <button
               type="button"
-              onClick={refresh}
+              onClick={() => refresh({ full: true })}
               disabled={loading || syncing}
-              title="僅從資料庫重新抓列表，不重新打 Yahoo"
+              title="略過本機快取、從資料庫完整重抓列表，不重新打 Yahoo"
               style={{ ...btnBase, background: 'var(--app-surface)', color: '#555', border: '1px solid var(--app-border)' }}
             >
               重新載入

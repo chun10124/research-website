@@ -7,17 +7,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getDocs } from 'firebase/firestore';
-import { RS_RATINGS_COLLECTION } from '../../../utils/firebaseConfig';
+import { loadAllRsRatings } from '../api/rsRatingsCache';
 import {
   subscribeIbdRsSync,
   startIbdRsBackgroundSync,
 } from '../services/ibdRsSyncService';
-
-async function fetchAllRsRatings() {
-  const snapshot = await getDocs(RS_RATINGS_COLLECTION);
-  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-}
 
 export function useIbdRsData() {
   const [stocks, setStocks] = useState([]);
@@ -27,13 +21,14 @@ export function useIbdRsData() {
   const [lastSyncAt, setLastSyncAt] = useState(null);
   const prevRunningRef = useRef(false);
 
-  const refresh = useCallback(async () => {
+  /** opts.full=true：略過 IndexedDB 快取、全量重抓（「重新載入」按鈕用） */
+  const refresh = useCallback(async (opts) => {
     setLoading(true);
     try {
-      const data = await fetchAllRsRatings();
+      const data = await loadAllRsRatings({ full: opts?.full === true });
       setStocks(data);
     } catch (e) {
-      console.error('[useIbdRsData] fetchAllRsRatings 失敗:', e);
+      console.error('[useIbdRsData] loadAllRsRatings 失敗:', e);
     } finally {
       setLoading(false);
     }
