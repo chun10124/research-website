@@ -12,7 +12,8 @@ try:
 except ImportError:
     CTX = None
 
-UA = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.twse.com.tw/'}
+# 如實標示是程式請求，不偽裝成瀏覽器（2026-09-27 實測證交所 rwd／OpenAPI、櫃買、期交所皆正常回應）
+UA = {'User-Agent': 'research-website-daily-report (personal research)'}
 
 def get(url):
     """urllib 優先；SSL 驗證失敗改用 curl（TPEX 憑證鏈缺 Subject Key Identifier，
@@ -24,8 +25,7 @@ def get(url):
         if 'CERTIFICATE_VERIFY_FAILED' not in str(e): raise
         import subprocess
         r = subprocess.run(['curl', '-sL', '--max-time', '25',
-                            '-H', f"User-Agent: {UA['User-Agent']}",
-                            '-H', f"Referer: {UA['Referer']}", url],
+                            '-H', f"User-Agent: {UA['User-Agent']}", url],
                            capture_output=True, text=True, check=True)
         return json.loads(r.stdout)
 
@@ -89,32 +89,53 @@ def _num(x):
         return None
 
 
-def _fmtqik(ym):
+_FMTQIK_CACHE = {}
+
+def _fmtqik(ym, need=None):
     """ym: 'YYYYMM'。該月已公布的交易日 → {'YYYY-MM-DD': {'close': 收盤指數, 'chg': 漲跌點數, 'amount': 成交金額(元)}}。
-       欄位為 日期/成交股數/成交金額/成交筆數/發行量加權股價指數/漲跌點數。查無資料回 {}。"""
+       欄位為 日期/成交股數/成交金額/成交筆數/發行量加權股價指數/漲跌點數。查無資料回 {}。
+       同一次執行內同一個月只抓一次（判斷交易日、指數、成交金額共用）；
+       need 指定的日子不在快取裡才重抓——防開跑時官方尚未更新、幾分鐘後才有。"""
+    hit = _FMTQIK_CACHE.get(ym)
+    if hit is not None and (need is None or need in hit):
+        return hit
     d = get(f'https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?date={ym}01&response=json')
-    if d.get('stat') != 'OK':
-        return {}
     out = {}
-    for r in d.get('data') or []:
-        if not r: continue
-        day = roc_to_ymd(r[0])
-        if day: out[day] = {'close': _num(r[4]), 'chg': _num(r[5]), 'amount': _num(r[2])}
+    if d.get('stat') == 'OK':
+        for r in d.get('data') or []:
+            if not r: continue
+            day = roc_to_ymd(r[0])
+            if day: out[day] = {'close': _num(r[4]), 'chg': _num(r[5]), 'amount': _num(r[2])}
+    _FMTQIK_CACHE[ym] = out
     return out
 
 
 def taiex_amount_series(days):
-    """days: 交易日清單（YYYY-MM-DD）。回傳 [{'date', 'amount'(元)}]，只含 FMTQIK 查得到的日子。
+    """days: 交易日清單（YYYY-MM-DD）。回傳 [{'date', 'amount'(元)}]。
        上市成交金額，與加權指數同一母體。不用 Yahoo ^TWII 的 volume：
-       收盤後當日那根 volume 是 0（9/14 實測），報告出刊時最新一天必缺。逐月查，半年約 7 次請求。"""
+       收盤後當日那根 volume 是 0（9/14 實測），報告出刊時最新一天必缺。
+       過去月份走 FinMind TAIEX 的 Trading_money（一次請求）；當月（含報告當天）仍走 FMTQIK——
+       FinMind 17:30 才更新，16:30 的價格報告拿不到當天。2026-03~09 共 144 個交易日實測
+       兩者成交金額、收盤、漲跌點數完全一致。FinMind 失敗或缺日時，缺的月份退回 FMTQIK 逐月補。"""
     import time
-    want, out = set(days), []
-    for i, ym in enumerate(sorted({d[:7].replace('-', '') for d in days})):
-        if i: time.sleep(.4)                 # 證交所 rwd 對連續請求有頻率限制
-        for day, v in _fmtqik(ym).items():
-            if day in want and ok_num(v.get('amount')):
-                out.append({'date': day, 'amount': v['amount']})
-    return sorted(out, key=lambda r: r['date'])
+    want, got = set(days), {}
+    cur = max(days)[:7]
+    past = sorted(d for d in want if d[:7] < cur)
+    if past:
+        try:
+            for r in _finmind('TaiwanStockPrice', past[0], past[-1], data_id='TAIEX'):
+                if r['date'] in want and ok_num(r.get('Trading_money')):
+                    got[r['date']] = float(r['Trading_money'])
+        except Exception as e:
+            print(f'[market] ⚠️ FinMind TAIEX 成交金額失敗，改走 FMTQIK：{e}', flush=True)
+    months = sorted({d[:7] for d in want if d not in got})
+    for i, m in enumerate(months):
+        if i: time.sleep(2)                  # 證交所 rwd 有頻率限制（社群經驗值：每 5 秒不超過 3 次）
+        need = max(d for d in want if d[:7] == m)
+        for day, v in _fmtqik(m.replace('-', ''), need=need).items():
+            if day in want and day not in got and ok_num(v.get('amount')):
+                got[day] = v['amount']
+    return [{'date': d, 'amount': got[d]} for d in sorted(got)]
 
 
 def ok_num(x):
@@ -140,6 +161,16 @@ def _fmtqik_latest(today):
     return None
 
 
+def _finmind_taiex_latest(today):
+    """FinMind TAIEX 日線的最近交易日（17:30 更新，供 22:00 的籌碼報告用）；查不到回 None。
+       2026-03~09 實測交易日集合與 FMTQIK 完全一致（含清明、端午、中秋等假日，無幽靈日）。"""
+    import datetime
+    start = (today - datetime.timedelta(days=20)).isoformat()
+    days = [r['date'] for r in _finmind('TaiwanStockPrice', start, today.isoformat(), data_id='TAIEX')
+            if r['date'] <= today.isoformat()]
+    return max(days) if days else None
+
+
 def _taiex_latest(today):
     """Yahoo ^TWII 最後一根 K 線的日期；抓不到回 None。
        只有真的開盤那天才會有 K 線，所以這根 K 就是「今天有沒有交易」的證人。
@@ -151,11 +182,13 @@ def _taiex_latest(today):
     return days[-1] if days else None
 
 
-def latest_trading_day():
+def latest_trading_day(kind='price'):
     """最近一個交易日（YYYY-MM-DD）。
        不自行推算國定假日／颱風假——以官方資料的日期為唯一真實來源。
 
        兩個獨立來源取「較新者」：TWSE rwd 的 FMTQIK（當月每日成交量值）與 Yahoo ^TWII 的最後一根 K。
+       籌碼報告（kind='chip'，22:00）以 FinMind TAIEX 取代 FMTQIK，少打證交所；FinMind 失敗才退回 FMTQIK。
+       價格報告（16:30）不能換：FinMind 17:30 才更新。
        不用 OpenAPI 的 MI_INDEX：2026-09-07（交易日）實測它到收盤後 3.5 小時仍停在前一交易日 9/4，
        16:30 的價格報告因此誤判「今日非交易日」，安靜跳過、不產出也不寄信，
        而 Actions 那個 run 還是綠燈（見 run.py 的交易日關卡）。同一時刻 FMTQIK 與 Yahoo 都已有 9/7。
@@ -168,11 +201,20 @@ def latest_trading_day():
        那正是這支函式要修掉的失敗模式。寧可讓 run 紅燈。"""
     import datetime, zoneinfo
     today = datetime.datetime.now(zoneinfo.ZoneInfo('Asia/Taipei')).date()
-    fm, yh = _fmtqik_latest(today), _taiex_latest(today)
+    src, fm = 'FMTQIK', None
+    if kind == 'chip':
+        try:
+            src, fm = 'FinMind TAIEX', _finmind_taiex_latest(today)
+        except Exception as e:
+            print(f'[market] ⚠️ FinMind TAIEX 查交易日失敗，改走 FMTQIK：{e}', flush=True)
+            src = 'FMTQIK'
+    if src == 'FMTQIK':
+        fm = _fmtqik_latest(today)
+    yh = _taiex_latest(today)
     if fm != yh:
-        print(f'[market] ⚠️ 交易日兩來源不一致：FMTQIK={fm} Yahoo^TWII={yh}，取較新者', flush=True)
+        print(f'[market] ⚠️ 交易日兩來源不一致：{src}={fm} Yahoo^TWII={yh}，取較新者', flush=True)
     if not fm and not yh:
-        raise RuntimeError('FMTQIK 與 Yahoo ^TWII 都查不到交易日，無法判定最近交易日')
+        raise RuntimeError(f'{src} 與 Yahoo ^TWII 都查不到交易日，無法判定最近交易日')
     return max(d for d in (fm, yh) if d)
 
 
@@ -187,7 +229,7 @@ def fetch(data_date):
     # 同一時刻 rwd 已有 9/7。回應帶 no-cache 且無 Last-Modified，是上游產製落後而非快取。
     # 漲跌百分比 FMTQIK 沒有，用「漲跌點數 ÷ 前一交易日收盤」自己算——
     # 以 9/4 回推 693.47/45857.66 = 1.512%，與官方公告的 1.51 對得起來。
-    q = _fmtqik(data_date[:7].replace('-', '')).get(data_date)
+    q = _fmtqik(data_date[:7].replace('-', ''), need=data_date).get(data_date)
     if q and q['close'] is not None and q['chg'] is not None:
         prev = q['close'] - q['chg']
         out['taiex'] = {'close': q['close'], 'chg': q['chg'],
@@ -261,17 +303,15 @@ def _num(x):
     return float(str(x).replace(',', '')) if x not in (None, '') else 0.0
 
 def institutional(date):
-    """單日三大法人買賣超（元）。上市 TWSE BFI82U、上櫃 TPEX 3insti_summary。
-       自營商合併「自行買賣 + 避險」。"""
+    """單日三大法人買賣超（元）。上市 FinMind（15:00 更新）、上櫃 TPEX 3insti_summary。
+       自營商合併「自行買賣 + 避險」。上市原走證交所 BFI82U，因網站使用條款第 6 條禁止
+       程式下載而改用 FinMind；2026-09-23、09-24 兩日實測數字與 BFI82U 完全一致。"""
     out = {'date': date}
-    y = date.replace('-', '')
-    tw = get(f'https://www.twse.com.tw/rwd/zh/fund/BFI82U?dayDate={y}&type=day&response=json')
-    m = {r[0]: _num(r[3]) for r in tw.get('data', [])}
-    out['twse'] = {
-        'foreign': m.get('外資及陸資(不含外資自營商)', 0) + m.get('外資自營商', 0),
-        'trust':   m.get('投信', 0),
-        'dealer':  m.get('自營商(自行買賣)', 0) + m.get('自營商(避險)', 0),
-    }
+    tw = next((r for r in foreign_net_series(date, date) if r['date'] == date), None)
+    if tw is None:
+        print(f'[market] ⚠️ FinMind 查無 {date} 上市三大法人，以 0 計', flush=True)
+        tw = {}
+    out['twse'] = {k: tw.get(k, 0) for k in ('foreign', 'trust', 'dealer')}
     tp = get('https://www.tpex.org.tw/openapi/v1/tpex_3insti_summary')
     latest = max(r['Date'] for r in tp)
     mm = {r['Investor'].strip(): _num(r['Net']) for r in tp if r['Date'] == latest}
@@ -282,23 +322,6 @@ def institutional(date):
     if d != date:
         out['tpex_date_mismatch'] = d
     out['total'] = {k: out['twse'][k] + out['tpex'][k] for k in ('foreign', 'trust', 'dealer')}
-    return out
-
-def foreign_net_series(trading_days):
-    """近 N 個交易日的外資買賣超（上市，元）。單日數字沒有意義，要看連續性。
-       BFI82U 一次只給一天，故逐日抓；失敗的日子略過不中斷。"""
-    out = []
-    for d in trading_days:
-        try:
-            y = d.replace('-', '')
-            tw = get(f'https://www.twse.com.tw/rwd/zh/fund/BFI82U?dayDate={y}&type=day&response=json')
-            m = {r[0]: _num(r[3]) for r in tw.get('data', [])}
-            if not m: continue
-            out.append({'date': d,
-                        'foreign': m.get('外資及陸資(不含外資自營商)', 0) + m.get('外資自營商', 0),
-                        'trust': m.get('投信', 0)})
-        except Exception:
-            continue
     return out
 
 
@@ -325,53 +348,19 @@ def roc_to_ymd_ad(s):
     return f'{s[:4]}-{s[4:6]}-{s[6:8]}' if len(s) == 8 else None
 
 
-# ── 融資融券 ────────────────────────────────────────────────────────────
-def _margin_one(date):
-    y = date.replace('-', '')
-    d = get(f'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN'
-            f'?date={y}&selectType=MS&response=json')
-    tbl = next((t for t in d.get('tables', []) if '信用交易統計' in str(t.get('title', ''))), None)
-    if not tbl: return None
-    m = {r[0]: r for r in tbl.get('data', [])}
-    pick = lambda k, i: _num(m[k][i]) if k in m else 0.0
-    return {'date': date,
-            'margin_bal':  pick('融資(交易單位)', 5),      # 今日餘額（張）
-            'margin_prev': pick('融資(交易單位)', 4),
-            'short_bal':   pick('融券(交易單位)', 5),
-            'short_prev':  pick('融券(交易單位)', 4),
-            'margin_amt':  pick('融資金額(仟元)', 5)}
-
-def margin_balance(date):
-    r = _margin_one(date)
-    if r:
-        r['margin_chg'] = r['margin_bal'] - r['margin_prev']
-        r['short_chg'] = r['short_bal'] - r['short_prev']
-    return r
-
-def margin_series(trading_days):
-    """近 N 交易日融資餘額。逐日請求，失敗的日子略過不中斷。"""
-    out = []
-    for d in trading_days:
-        try:
-            r = _margin_one(d)
-            if r: out.append(r)
-        except Exception:
-            continue
-    return out
-
-
-# ── 歷史序列（半年）────────────────────────────────────────────────────
-# 證交所的 BFI82U / MI_MARGN 只能一天一請求，半年要 120 次；FinMind 的
-# 大盤級 dataset 支援區間查詢，一次就好。期貨那張 FinMind 需付費等級，
+# ── 歷史序列（半年）＋ 融資融券 ─────────────────────────────────────────
+# 大盤三大法人、融資融券一律走 FinMind：大盤級 dataset 支援區間查詢，一次就好；
+# 且證交所網站使用條款第 6 條禁止以程式下載（BFI82U / MI_MARGN 已移除）。期貨那張 FinMind 需付費等級，
 # 改走期交所的區間 CSV（同樣一次請求）。
 FINMIND = 'https://api.finmindtrade.com/api/v4/data'
 FINMIND_TOKEN = ('eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNCAxNzowNzo1MyIsInVzZXJf'
                  'aWQiOiJjaHVuMTAxMjQiLCJpcCI6IjYxLjIyOC43Ni4yMDYifQ.mSi9H6Lrus7e_wkaNxlYd6OoFmh79NQoQ7pZajx166s')
 
-def _finmind(dataset, start, end):
+def _finmind(dataset, start, end, data_id=None):
     import urllib.parse
-    q = urllib.parse.urlencode({'dataset': dataset, 'start_date': start,
-                                'end_date': end, 'token': FINMIND_TOKEN})
+    p = {'dataset': dataset, 'start_date': start, 'end_date': end, 'token': FINMIND_TOKEN}
+    if data_id: p['data_id'] = data_id
+    q = urllib.parse.urlencode(p)
     r = get(f'{FINMIND}?{q}')
     if r.get('msg') != 'success':
         raise RuntimeError(f"FinMind {dataset}: {r.get('msg')}")

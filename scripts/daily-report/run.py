@@ -27,7 +27,7 @@ def main():
     a = ap.parse_args()
 
     today = datetime.datetime.now(TZ).strftime('%Y-%m-%d')
-    ltd = market.latest_trading_day()
+    ltd = market.latest_trading_day(a.kind)
     log(f'今日(台北) {today}　交易所回報最近交易日 {ltd}')
 
     if ltd != today and not a.force:
@@ -85,7 +85,7 @@ def main():
         inst = market.institutional(data_date)
         json.dump(inst, open(DATA / 'institutional.json', 'w'), ensure_ascii=False)
         # 半年 ≈ 124 交易日。FinMind 與期交所皆支援區間查詢，三項合計約 1 秒；
-        # 證交所的 BFI82U / MI_MARGN 只能逐日，同樣範圍要 240 次請求。
+        # （證交所 BFI82U / MI_MARGN 只能逐日且條款禁止程式下載，已不使用。）
         days = [r['date'] for r in taiex]
         n = settings.HISTORY_DAYS
         start = days[-n] if len(days) >= n else days[0]

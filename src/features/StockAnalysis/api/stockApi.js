@@ -855,7 +855,8 @@ const TWSE_INST_CONCURRENCY = 5;
 /** 單日結果哨符：逾時／proxy 錯／網路錯（與「合法無資料的 null」區分，用來決定是否整段轉 FinMind） */
 const TWSE_INST_FAIL = Symbol('twse-inst-fail');
 
-async function fetchTWSEInstOneDay(stockId, dateStr) {
+/** 單日全市場 T86：代號 → row。null＝假日／盤前（合法無資料），TWSE_INST_FAIL＝失敗 */
+async function fetchTWSEInstMarketDay(dateStr) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TWSE_INST_FETCH_TIMEOUT_MS);
   try {
@@ -864,15 +865,37 @@ async function fetchTWSEInstOneDay(stockId, dateStr) {
     const res = await fetch(`${PROXY_BASE}${encodeURIComponent(url)}`, { signal: controller.signal });
     if (!res.ok) return TWSE_INST_FAIL; // 429/502/524… proxy 或 TWSE 端失敗
     const json = await res.json();
-    if (json?.stat !== 'OK' || !Array.isArray(json.data)) return null; // 假日／盤前：合法無資料
-    const row = json.data.find((r) => r[0] === stockId);
-    if (!row) return null; // 當日查無此股（如上櫃股）：合法無資料
-    return { date: dateStr, ...parseTWSEInstRow(row) };
+    if (json?.stat !== 'OK' || !Array.isArray(json.data)) return null;
+    return new Map(json.data.map((r) => [r[0], r]));
   } catch {
     return TWSE_INST_FAIL; // 含 AbortError（逾時 7s）／網路錯 → 失敗，觸發 FinMind
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** T86 一次就是整個上市市場：同一天只抓一次，所有股票共用（含進行中的請求）。
+ *  只保留成功的結果；失敗或尚未公告（null）不留，之後仍可重抓。 */
+const twseInstDayCache = new Map();
+
+function getTWSEInstMarketDay(dateStr) {
+  let p = twseInstDayCache.get(dateStr);
+  if (!p) {
+    p = fetchTWSEInstMarketDay(dateStr).then((r) => {
+      if (!(r instanceof Map)) twseInstDayCache.delete(dateStr);
+      return r;
+    });
+    twseInstDayCache.set(dateStr, p);
+  }
+  return p;
+}
+
+async function fetchTWSEInstOneDay(stockId, dateStr) {
+  const day = await getTWSEInstMarketDay(dateStr);
+  if (!(day instanceof Map)) return day; // null 或 TWSE_INST_FAIL 原樣往上傳
+  const row = day.get(stockId);
+  if (!row) return null; // 當日查無此股（如上櫃股）：合法無資料
+  return { date: dateStr, ...parseTWSEInstRow(row) };
 }
 
 /** 回傳 { dateMap, failed }；failed=true 代表至少一日逾時/失敗，上層應整段改用 FinMind */
