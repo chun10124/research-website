@@ -283,6 +283,20 @@ function getRsHistoryLastTwoRatings(ibdRsHistory) {
   };
 }
 
+/**
+ * 目前 RS 所代表的交易日＝ibdRsHistory 最後一筆的日期（排名與 history 由 finalize 同批寫入）。
+ * 不用 ibdRsUpdatedDate：那是「同步執行日」，國定假日照跑時會跟收盤日對不上（2026-09-28 教師節）。
+ */
+function getRsHistoryLastYmd(ibdRsHistory) {
+  if (!Array.isArray(ibdRsHistory)) return null;
+  let max = null;
+  for (const e of ibdRsHistory) {
+    const d = typeof e?.d === 'string' ? e.d.slice(0, 10) : null;
+    if (d && (max == null || d > max)) max = d;
+  }
+  return max;
+}
+
 /** 由下方向上穿越門檻：前點 < level 且 最後一點 ≥ level */
 function didCrossRsLevelUpward(prevR, lastR, level) {
   return prevR < level && lastR >= level;
@@ -4134,19 +4148,18 @@ export default function IBDRsRankingPage() {
   );
 
   /**
-   * 「今日重點」列表：以**交易日**為基準；若曆日今日尚無資料則用全庫最後交易日。
+   * 「今日重點」列表基準日：全庫 RS 歷史最後一筆日期的最大值（＝最近一次完成排名的交易日）。
+   * 各檔也用自己的 history 最後日期比對（getRsHistoryLastYmd），兩邊同源，不會因同步執行日≠收盤日而全空。
    */
   const focusPanelRefYmd = useMemo(() => {
-    if (!todayYmd || !todayTradingYmd) return null;
-    const hasAnyToday = stocks.some((s) => {
-      const t = String(s.ibdRsUpdatedDate || '').trim().slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return false;
-      const sn = normalizeYmdToTaiwanTradingDay(t);
-      return sn === todayTradingYmd;
-    });
-    if (hasAnyToday) return todayTradingYmd;
-    return latestIbdRsDataYmd;
-  }, [stocks, todayYmd, todayTradingYmd, latestIbdRsDataYmd]);
+    if (!todayYmd) return null;
+    let max = null;
+    for (const s of stocks) {
+      const d = getRsHistoryLastYmd(s.ibdRsHistory);
+      if (d && (max == null || d > max)) max = d;
+    }
+    return max;
+  }, [stocks, todayYmd]);
 
   // 今日已更新數量（以交易日對齊）
   const updatedTodayCount = useMemo(
@@ -4508,7 +4521,7 @@ export default function IBDRsRankingPage() {
     if (!focusPanelRefYmd) return [];
     const list = [];
     for (const s of enriched) {
-      const sRef = normalizeYmdToTaiwanTradingDay(String(s.ibdRsUpdatedDate || '').trim().slice(0, 10));
+      const sRef = getRsHistoryLastYmd(s.ibdRsHistory);
       if (sRef !== focusPanelRefYmd) continue;
       const effRs = getEffectiveDisplayRs(s);
       if (effRs == null || effRs <= IBDRS_MAJOR_MOVE_RS_GT) continue;
@@ -4526,7 +4539,7 @@ export default function IBDRsRankingPage() {
     const out = [];
     const th = IBDRS_FOCUS_PRICE_PCT_ABS_GT;
     for (const s of enriched) {
-      const sRef = normalizeYmdToTaiwanTradingDay(String(s.ibdRsUpdatedDate || '').trim().slice(0, 10));
+      const sRef = getRsHistoryLastYmd(s.ibdRsHistory);
       if (sRef !== focusPanelRefYmd) continue;
       const pct = s.pricePct1d;
       if (pct == null || !Number.isFinite(pct)) continue;
@@ -4551,7 +4564,7 @@ export default function IBDRsRankingPage() {
     if (!focusPanelRefYmd) return [];
     const out = [];
     for (const s of enriched) {
-      const sRef = normalizeYmdToTaiwanTradingDay(String(s.ibdRsUpdatedDate || '').trim().slice(0, 10));
+      const sRef = getRsHistoryLastYmd(s.ibdRsHistory);
       if (sRef !== focusPanelRefYmd) continue;
       const two = getRsHistoryLastTwoRatings(s.ibdRsHistory);
       if (!two) continue;
@@ -4572,7 +4585,7 @@ export default function IBDRsRankingPage() {
     if (!focusPanelRefYmd) return [];
     const out = [];
     for (const s of enriched) {
-      const sRef = normalizeYmdToTaiwanTradingDay(String(s.ibdRsUpdatedDate || '').trim().slice(0, 10));
+      const sRef = getRsHistoryLastYmd(s.ibdRsHistory);
       if (sRef !== focusPanelRefYmd) continue;
       const two = getRsHistoryLastTwoRatings(s.ibdRsHistory);
       if (!two) continue;
@@ -4594,7 +4607,7 @@ export default function IBDRsRankingPage() {
     if (!focusPanelRefYmd) return [];
     const out = [];
     for (const s of enriched) {
-      const sRef = normalizeYmdToTaiwanTradingDay(String(s.ibdRsUpdatedDate || '').trim().slice(0, 10));
+      const sRef = getRsHistoryLastYmd(s.ibdRsHistory);
       if (sRef !== focusPanelRefYmd) continue;
       const hl = s.pricePos6m;
       if (hl == null || !Number.isFinite(hl) || hl <= IBDRS_MODAL_HL_GT) continue;

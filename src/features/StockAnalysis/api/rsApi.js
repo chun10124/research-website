@@ -351,6 +351,45 @@ export async function fetchRsPriceData(stockCode, market) {
 }
 
 /**
+ * 今日是否已有收盤資料：有收盤日的檔數中，過半的最新收盤日＝todayStr 才算。
+ * 國定假日（中秋、教師節等平日休市）與週末 Yahoo 不會有今日 K 線；若照樣寫入，
+ * 會以「執行日」為 history 槽位寫出一個收盤價沒變、但 3/6/9/12 月錨點已位移的幽靈 RS 點。
+ * 用過半而非「至少 1 檔」：防個別股票出現 Yahoo 殘根把整個假日誤判成交易日。
+ */
+function hasTodayCloseMajority(lastCloseDates, todayStr) {
+  let withClose = 0;
+  let today = 0;
+  for (const d of lastCloseDates) {
+    if (!d) continue;
+    withClose++;
+    if (d === todayStr) today++;
+  }
+  return { ok: today > 0 && today * 2 >= withClose, today, withClose };
+}
+
+/** 盤後同步前先抽幾檔大型股探測：都沒有今日收盤 → 非交易日（或 Yahoo 整體未更新），整輪不跑 */
+const RS_TRADING_DAY_PROBE_IDS = [
+  { id: '2330', market: 'TWSE' },
+  { id: '2317', market: 'TWSE' },
+  { id: '2454', market: 'TWSE' },
+];
+
+async function probeTodayHasClose(todayStr) {
+  const dates = [];
+  for (const p of RS_TRADING_DAY_PROBE_IDS) {
+    try {
+      const { priceMap } = await fetchRsPriceData(p.id, p.market);
+      dates.push(getLatestCloseInPriceMap(priceMap, todayStr).dateStr);
+    } catch (e) {
+      console.warn(`[RS] 交易日探測 ${p.id} 失敗:`, e.message);
+    }
+  }
+  // 探測全失敗（網路／限流）→ 無法判斷，交給 finalize 階段用全市場結果再判一次
+  if (dates.filter(Boolean).length === 0) return { ok: true, unknown: true, dates };
+  return { ...hasTodayCloseMajority(dates, todayStr), dates };
+}
+
+/**
  * 價格四捨五入到小數 4 位。Yahoo 價格帶 float32 雜訊（24.2 → 24.200000762939453），
  * 一個數字十幾個字元，佔 ibdRsRatings 約三成大小；4 位小數相對誤差 < 0.001%。
  */
@@ -428,6 +467,25 @@ async function runFinalizePhases(stockList, stockListTotal, todayStr, existingMa
   });
 
   const missingPrice = rawResults.filter((r) => r.rsRaw == null).length;
+
+  // 全市場都沒有今日收盤 → 非交易日，不寫排名與 history（避免幽靈點；見 hasTodayCloseMajority）
+  const closeCheck = hasTodayCloseMajority(rawResults.map((r) => r.ibdRsLastCloseDate), todayStr);
+  if (!closeCheck.ok) {
+    const msg = `今日（${todayStr}）無收盤資料（${closeCheck.today}/${closeCheck.withClose} 檔），判定非交易日，不寫入 RS`;
+    onProgress({
+      phase: 'done',
+      done: stockListTotal,
+      total: stockListTotal,
+      msg,
+      validRankedCount: 0,
+      skippedYahooCount: extraDone.skippedYahooCount ?? 0,
+      chunkContinues: false,
+      missingPriceFetch: missingPrice,
+      skippedNonTradingDay: true,
+      ...listMeta,
+    });
+    return { ranked: null, chunkContinues: false, missingPriceFetch: missingPrice, skippedNonTradingDay: true };
+  }
 
   onProgress({
     phase: 'rank',
@@ -956,6 +1014,24 @@ export async function syncAllRsRatings({
     msg: `市 ${twseCount}、櫃 ${tpexCount}，合計 ${stockListTotal} 檔`,
     ...listMeta,
   });
+
+  // 非交易日整輪不跑：不打 Yahoo 全市場、不覆寫 pricePct1d 等欄位（否則假日當天「漲跌停」會被清成空）
+  const probe = await probeTodayHasClose(todayStr);
+  if (!probe.ok) {
+    const msg = `今日（${todayStr}）探測股最新收盤為 ${probe.dates.filter(Boolean).join('／')}，判定非交易日，略過 RS 同步`;
+    onProgress({
+      phase: 'done',
+      done: 0,
+      total: stockListTotal,
+      msg,
+      validRankedCount: 0,
+      skippedYahooCount: 0,
+      chunkContinues: false,
+      skippedNonTradingDay: true,
+      ...listMeta,
+    });
+    return { ranked: null, chunkContinues: false, skippedNonTradingDay: true };
+  }
 
   let existingMap = await readExistingRsData();
   const anchor7Str = taipeiYmdAddDays(todayStr, -7);

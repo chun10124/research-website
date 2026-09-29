@@ -45,7 +45,7 @@ if (MODE === 'rs') {
   const { setDoc } = await import('firebase/firestore');
   console.log('[rs] 全市場 RS 同步開始…');
   let lastRs = 0;
-  await rsApi.syncAllRsRatings({
+  const rsResult = await rsApi.syncAllRsRatings({
     onProgress: (s) => {
       const p = s.done || 0;
       if (s.phase === 'done' || p - lastRs >= 50) { console.log(`[rs] ${s.msg || ''}`); lastRs = p; }
@@ -55,9 +55,14 @@ if (MODE === 'rs') {
     superBatchSize: rsApi.RS_SYNC_SUPER_BATCH_SIZE,
     interBatchRestMs: rsApi.RS_SYNC_INTER_BATCH_REST_MS,
   });
-  const ymd = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-  const ts = Date.now();
-  await setDoc(SYNC_STATUS_DOC_REF, { rsLastSyncDate: ymd, rsLastSyncAt: ts, updatedAt: ts }, { merge: true });
+  // 非交易日（國定假日／週末）同步本身已略過寫入；同步日期也不更新，保持為最後一個交易日
+  if (rsResult?.skippedNonTradingDay) {
+    console.log('[rs] 非交易日，不更新 rsLastSyncDate');
+  } else {
+    const ymd = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    const ts = Date.now();
+    await setDoc(SYNC_STATUS_DOC_REF, { rsLastSyncDate: ymd, rsLastSyncAt: ts, updatedAt: ts }, { merge: true });
+  }
   console.log('[rs] 補算近 10 交易日漏點…');
   try {
     await rsApi.quickPatchMissingRsDays({ onProgress: () => {}, daysBack: 10 });

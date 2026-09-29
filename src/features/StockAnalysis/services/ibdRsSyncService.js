@@ -102,7 +102,8 @@ export function startIbdRsBackgroundSync(opts = {}) {
         signal: currentAbortController.signal,
       });
       chunkContinues = result?.chunkContinues === true;
-      if (!chunkContinues) {
+      // 非交易日同步已略過寫入：同步日期與補點都不必做
+      if (!chunkContinues && result?.skippedNonTradingDay !== true) {
         const ymd = taipeiYmd();
         const ts = Date.now();
         try {
