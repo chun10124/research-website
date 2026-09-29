@@ -414,17 +414,18 @@ export default function SubscriptionPage() {
   const existing = (items || []).find((it) => it.id === addCode.trim()) || null;
   const addBox = (
     <div className={styles.addBox}>
+      {/* 股名／錯誤提示放在輸入框左邊同一行：原本浮在下方，會伸進卡片區被卡片蓋掉 */}
+      {(addErr || addPreview || existing) && (
+        <div className={styles.addHint} style={addErr ? { color: 'var(--sub-fire)' } : undefined}>
+          {addErr || (existing ? `移動至 ${existing.name || existing.id}` : addPreview.name)}
+        </div>
+      )}
       <input
         className={styles.codeInput} placeholder="股號" value={addCode} inputMode="numeric" aria-label="股號"
         onChange={(e) => { setAddCode(e.target.value.toUpperCase()); setAddErr(''); }}
         onKeyDown={(e) => e.key === 'Enter' && addStock()}
       />
       <button type="button" className={styles.addBtn} onClick={addStock}>{existing ? '移動' : '訂閱'}</button>
-      {(addErr || addPreview || existing) && (
-        <div className={styles.addHint} style={addErr ? { color: 'var(--sub-fire)' } : undefined}>
-          {addErr || (existing ? `移動至 ${existing.name || existing.id}` : addPreview.name)}
-        </div>
-      )}
     </div>
   );
 
