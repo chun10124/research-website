@@ -878,12 +878,6 @@ function IbdRsComboChart({ data, showMA = true, showRs = true }) {
         {/* 繪圖區底色 */}
         <rect x={PAD_L} y={PAD_T} width={innerW} height={innerH} fill="var(--app-surface)" />
 
-        {/* 水平 grid */}
-        {rsTicks.map((v) => {
-          const y = yRs(v);
-          return <line key={`g-${v}`} x1={PAD_L} y1={y} x2={PAD_L + innerW} y2={y} stroke="var(--app-border)" strokeWidth={1} strokeDasharray="3 3" />;
-        })}
-
         {/* K 棒（opacity 疊加在折線之下） */}
         {hasOhlc && data.map((d, i) => {
           if (!Number.isFinite(d.open) || !Number.isFinite(d.high) || !Number.isFinite(d.low) || !Number.isFinite(d.close)) return null;
@@ -893,14 +887,14 @@ function IbdRsComboChart({ data, showMA = true, showRs = true }) {
           const up = (d.open !== d.close)
             ? d.close >= d.open
             : prevClose != null ? d.close >= prevClose : true;
-          const fill   = up ? '#e53935' : '#1a8a30';
-          const stroke = up ? '#c62828' : '#0f5c1e';
+          const fill   = up ? 'var(--k-up)' : 'var(--k-down)';
+          const stroke = up ? 'var(--k-up-stroke)' : 'var(--k-down-stroke)';
           const yH = yPrice(d.high); const yL = yPrice(d.low);
           const yO = yPrice(d.open); const yC = yPrice(d.close);
           const bodyTop = Math.min(yO, yC);
           const bodyH   = Math.max(Math.abs(yC - yO), 1);
           return (
-            <g key={`k-${d.dateKey}`} opacity={0.85}>
+            <g key={`k-${d.dateKey}`} style={{ opacity: 'var(--k-opacity)' }}>
               <line x1={xc} y1={yH} x2={xc} y2={yL} stroke={stroke} strokeWidth={0.9} />
               <rect x={xc - barW / 2} y={bodyTop} width={barW} height={bodyH} fill={fill} stroke={stroke} strokeWidth={0.8} />
             </g>
@@ -941,7 +935,7 @@ function IbdRsComboChart({ data, showMA = true, showRs = true }) {
               y={PAD_T + innerH - bh}
               width={barW}
               height={bh}
-              fill={up ? 'rgba(229,57,53,0.22)' : 'rgba(46,125,50,0.22)'}
+              fill={up ? 'var(--k-vol-up)' : 'var(--k-vol-down)'}
             />
           );
         })}
@@ -1480,13 +1474,8 @@ function ForeignChipChart({ data, allHoldings }) {
       >
         {/* 上格底色 */}
         <rect x={PAD_L} y={PAD_T} width={innerW} height={MAIN_H} fill="var(--app-surface)" />
-        {/* 下格底色 */}
-        <rect x={PAD_L} y={chipYBase} width={innerW} height={CHIP_H} fill="var(--app-surface-2)" />
-
-        {/* 上格 grid */}
-        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-          <line key={`pg-${t}`} x1={PAD_L} y1={PAD_T + MAIN_H * t} x2={PAD_L + innerW} y2={PAD_T + MAIN_H * t} stroke="var(--app-border)" strokeWidth={1} strokeDasharray="3 3" />
-        ))}
+        {/* 下格底色（與上格同色，只靠分隔線區分，避免暗色下色塊拼貼） */}
+        <rect x={PAD_L} y={chipYBase} width={innerW} height={CHIP_H} fill="var(--app-surface)" />
 
         {/* 下格零軸 */}
         <line x1={PAD_L} y1={chipMid} x2={PAD_L + innerW} y2={chipMid} stroke="var(--app-border)" strokeWidth={1} />
@@ -1497,11 +1486,11 @@ function ForeignChipChart({ data, allHoldings }) {
           const xc = xAt(i);
           const prevClose = i > 0 && Number.isFinite(data[i - 1]?.close) ? data[i - 1].close : null;
           const up = d.open !== d.close ? d.close >= d.open : prevClose != null ? d.close >= prevClose : true;
-          const fill = up ? '#e53935' : '#1a8a30'; const stroke = up ? '#c62828' : '#0f5c1e';
+          const fill = up ? 'var(--k-up)' : 'var(--k-down)'; const stroke = up ? 'var(--k-up-stroke)' : 'var(--k-down-stroke)';
           const yH = yPrice(d.high); const yL = yPrice(d.low);
           const yO = yPrice(d.open); const yC = yPrice(d.close);
           return (
-            <g key={`k-${d.dateKey}`} opacity={0.65}>
+            <g key={`k-${d.dateKey}`} style={{ opacity: 'var(--k-chip-opacity)' }}>
               <line x1={xc} y1={yH} x2={xc} y2={yL} stroke={stroke} strokeWidth={0.9} />
               <rect x={xc - barW / 2} y={Math.min(yO, yC)} width={barW} height={Math.max(Math.abs(yC - yO), 1)} fill={fill} stroke={stroke} strokeWidth={0.8} />
             </g>
@@ -2725,7 +2714,7 @@ style={{
                 border: '1px solid var(--app-border)',
                 borderRadius: 10,
                 padding: '8px 4px 4px',
-                background: 'linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-2) 100%)',
+                background: 'var(--app-surface)',
                 boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
               }}
               onWheel={(e) => {

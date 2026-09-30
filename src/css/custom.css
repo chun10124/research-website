@@ -47,6 +47,15 @@
   --rs-tab-rs-bg: #fef2f2;      /* RS 作用底（淺粉）*/
   --rs-tab-chip-fg: #d97706;    /* 籌碼 琥珀：字＋框 */
   --rs-tab-chip-bg: #fffbeb;    /* 籌碼 作用底（淺奶油）*/
+  /* 個股圖 K 棒／量能漲跌色（台股紅漲綠跌） */
+  --k-up: #e53935;
+  --k-down: #1a8a30;
+  --k-up-stroke: #c62828;
+  --k-down-stroke: #0f5c1e;
+  --k-opacity: 0.85;         /* RS 圖 K 棒 */
+  --k-chip-opacity: 0.65;    /* 籌碼圖 K 棒 */
+  --k-vol-up: rgba(229, 57, 53, 0.22);
+  --k-vol-down: rgba(46, 125, 50, 0.22);
 }
 
 [data-theme='dark'] {
@@ -75,6 +84,15 @@
   --rs-tab-rs-bg: rgba(192, 57, 43, 0.22);
   --rs-tab-chip-fg: #f59e0b;
   --rs-tab-chip-bg: rgba(217, 119, 6, 0.20);
+  /* 暗色覆蓋：K 棒改亮紅／亮綠實心，無深色外框 */
+  --k-up: #ff4a3d;
+  --k-down: #1fdd6e;
+  --k-up-stroke: #ff4a3d;
+  --k-down-stroke: #1fdd6e;
+  --k-opacity: 1;
+  --k-chip-opacity: 1;
+  --k-vol-up: rgba(255, 74, 61, 0.25);
+  --k-vol-down: rgba(31, 221, 110, 0.25);
 }
 
 /* 將 footer 推到視窗底部的 CSS 修復 */
