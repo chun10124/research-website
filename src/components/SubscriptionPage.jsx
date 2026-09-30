@@ -236,20 +236,19 @@ export default function SubscriptionPage() {
     await Promise.all([revP, finP]);
   }, []);
 
-  const loadSingles = useCallback(async (s, force = false) => {
-    setPart(s.id, { loading: { conf: true, quote: true, news: true } });
-    const [conf, quote, news] = await Promise.allSettled([
-      fetchConferences(s.id, s.market, { force }),
-      fetchQuote(s.id, s.market, { force }),
-      fetchNews(s.id, { force }),
-    ]);
-    setPart(s.id, {
-      ...(conf.status === 'fulfilled' ? { conf: conf.value, confErr: null } : { confErr: conf.reason?.message || '法說抓取失敗' }),
-      ...(quote.status === 'fulfilled' ? { quote: quote.value, quoteErr: null } : { quoteErr: quote.reason?.message || '股價抓取失敗' }),
-      ...(news.status === 'fulfilled' ? { news: news.value, newsErr: null } : { newsErr: news.reason?.message || '重訊抓取失敗' }),
-      loading: { conf: false, quote: false, news: false },
-    });
-  }, []);
+  // 每種資料抓到就先顯示，不互相等（股價快取有效時不必等法說／重訊）
+  const loadOne = (id, key, p, errMsg) => {
+    setPart(id, { loading: { [key]: true } });
+    return p.then(
+      (v) => setPart(id, { [key]: v, [`${key}Err`]: null, loading: { [key]: false } }),
+      (e) => setPart(id, { [`${key}Err`]: e?.message || errMsg, loading: { [key]: false } }),
+    );
+  };
+  const loadQuote = useCallback((s, force = false) => loadOne(s.id, 'quote', fetchQuote(s.id, s.market, { force }), '股價抓取失敗'), []);
+  const loadMops = useCallback((s, force = false) => Promise.all([
+    loadOne(s.id, 'conf', fetchConferences(s.id, s.market, { force }), '法說抓取失敗'),
+    loadOne(s.id, 'news', fetchNews(s.id, { force }), '重訊抓取失敗'),
+  ]), []);
 
   const loadedIds = useRef(new Set());
   useEffect(() => {
@@ -258,8 +257,12 @@ export default function SubscriptionPage() {
     if (!todo.length) return;
     todo.forEach((it) => loadedIds.current.add(it.id));
     loadBatches(todo);
-    runLimited(todo, 2, (it) => loadSingles(it)); // 每檔同時打法說／股價／重訊 3 個請求，總並行約 6
-  }, [items, loadBatches, loadSingles]);
+    // 股價（Yahoo）與法說／重訊（觀測站）各排各的隊：快取命中的股價立刻出來，不被觀測站拖住。
+    // 並行數依 2026-09-30 實測（24 檔，全 0 錯誤）：Yahoo 6 檔 1.3s（8 不再變快）；
+    // 觀測站每檔法說＋重訊同時打，4 檔 ≈ 同時 8 個請求（實測 8 並行 3.2s，2 並行 9.2s）
+    runLimited(todo, 6, (it) => loadQuote(it));
+    runLimited(todo, 4, (it) => loadMops(it));
+  }, [items, loadBatches, loadQuote, loadMops]);
 
   // 各資料第一次載入 → 當下成立的條件記為已確認；並清掉已不存在的法說 key
   useEffect(() => {
@@ -488,7 +491,8 @@ export default function SubscriptionPage() {
           onReload={() => {
             clearSubscriptionCache(open.it.id);
             loadBatches([open.it], true);
-            loadSingles(open.it, true);
+            loadQuote(open.it, true);
+            loadMops(open.it, true);
           }}
           onRemove={() => removeStock(open.it.id)}
         />

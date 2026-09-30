@@ -26,8 +26,7 @@ const MOPS_CONF_URL = 'https://mopsov.twse.com.tw/mops/web/ajax_t100sb02_1';
 const CACHE_PREFIX = 'rw-sub-cache_';
 const BULK_PREFIX = 'rw-sub-bulk_';
 const VOLATILE_TTL_MS = 12 * 60 * 60 * 1000;
-const CONF_TTL_MS = 12 * 60 * 60 * 1000;
-const QUOTE_TTL_MS = 30 * 60 * 1000;
+const QUOTE_TTL_MS = 30 * 60 * 1000; // 盤中才用；盤後見 quoteFresh
 
 export const REVENUE_FILE_MONTHS = 36;
 const FIN_YEARS_BACK = 2; // 今年往回 2 年的 Q1 起（2026 → 2024Q1），毛利率與 EPS＋股價圖都從這裡開始
@@ -65,6 +64,9 @@ function lsGet(key, ttl) {
     if (c && (ttl == null || Date.now() - c.at < ttl)) return c.value;
   } catch (_) {}
   return undefined;
+}
+function lsGetEntry(key) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null') || undefined; } catch (_) { return undefined; }
 }
 function lsSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), value })); } catch (_) {}
@@ -250,6 +252,12 @@ function financialQuarters() {
 }
 
 /**
+ * 該季財報視為定案的日期。法定期限：Q1 5/15、Q2 8/14、Q3 11/14、年報隔年 3/31；
+ * 金融業半年報到 8/31，另留補申報緩衝 → 取各季月底／隔年 4/15。過了就不再重抓。
+ */
+const finFinalDate = ({ y, q }) => (q === 4 ? `${y + 1}-04-15` : `${y}-${['05-31', '08-31', '11-30'][q - 1]}`);
+
+/**
  * 一次抓多檔的季報。回傳 { quarters: { id: [{ q:'2026-Q2', rev, gp, eps, gm }] 舊→新 }, errors }。
  */
 export async function loadFinancialsBatch(stocks, { force = false } = {}) {
@@ -260,7 +268,8 @@ export async function loadFinancialsBatch(stocks, { force = false } = {}) {
     mkts.get(mkt).push(s.id);
   }));
   const tasks = [];
-  mkts.forEach((ids, mkt) => qs.forEach((qq, i) => tasks.push({ mkt, ids, qq, volatile: i >= qs.length - 2 })));
+  const today = taipeiToday();
+  mkts.forEach((ids, mkt) => qs.forEach((qq) => tasks.push({ mkt, ids, qq, volatile: today <= finFinalDate(qq) })));
 
   const got = new Map();
   const failed = new Set();
@@ -301,6 +310,27 @@ export async function loadFinancialsBatch(stocks, { force = false } = {}) {
 
 /* ── 股價（Yahoo 日線，圖用週收盤）──────────────────────────────────── */
 
+const TPE_MS = 8 * 3600 * 1000;
+const CLOSE_MIN = 14 * 60; // 13:30 收盤，留半小時給 Yahoo 定案
+/**
+ * 股價快取是否還能用：收盤後抓的就用到下一個交易日開盤，盤中（平日 9:00～14:00）才 30 分鐘過期。
+ * 不認得國定假日：平日假日會多抓一次（盤中每 30 分鐘、14:00 後一次），結果一樣，無害。
+ */
+function quoteFresh(at, now = Date.now()) {
+  const t = new Date(now + TPE_MS); // UTC 欄位＝台北時間
+  const wd = t.getUTCDay();
+  const min = t.getUTCHours() * 60 + t.getUTCMinutes();
+  if (wd >= 1 && wd <= 5 && min >= 9 * 60 && min < CLOSE_MIN) return now - at < QUOTE_TTL_MS;
+  // 最近一個已過的平日 14:00（台北）
+  for (let k = 0; k < 7; k++) {
+    const day = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - k));
+    const dwd = day.getUTCDay();
+    const boundary = day.getTime() + CLOSE_MIN * 60 * 1000 - TPE_MS;
+    if (dwd >= 1 && dwd <= 5 && boundary <= now) return at >= boundary;
+  }
+  return false;
+}
+
 /**
  * 回傳 { price, change, changePct, date, chg1w, chg1m, series:[{date, close}], recent:[{date, high, low, close}] }。
  * recent＝近 60 個交易日含最高／最低價，給「盤中觸及」價位提醒用。
@@ -311,8 +341,8 @@ export async function loadFinancialsBatch(stocks, { force = false } = {}) {
 export async function fetchQuote(stockId, market, { force = false } = {}) {
   const key = `${CACHE_PREFIX}quote5y3_${stockId}`; // 5y3：多了 recent（最高／最低價），舊快取不沿用
   if (!force) {
-    const hit = lsGet(key, QUOTE_TTL_MS);
-    if (hit) return hit;
+    const hit = lsGetEntry(key);
+    if (hit?.value && quoteFresh(hit.at)) return hit.value;
   }
   const suffixes = market === 'TWSE' ? ['.TW'] : market === 'TPEX' ? ['.TWO'] : ['.TW', '.TWO'];
   for (const sfx of suffixes) {
@@ -374,6 +404,20 @@ export async function fetchQuote(stockId, market, { force = false } = {}) {
 
 /* ── 法說會／座談 ─────────────────────────────────────────────────────── */
 
+/**
+ * 法說、重訊的刷新時間點（台北）。抽樣 13 檔 2026 年 658 則重訊：10 點前 0 則、
+ * 20 點前累計 95%、21 點前 99% → 晚上 20 點抓當天，早上 8 點補前一晚。
+ * 快取在最近一個已過的時間點之後抓的就沿用，否則重抓（開頁時才抓，不是背景排程）。
+ */
+const MOPS_REFRESH_HOURS = [8, 20];
+function mopsFresh(at, now = Date.now()) {
+  const t = new Date(now + TPE_MS);
+  const midnight = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()) - TPE_MS;
+  const points = [0, 1].flatMap((k) => MOPS_REFRESH_HOURS.map((h) => midnight - k * 86400000 + h * 3600000));
+  const last = Math.max(...points.filter((p) => p <= now));
+  return at >= last;
+}
+
 const domText = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
 const rocToIso = (s) => {
   const m = /(\d{2,3})\/(\d{1,2})\/(\d{1,2})/.exec(s);
@@ -416,8 +460,8 @@ async function queryConf(typek, rocYear, stockId) {
 export async function fetchConferences(stockId, market, { force = false } = {}) {
   const key = `${CACHE_PREFIX}conf_${stockId}`;
   if (!force) {
-    const hit = lsGet(key, CONF_TTL_MS);
-    if (hit) return hit;
+    const hit = lsGetEntry(key);
+    if (hit?.value && mopsFresh(hit.at)) return hit.value;
   }
   const now = new Date();
   const roc = now.getFullYear() - 1911;
@@ -439,7 +483,6 @@ export async function fetchConferences(stockId, market, { force = false } = {}) 
 /* ── 重大訊息 ─────────────────────────────────────────────────────────── */
 
 const MOPS_NEWS_URL = 'https://mopsov.twse.com.tw/mops/web/ajax_t05st01';
-const NEWS_TTL_MS = 6 * 60 * 60 * 1000;
 
 /**
  * 舊版觀測站「歷史重大訊息」按公司查整年（TYPEK=all 上市櫃都行），只留近 3 個月。
@@ -456,8 +499,8 @@ const newsCutoff = () => {
 export async function fetchNews(stockId, { force = false } = {}) {
   const key = `${CACHE_PREFIX}news_${stockId}`;
   if (!force) {
-    const hit = lsGet(key, NEWS_TTL_MS);
-    if (hit) return hit.filter((n) => n.date >= newsCutoff());
+    const hit = lsGetEntry(key);
+    if (hit?.value && mopsFresh(hit.at)) return hit.value.filter((n) => n.date >= newsCutoff());
   }
   const now = new Date();
   const roc = now.getFullYear() - 1911;
