@@ -334,8 +334,12 @@ def summary_page(pdf, sections, data_date, pool_n, inst=None, cmap=None):
         fig.text(L, y, '■', fontsize=8, color=col)
         fig.text(L + .022, y, lbl, fontsize=11.5, fontweight='bold')
         for mk in ('total', 'twse', 'tpex'):
-            v = yi(((inst or {}).get(mk) or {}).get(key, 0))
             big = mk == 'total'
+            side = (inst or {}).get(mk)
+            if side is None:                    # 抓取失敗，見 market.institutional
+                fig.text(CX[mk], y, '無法取得', fontsize=9, ha='right', color='#999')
+                continue
+            v = yi(side.get(key, 0))
             fig.text(CX[mk], y - (.004 if big else 0), f'{v:+,.1f}',
                      fontsize=15 if big else 10.5, ha='right',
                      color=(R if v >= 0 else G), fontweight='bold' if big else 'normal')

@@ -162,7 +162,7 @@ def _fmtqik_latest(today):
 
 
 def _finmind_taiex_latest(today):
-    """FinMind TAIEX 日線的最近交易日（17:30 更新，供 22:00 的籌碼報告用）；查不到回 None。
+    """FinMind TAIEX 日線的最近交易日（17:30 更新，供 23:00 的籌碼報告用）；查不到回 None。
        2026-03~09 實測交易日集合與 FMTQIK 完全一致（含清明、端午、中秋等假日，無幽靈日）。"""
     import datetime
     start = (today - datetime.timedelta(days=20)).isoformat()
@@ -187,7 +187,7 @@ def latest_trading_day(kind='price'):
        不自行推算國定假日／颱風假——以官方資料的日期為唯一真實來源。
 
        兩個獨立來源取「較新者」：TWSE rwd 的 FMTQIK（當月每日成交量值）與 Yahoo ^TWII 的最後一根 K。
-       籌碼報告（kind='chip'，22:00）以 FinMind TAIEX 取代 FMTQIK，少打證交所；FinMind 失敗才退回 FMTQIK。
+       籌碼報告（kind='chip'，23:00）以 FinMind TAIEX 取代 FMTQIK，少打證交所；FinMind 失敗才退回 FMTQIK。
        價格報告（16:30）不能換：FinMind 17:30 才更新。
        不用 OpenAPI 的 MI_INDEX：2026-09-07（交易日）實測它到收盤後 3.5 小時仍停在前一交易日 9/4，
        16:30 的價格報告因此誤判「今日非交易日」，安靜跳過、不產出也不寄信，
@@ -306,22 +306,33 @@ def institutional(date):
     """單日三大法人買賣超（元）。上市 FinMind（15:00 更新）、上櫃 TPEX 3insti_summary。
        自營商合併「自行買賣 + 避險」。上市原走證交所 BFI82U，因網站使用條款第 6 條禁止
        程式下載而改用 FinMind；2026-09-23、09-24 兩日實測數字與 BFI82U 完全一致。"""
+    # 任一邊抓取失敗（FinMind 402 每小時配額、TPEX 連線異常）該邊寫 None、合計也寫 None，
+    # 報告端顯示「無法取得」，不以 0 充數、也不讓整份報告崩潰（2026-09-30 22:06 FinMind 402 實例）。
     out = {'date': date}
-    tw = next((r for r in foreign_net_series(date, date) if r['date'] == date), None)
-    if tw is None:
-        print(f'[market] ⚠️ FinMind 查無 {date} 上市三大法人，以 0 計', flush=True)
-        tw = {}
-    out['twse'] = {k: tw.get(k, 0) for k in ('foreign', 'trust', 'dealer')}
-    tp = get('https://www.tpex.org.tw/openapi/v1/tpex_3insti_summary')
-    latest = max(r['Date'] for r in tp)
-    mm = {r['Investor'].strip(): _num(r['Net']) for r in tp if r['Date'] == latest}
-    out['tpex'] = {'foreign': mm.get('外資及陸資合計', 0),
-                   'trust':   mm.get('投信', 0),
-                   'dealer':  mm.get('自營商合計', 0)}
-    d = roc_to_ymd(latest)
-    if d != date:
-        out['tpex_date_mismatch'] = d
-    out['total'] = {k: out['twse'][k] + out['tpex'][k] for k in ('foreign', 'trust', 'dealer')}
+    try:
+        tw = next((r for r in foreign_net_series(date, date) if r['date'] == date), None)
+        if tw is None:
+            print(f'[market] ⚠️ FinMind 查無 {date} 上市三大法人，以 0 計', flush=True)
+            tw = {}
+        out['twse'] = {k: tw.get(k, 0) for k in ('foreign', 'trust', 'dealer')}
+    except Exception as e:
+        print(f'[market] ⚠️ 上市三大法人抓取失敗，報告顯示無法取得：{e}', flush=True)
+        out['twse'] = None
+    try:
+        tp = get('https://www.tpex.org.tw/openapi/v1/tpex_3insti_summary')
+        latest = max(r['Date'] for r in tp)
+        mm = {r['Investor'].strip(): _num(r['Net']) for r in tp if r['Date'] == latest}
+        out['tpex'] = {'foreign': mm.get('外資及陸資合計', 0),
+                       'trust':   mm.get('投信', 0),
+                       'dealer':  mm.get('自營商合計', 0)}
+        d = roc_to_ymd(latest)
+        if d != date:
+            out['tpex_date_mismatch'] = d
+    except Exception as e:
+        print(f'[market] ⚠️ 上櫃三大法人抓取失敗，報告顯示無法取得：{e}', flush=True)
+        out['tpex'] = None
+    out['total'] = ({k: out['twse'][k] + out['tpex'][k] for k in ('foreign', 'trust', 'dealer')}
+                    if out['twse'] and out['tpex'] else None)
     return out
 
 

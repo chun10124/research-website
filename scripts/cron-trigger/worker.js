@@ -19,7 +19,9 @@
  *   37 13 * * *    (台灣 21:37)  holdingsRevenue    抓外資持股／營收
  *   30 8  * * *    (台灣 16:30)  daily-report price 價格報告。15:37 那場實測 22~26 分，
  *                                約 16:05 完成，留 25 分餘裕。
- *   0  14 * * *    (台灣 22:00)  daily-report chip  籌碼報告。21:37 那場約 21:42 完成。
+ *   0  15 * * *    (台灣 23:00)  daily-report chip  籌碼報告。原為 22:00，2026-09-30 撞 FinMind
+ *                                每小時配額（21:37 同步耗用，約 21:40 結束）→ 402；延到 23:00
+ *                                離同步結束約 80 分，避開配額時窗。
  *
  * 報告端自帶防呆：交易所回報的最近交易日不等於今日就不產出；資料庫日期對不上
  * 就改寄警告信。所以非交易日觸發是無害的。
@@ -40,10 +42,10 @@ const CRON_JOB = {
     workflow: "daily-report.yml",
     inputs: { kind: "price", no_mail: "false", force: "false" },
   }, // 台灣 16:30
-  "0 14 * * *": {
+  "0 15 * * *": {
     workflow: "daily-report.yml",
     inputs: { kind: "chip", no_mail: "false", force: "false" },
-  }, // 台灣 22:00
+  }, // 台灣 23:00
 };
 
 /** 打一次 workflow_dispatch；成功回 204 No Content，其餘視為失敗。 */

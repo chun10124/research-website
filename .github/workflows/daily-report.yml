@@ -1,7 +1,7 @@
 name: 每日 RS 報告
 
 # 觸發：先以 workflow_dispatch 手動驗證；穩定後由 scripts/cron-trigger/ 的
-# Cloudflare Worker 準點打（價格報告 16:30、籌碼報告 22:00）。
+# Cloudflare Worker 準點打（價格報告 16:30、籌碼報告 23:00）。
 # 不用 on:schedule —— GitHub 排程實測延遲 2~4 小時，見 daily-sync.yml 的說明。
 on:
   workflow_dispatch:
