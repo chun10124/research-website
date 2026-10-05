@@ -10,7 +10,7 @@ import { JOURNAL_DOC_REF } from '../utils/firebaseConfig';
 import { PNL_COLOR, GOLDEN_BORDER_COLOR, formatQuantity, formatAvgCost, formatPnl } from '../utils/formatting';
 
 // 3. 引入核心計算邏輯
-import { calculatePnlSummary, calcUnrealizedPnl, getStartDate, MARGIN_LONG_LOAN_RATIO, MARGIN_LONG_SELF_RATIO, MARGIN_LONG_ANNUAL_RATE, MARGIN_SHORT_DEPOSIT_RATIO } from '../utils/pnlCalculator';
+import { calculatePnlSummary, calcUnrealizedPnl, getStartDate, MARGIN_LONG_LOAN_RATIO, MARGIN_LONG_ANNUAL_RATE, MARGIN_SHORT_DEPOSIT_RATIO } from '../utils/pnlCalculator';
 import { autoDetectCashFlows, getCumulativeCFUpTo } from '../utils/periodReturns';
 import { fetchCurrentPrice } from '../features/StockAnalysis/api/stockApi';
 import useJournalDividends from './useJournalDividends';
@@ -29,6 +29,9 @@ import styles from './TradeJournal.module.css';
 
 
 const PIE_STOCK_COLORS = ['#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#6366f1', '#84cc16', '#14b8a6'];
+
+/** 融資一批的實際借款：買進成本 × 六成，千元以下捨去（借款於買進時固定，不隨現價變動） */
+const marginLotLoan = (lot) => Math.floor((lot.price * lot.qty * MARGIN_LONG_LOAN_RATIO) / 1000) * 1000;
 
 // ========== III. 主組件 (TradeJournal) ==========
 function TradeJournal() {
@@ -354,7 +357,18 @@ function TradeJournal() {
     }, 0);
   }, [pnlSummary.byStock, positionPrices]);
 
-  /** 總自付持倉金額：現股用市值全額，融資用市值 × 40%，融券用保證金估值 */
+  /** 融資部位權益：市值 − 實際借款（借款按各批買進成本計） */
+  const marginLongEquity = useMemo(() => {
+    return pnlSummary.byStock.reduce((sum, s) => {
+      if (s.mlQty <= 0) return sum;
+      const px = positionPrices[s.code];
+      const usePx = px != null && px > 0 ? px : s.mlAvgCost;
+      const loan = s.mlLots.reduce((acc, lot) => acc + marginLotLoan(lot), 0);
+      return sum + s.mlQty * usePx - loan;
+    }, 0);
+  }, [pnlSummary.byStock, positionPrices]);
+
+  /** 總自付持倉金額：現股用市值全額，融資用市值扣借款，融券用保證金估值 */
   const totalSelfPaidValue = useMemo(() => {
     return pnlSummary.byStock.reduce((sum, s) => {
       const px = positionPrices[s.code];
@@ -363,41 +377,33 @@ function TradeJournal() {
         const usePx = px != null && px > 0 ? px : s.stockAvgCost;
         sum += s.stockQty * usePx;
       }
-      // 融資多頭：只算自付部分
-      if (s.mlQty > 0) {
-        const usePx = px != null && px > 0 ? px : s.mlAvgCost;
-        sum += s.mlQty * usePx * MARGIN_LONG_SELF_RATIO;
-      }
       // 融券空頭：保證金視為鎖定資金
       if (s.msQty > 0) {
         sum += s.msQty * s.msAvgDeposit;
       }
       return sum;
-    }, 0);
-  }, [pnlSummary.byStock, positionPrices]);
+    }, marginLongEquity);
+  }, [pnlSummary.byStock, positionPrices, marginLongEquity]);
 
-  /** 總融資借款金額（按現價估算） */
+  /** 總融資借款金額（各批買進成本 × 六成） */
   const totalMarginLoan = useMemo(() => {
     return pnlSummary.byStock.reduce((sum, s) => {
       if (s.mlQty <= 0) return sum;
-      const px = positionPrices[s.code];
-      const usePx = px != null && px > 0 ? px : s.mlAvgCost;
-      return sum + s.mlQty * usePx * MARGIN_LONG_LOAN_RATIO;
+      return sum + s.mlLots.reduce((acc, lot) => acc + marginLotLoan(lot), 0);
     }, 0);
-  }, [pnlSummary.byStock, positionPrices]);
+  }, [pnlSummary.byStock]);
 
-  /** 融資利息估算：各持倉 × 借款金額 × 年利率 × 持有天數 / 365 */
+  /** 融資利息估算：各批借款 × 年利率 × 該批持有天數 / 365 */
   const totalMarginInterest = useMemo(() => {
     const todayMs = Date.now();
     return pnlSummary.byStock.reduce((sum, s) => {
-      if (s.mlQty <= 0 || s.mlEarliestMs == null) return sum;
-      const px = positionPrices[s.code];
-      const usePx = px != null && px > 0 ? px : s.mlAvgCost;
-      const loanValue = s.mlQty * usePx * MARGIN_LONG_LOAN_RATIO;
-      const daysHeld = Math.max(0, (todayMs - s.mlEarliestMs) / (1000 * 60 * 60 * 24));
-      return sum + loanValue * MARGIN_LONG_ANNUAL_RATE * daysHeld / 365;
+      if (s.mlQty <= 0) return sum;
+      return sum + s.mlLots.reduce((acc, lot) => {
+        const daysHeld = Math.max(0, (todayMs - lot.time) / (1000 * 60 * 60 * 24));
+        return acc + marginLotLoan(lot) * MARGIN_LONG_ANNUAL_RATE * daysHeld / 365;
+      }, 0);
     }, 0);
-  }, [pnlSummary.byStock, positionPrices]);
+  }, [pnlSummary.byStock]);
 
   /**
    * 可用於投資（買股）的總資產（與績效頁一致）：
@@ -423,7 +429,7 @@ function TradeJournal() {
       ? (totalSelfPaidValue / totalTradingAssets) * 100
       : null;
 
-  /** 圓餅圖資料：各持倉市值 + 現金 */
+  /** 圓餅圖資料：各持倉市值 + 現金（持倉含融資全額，現金須加回融資借款） */
   const portfolioPieData = useMemo(() => {
     const items = pnlSummary.byStock
       .filter(s => s.netQuantity > 0)
@@ -434,10 +440,10 @@ function TradeJournal() {
       })
       .filter(d => d.value > 0)
       .sort((a, b) => b.value - a.value);
-    const cashValue = Math.round(totalTradingAssets - totalHoldingMarketValue);
+    const cashValue = Math.round(totalTradingAssets - totalHoldingMarketValue + totalMarginLoan);
     if (cashValue > 0) items.push({ name: '現金', value: cashValue, isCash: true });
     return items;
-  }, [pnlSummary.byStock, positionPrices, totalTradingAssets, totalHoldingMarketValue]);
+  }, [pnlSummary.byStock, positionPrices, totalTradingAssets, totalHoldingMarketValue, totalMarginLoan]);
 
   const sortedByStock = useMemo(() => {
     const { byStock } = pnlSummary;
@@ -736,14 +742,9 @@ function TradeJournal() {
                         return s + st.stockQty * usePx;
                       }, 0)).toLocaleString()}
                     </span>
-                    <span>融資自付部分（40%）</span>
+                    <span>融資自付部分（市值 − 借款）</span>
                     <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                      {Math.round(pnlSummary.byStock.reduce((s, st) => {
-                        if (st.mlQty <= 0) return s;
-                        const px = positionPrices[st.code];
-                        const usePx = px != null && px > 0 ? px : st.mlAvgCost;
-                        return s + st.mlQty * usePx * MARGIN_LONG_SELF_RATIO;
-                      }, 0)).toLocaleString()}
+                      {Math.round(marginLongEquity).toLocaleString()}
                     </span>
                     {pnlSummary.byStock.some(st => st.msQty > 0) && (
                       <>
@@ -763,7 +764,7 @@ function TradeJournal() {
                     <>
                       <p style={{ margin: '12px 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>融資借款概況</p>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 12px' }}>
-                        <span>未結清借款（按現價估）</span>
+                        <span>未結清借款（買進成本 × 六成）</span>
                         <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                           {Math.round(totalMarginLoan).toLocaleString()}
                         </span>
@@ -776,7 +777,7 @@ function TradeJournal() {
                   )}
 
                   <p style={{ margin: '10px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                    市場曝險 ＝ 持倉全額 ÷ 總資產；資金使用 ＝ 自付金額 ÷ 總資產。融資利息從首筆開倉日估算，僅供參考。
+                    市場曝險 ＝ 持倉全額 ÷ 總資產；資金使用 ＝ 自付金額 ÷ 總資產。融資利息依各批開倉日估算，僅供參考。
                   </p>
                 </div>
               )}
