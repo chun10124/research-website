@@ -1,8 +1,8 @@
 """籌碼報告：外資／投信連買訊號 + PDF 排版（唯讀，不寫任何資料庫）。
 
 分區（個股只出現一次）：
-  A.首日大買   B.同時觸發外資與投信   C.僅外資   D.僅投信
-判定優先序仍是連買訊號優先（B→C→D），都不符合才看 A。
+  A.首日大買（未成連買）   B.外資＋投信 連買   C.外資連買   D.投信連買
+判定優先序：正在觸發的連買（B→C→D）→ 首日大買 A → 只剩消退中者（B→C→D）。
 
 母體＝追蹤表（stockWatchlist）∩ RS≥85 ∩ 法人資料為最近交易日。
 只有追蹤表那 320 檔有法人資料，全市場沒有——這是資料面的硬限制，非設計選擇。
@@ -36,10 +36,10 @@ from settings import CHIP                                       # noqa: E402
 RS_MIN = CHIP['rs_min']
 INCLUDE_PERSIST = CHIP['include_persist']
 
-SECTIONS = (('A', '首日大買'),
-            ('B', '外資 ＋ 投信　同時'),
-            ('C', '僅外資'),
-            ('D', '僅投信'))
+SECTIONS = (('A', '首日大買（未成連買）'),
+            ('B', '外資＋投信 連買'),
+            ('C', '外資連買'),
+            ('D', '投信連買'))
 
 # ── 篩選 ────────────────────────────────────────────────────────────────
 def screen(watchlist, universe, data_date):
@@ -55,11 +55,15 @@ def screen(watchlist, universe, data_date):
         # 納入「消退中」：訊號剛結束但仍在 3 日餘溫內（calculateFlowSignal 的 persist）
         fon = f['active'] or (INCLUDE_PERSIST and f['persist'] > 0)
         ton = t['active'] or (INCLUDE_PERSIST and t['persist'] > 0)
-        # 連買訊號優先判定；都沒有才看是不是「首日大買」——
-        # 單日 z 已過門檻但還沒連到第 2 天。min_days=2 的定義下，
-        # 外資買最兇的那一天必然落在 A，而不是 B/C/D。
-        key = ('B' if (fon and ton) else 'C' if fon else 'D' if ton else
-               'A' if (f['days'] == 1 or t['days'] == 1) else None)
+        # 優先序：正在觸發的連買 → 首日大買 → 只剩消退中。
+        # 首日＝單日 z 已過門檻但還沒連到第 2 天；min_days=2 的定義下，
+        # 買最兇的那一天只會出現在這裡，不能被另一方的「消退中」蓋掉
+        # （例：投信消退中＋外資首日大買 → 歸 A，不歸 D）。
+        first = f['days'] == 1 or t['days'] == 1
+        if f['active'] or t['active'] or not first:
+            key = 'B' if (fon and ton) else 'C' if fon else 'D' if ton else None
+        else:
+            key = 'A'
         if key: out[key].append((w, u))
     for k in ('B', 'C', 'D'):
         # 正在觸發者優先，消退中的排後面；同組內依 RS 高到低
