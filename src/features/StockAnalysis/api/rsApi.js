@@ -44,7 +44,9 @@ function historyAnchorYmd(ymd) {
   return normalizeYmdToTaiwanTradingDay(ymd) ?? String(ymd || '').slice(0, 10);
 }
 
-const RS_HISTORY_MAX = 180;
+// RS 歷史保留點數：約一年交易日（個股視窗可往回看一年）。原為 180（約 9 個月）。
+// 所有寫入路徑都是 merge 後 slice(-RS_HISTORY_MAX)；調小會在下次同步時把較舊的點截掉。
+const RS_HISTORY_MAX = 260;
 
 /** 快取可重用：須含 7/30 日 raw、5D/20D 漲跌幅、近 6 月價位指標 */
 function hasAllFetchedPriceFields(ex) {
