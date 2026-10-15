@@ -35,6 +35,8 @@
      讓寫死 #fff/灰色的卡片在暗色下自動變深而不動亮色外觀。 */
   --app-surface: #ffffff;       /* 卡片/面板底色 */
   --app-surface-2: #f8fafc;     /* 次級底色（表頭、淺灰區塊）*/
+  --app-segment-bg: rgba(15, 23, 42, 0.06); /* 分段切換鈕底（RS／籌碼）*/
+  --app-segment-active: #ffffff;            /* 分段切換鈕：作用中那格 */
   --app-border: #e5e7eb;        /* 邊框 */
   --app-text: #111827;          /* 主要深色文字 */
   --app-text-soft: #475569;     /* 次要灰字 */
@@ -47,6 +49,7 @@
   --rs-tab-rs-bg: #fef2f2;      /* RS 作用底（淺粉）*/
   --rs-tab-chip-fg: #d97706;    /* 籌碼 琥珀：字＋框 */
   --rs-tab-chip-bg: #fffbeb;    /* 籌碼 作用底（淺奶油）*/
+  --rs-tab-fund-fg: #4f7cac;    /* 基本面 鋼藍（與訂閱頁主色一致）*/
   /* 個股圖 K 棒／量能漲跌色（台股紅漲綠跌） */
   --k-up: #e53935;
   --k-down: #1a8a30;
@@ -56,6 +59,15 @@
   --k-chip-opacity: 0.65;    /* 籌碼圖 K 棒 */
   --k-vol-up: rgba(229, 57, 53, 0.22);
   --k-vol-down: rgba(46, 125, 50, 0.22);
+  /* 個股圖均線：同一藍色系，短均線淺、長均線深 */
+  --ma10: #6b9cf5;
+  --ma20: #1e3a8a;
+  --chart-idx: #1565c0;      /* 個股圖加權指數線（藍） */
+  /* 股價圖（lightweight-charts）K 棒：套件預設色、台股紅漲綠跌，亮暗色相同；籌碼圖仍用上方 --k-* */
+  --chart-k-up: #ef5350;
+  --chart-k-down: #26a69a;
+  --chart-vol-up: rgba(239, 83, 80, 0.3);
+  --chart-vol-down: rgba(38, 166, 154, 0.3);
 }
 
 [data-theme='dark'] {
@@ -72,6 +84,8 @@
   /* App 色票暗色覆蓋：卡片底色比頁面背景(#1a1a1a)略亮以呈現層次 */
   --app-surface: #242526;
   --app-surface-2: #2b2d2e;
+  --app-segment-bg: rgba(255, 255, 255, 0.07);
+  --app-segment-active: rgba(255, 255, 255, 0.16);
   --app-border: #3a3c3e;
   --app-text: #e3e3e3;
   --app-text-soft: #b0b4b8;
@@ -84,6 +98,7 @@
   --rs-tab-rs-bg: rgba(192, 57, 43, 0.22);
   --rs-tab-chip-fg: #f59e0b;
   --rs-tab-chip-bg: rgba(217, 119, 6, 0.20);
+  --rs-tab-fund-fg: #7ea3cc;
   /* 暗色覆蓋：K 棒改亮紅／亮綠實心，無深色外框 */
   --k-up: #ff4a3d;
   --k-down: #1fdd6e;
@@ -93,6 +108,10 @@
   --k-chip-opacity: 1;
   --k-vol-up: rgba(255, 74, 61, 0.25);
   --k-vol-down: rgba(31, 221, 110, 0.25);
+  /* 暗色：深底上 MA20 改中藍、MA10 更淺，維持「短淺長深」 */
+  --ma10: #a5c8ff;
+  --ma20: #4a7bd9;
+  --chart-idx: #60a5fa;      /* 暗色：深底上提亮的藍 */
 }
 
 /* 將 footer 推到視窗底部的 CSS 修復 */
@@ -394,8 +413,8 @@ html.ibd-rs-page .ibd-rs-ranking-main {
   .ibd-rs-chart-modal-panel {
     max-width: 100% !important;
     width: 100% !important;
-    height: min(62dvh, 100dvh) !important;
-    max-height: min(62dvh, 100dvh) !important;
+    height: min(68dvh, 100dvh) !important;
+    max-height: min(68dvh, 100dvh) !important;
     border-radius: 14px !important;
     padding: 10px 6px 8px !important;
     padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
@@ -407,12 +426,7 @@ html.ibd-rs-page .ibd-rs-ranking-main {
     border-radius: 10px !important;
   }
 
-  /* 僅 SVG 區向左右 bleed，不動標題 header */
-  .ibd-rs-chart-modal-svg-bleed {
-    margin-left: -12px !important;
-    margin-right: -12px !important;
-    width: calc(100% + 24px) !important;
-  }
+  /* 圖表卡片已無外框，不再向左右 bleed（否則圖例左緣被裁掉） */
 
   /* 手機：完整圖例改短版，版面仍像原版（標題＋副標） */
   .ibd-rs-chart-legend-text--full {
@@ -468,6 +482,15 @@ html.ibd-rs-page .ibd-rs-ranking-main {
 /* 移除 Infima 預設的交替灰底 */
 table tr:nth-child(2n) {
   background-color: transparent;
+}
+
+/* lightweight-charts 內部用 <table> 排版：擋掉 Infima 全站表格的邊框／底色，否則圖表四周與各區塊多出框線 */
+.ibd-lwc-host table,
+.ibd-lwc-host tr,
+.ibd-lwc-host td {
+  border: 0 !important;
+  background: transparent !important;
+  margin: 0 !important;
 }
 
 .navbar__brand img {

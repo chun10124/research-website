@@ -25,6 +25,10 @@ import {
   VCP_WEIGHT_VOLUME,
 } from '../features/StockAnalysis/utils/rsCalculator';
 import IbdRsQuadrantTable from '../features/StockAnalysis/components/IbdRsQuadrantTable';
+import IbdRsLwcChart from '../features/StockAnalysis/components/IbdRsLwcChart';
+import RsFundamentalsTab from '../features/StockAnalysis/components/RsFundamentalsTab';
+import IbdChipLwcChart from '../features/StockAnalysis/components/IbdChipLwcChart';
+import { createRangeSyncHub } from '../features/StockAnalysis/components/lwcShared';
 import {
   splitIntoColumnChunks,
   getDeltaColor,
@@ -77,19 +81,17 @@ html[data-theme='dark'] body input.ibd-rs-filter-input[data-ibd-rs-filter]::-web
 }
 `;
 
-/** 籌碼訊號標籤（外資/投信連買）CSS：modal 共用於 3 個頁面，故由 RsChartModal 自行注入。
- *  亮色維持琥珀底深字；暗色改半透明琥珀底＋亮字，避免淺底疊暗頁面。 */
+/** 籌碼訊號標籤（外資/投信大買）CSS：modal 共用於 3 個頁面，故由 RsChartModal 自行注入。
+ *  與旁邊「上市」標籤同一種樣式：無外框、淡琥珀底＋深琥珀字；暗色改半透明底＋亮字。 */
 const SIGNAL_NOTE_STYLE_ID = 'ibd-rs-signal-note-style';
 const SIGNAL_NOTE_CSS = `
 .ibd-rs-signal-note {
-  color: #92400e;
-  background: #fff8e1;
-  border: 1px solid #f59e0b;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
 }
 html[data-theme='dark'] .ibd-rs-signal-note {
   color: #fbbf24;
-  background: rgba(245, 158, 11, 0.13);
-  border: 1px solid rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.16);
 }
 `;
 
@@ -180,18 +182,6 @@ function getTaiwanYmd() {
 function formatYmdSlash(ymd) {
   if (!ymd || typeof ymd !== 'string' || ymd.length < 10) return '';
   return `${ymd.slice(0, 4)}/${ymd.slice(5, 7)}/${ymd.slice(8, 10)}`;
-}
-
-/** 台股代碼 → TradingView 圖表（上市 TWSE、上櫃 TPEX） */
-function getTradingViewChartUrl(stock) {
-  const raw = String(stock?.id ?? '')
-    .replace(/\.(TW|TWO)$/i, '')
-    .trim();
-  if (!raw) return null;
-  const ex = stock?.market === 'TPEX' ? 'TPEX' : 'TWSE';
-  const symbol = `${ex}:${raw}`;
-  /* tw 子網域＝台灣站 UI 繁中；www 預設英文（與 StockLinkGenerator 一致） */
-  return `https://tw.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
 }
 
 /** 個股名稱點擊：用搜尋引擎查 MoneyDJ + 股號 */
@@ -598,7 +588,7 @@ function SyncProgressBar({ progress }) {
   );
 }
 
-/** 今日重點各段合併為 ←→ 導覽順序；同檔多段只出現一次 */
+/** 今日重點各段合併為 ↑↓ 換股順序；同檔多段只出現一次 */
 function mergeMajorMovesNavigationList(items, itemsPriceBig, items80, items90, itemsHlHigh) {
   const seen = new Set();
   const out = [];
@@ -1321,7 +1311,12 @@ function ForeignChipChart({ data, allHoldings }) {
     return () => { if (ro) ro.disconnect(); };
   }, []);
 
-  const PAD_L = 44; const PAD_R = 50; const PAD_T = 10; const PAD_B = 26;
+  // 邊距與股價圖（IbdRsLwcChart：上 4、左 22、右價格軸約 48、下日期軸 28）一致；
+  // 左軸價格刻度（9px 字、每字約 5.2px）放不下時才加寬，例如四位數股價
+  let maxHighForLabel = 0;
+  for (const d of data) if (Number.isFinite(d.high) && d.high > maxHighForLabel) maxHighForLabel = d.high;
+  const priceLabelLen = maxHighForLabel >= 100 ? String(Math.round(maxHighForLabel)).length : maxHighForLabel.toFixed(1).length;
+  const PAD_L = Math.max(22, Math.ceil(priceLabelLen * 5.2) + 6); const PAD_R = 48; const PAD_T = 4; const PAD_B = 28;
   const { w, h } = size;
   const innerW = Math.max(1, w - PAD_L - PAD_R);
   const innerH = Math.max(1, h - PAD_T - PAD_B);
@@ -1681,6 +1676,21 @@ function computeMaSeries(bars, period) {
 }
 
 /** 個股 RS Rating（1-99 歷史）× 加權指數原始點數 疊圖 modal（觀察列表頁亦共用） */
+/** 個股視窗日線資料範圍（曆日）：約一年。打開時只顯示最近約 110 根，往左拖可看到一年前 */
+const DAILY_DISPLAY_DAYS = 365;
+
+/** 個股視窗的圖層：作用中的在上層可互動，其他的透明且不吃滑鼠 */
+const chartLayerStyle = (active) => ({
+  position: 'absolute',
+  inset: 0,
+  opacity: active ? 1 : 0,
+  pointerEvents: active ? 'auto' : 'none',
+  zIndex: active ? 1 : 0,
+});
+
+/** 個股視窗分頁順序（←→ 依此循環；↑↓ 換股） */
+const MODAL_VIEWS = ['rs', 'foreign', 'fund'];
+
 export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist, watchlistPriority, onSetPriority, signalNote, initialView }) {
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   const [priorityBusy, setPriorityBusy] = useState(false);
@@ -1695,8 +1705,22 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const [ohlcSeries, setOhlcSeries] = useState([]);
   /** 視窗切換：'rs' = 預設，'foreign' = 外資籌碼視窗（A 鍵切換） */
   const [activeView, setActiveView] = useState(initialView ?? 'rs');
-  /** RS K 線是否顯示均線（MA10/MA20）；按鈕或 Shift 鍵切換，預設不顯示 */
-  const [showMA, setShowMA] = useState(false);
+  /** 基本面分頁的提醒設定小視窗是否開著（開著時停用 Esc／方向鍵等快捷鍵） */
+  const subDialogOpenRef = useRef(false);
+  /** 股價／籌碼兩張圖右側刻度軸的共同寬度（取較大者），切分頁時繪圖區左右對齊 */
+  const [chartAxisWidth, setChartAxisWidth] = useState(48);
+  const handleChartAxisWidth = useCallback((w) => {
+    if (Number.isFinite(w)) setChartAxisWidth((p) => (w > p + 0.5 ? Math.ceil(w) : p));
+  }, []);
+  useEffect(() => { setChartAxisWidth(48); }, [stock?.id]);
+  /** 股價／籌碼兩張圖的時間視窗同步中樞（不經 state，拖曳時不會重繪整個視窗）；日線時才同步 */
+  const chartSyncHubRef = useRef(null);
+  if (!chartSyncHubRef.current) chartSyncHubRef.current = createRangeSyncHub();
+  useEffect(() => { chartSyncHubRef.current.reset(); }, [stock?.id]);
+  useEffect(() => () => chartSyncHubRef.current?.reset(), []);
+  const handleSubDialogChange = useCallback((open) => { subDialogOpenRef.current = !!open; }, []);
+  /** RS K 線是否顯示均線（MA10/MA20）；按鈕或 Shift 鍵切換，預設顯示 */
+  const [showMA, setShowMA] = useState(true);
   /** K 線週期：'D'=日線（預設，用既有 120 天資料）、'W'=週線（按鍵盤 W 切換，臨時抓 ~2 年聚合） */
   const [chartTf, setChartTf] = useState('D');
   /** 週線聚合資料：null=尚未抓、[]=抓取失敗/無資料、[...]=已聚合的週 K */
@@ -1766,10 +1790,10 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     const quoteStartBuf = new Date();
     quoteStartBuf.setDate(quoteStartBuf.getDate() - 120);
     const quoteStart = quoteStartBuf.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-    // K 線/MA 用：顯示視窗 165 曆日，再往前多抓 ~45 曆日（≈30 交易日）暖身段 → 共 210 曆日，
+    // K 線/MA 用：顯示一年（DAILY_DISPLAY_DAYS），再往前多抓 ~45 曆日（≈30 交易日）暖身段，
     // 讓 MA20 從第一根顯示 K 棒就有值；暖身段只用於算 MA，chartData 會把它裁掉不畫
     const quoteBufStartD = new Date();
-    quoteBufStartD.setDate(quoteBufStartD.getDate() - 210);
+    quoteBufStartD.setDate(quoteBufStartD.getDate() - DAILY_DISPLAY_DAYS - 45);
     const quoteBufStart = quoteBufStartD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 
     // 優先用 Firestore 已存的 highMap/lowMap，避免 Yahoo proxy 快取問題
@@ -1810,7 +1834,10 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       }));
       const allDates = Object.keys(storedPM).filter((d) => d <= quoteEnd).sort();
       const lastD = allDates[allDates.length - 1];
-      setCloseQuote(lastD && Number.isFinite(storedPM[lastD]) ? { dateStr: lastD, price: storedPM[lastD] } : null);
+      const prevD = allDates[allDates.length - 2];
+      setCloseQuote(lastD && Number.isFinite(storedPM[lastD])
+        ? { dateStr: lastD, price: storedPM[lastD], prevPrice: prevD != null && Number.isFinite(storedPM[prevD]) ? storedPM[prevD] : null }
+        : null);
       const pr = calcVcpPriceRatioFromHighLowMaps(storedHM, storedLM, quoteEnd);
       const vr = calcVcpVolumeRatioFromVolumeMap(storedVM || {}, quoteEnd);
       setVcpSnapshot({ composite: calcCompositeVcp(pr, vr), priceRatio: pr, volRatio: vr });
@@ -1823,8 +1850,10 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             const dates = Object.keys(priceMap).sort();
             const lastD = dates[dates.length - 1];
             const p = lastD != null ? priceMap[lastD] : null;
+            const prevD = dates[dates.length - 2];
+            const pp = prevD != null ? priceMap[prevD] : null;
             if (lastD && p != null && Number.isFinite(p)) {
-              setCloseQuote({ dateStr: lastD, price: p });
+              setCloseQuote({ dateStr: lastD, price: p, prevPrice: pp != null && Number.isFinite(pp) ? pp : null });
             } else {
               setCloseQuote(null);
             }
@@ -2038,22 +2067,22 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   }, [stock?.history?.foreignTotalHolding, stock?.history?.foreignHoldingDates, stock?.latestHoldingsDate, fetchedHoldings]);
 
   // 外資視窗：歷史 B 訊號（最近 130 個交易日）
-  const foreignBSignals = useMemo(() => {
-    if (activeView !== 'foreign') return [];
-    return computeHistoricalForeignBSignals(effectiveHoldings?.holdings);
-  }, [activeView, effectiveHoldings]);
+  const foreignBSignals = useMemo(
+    () => computeHistoricalForeignBSignals(effectiveHoldings?.holdings),
+    [effectiveHoldings],
+  );
 
   // 外資視窗圖表資料：K 線 + 外資持股 + 三大法人
   const foreignChartData = useMemo(() => {
-    if (activeView !== 'foreign' || !ohlcSeries.length) return [];
+    // 不再只在籌碼分頁才算：籌碼圖一直掛著（切分頁不重建），K 線要先備好；法人／持股資料到了再補上
+    if (!ohlcSeries.length) return [];
     const holdings    = effectiveHoldings?.holdings;
     const holdingDates = effectiveHoldings?.holdingDates;   // newest-first，與 holdings 等長
     const latestHoldingsDate = effectiveHoldings?.latestDate;
 
-    // 與 RS K 線一致：顯示近 165 曆日（含原暖身段）。前段沒有更早資料暖身，
-    // 故最前面約 20 根的 MA20、約 10 根的 MA10 會是空值。
+    // 與股價 K 線同一段日期（一年），兩張圖邏輯索引一致，拖曳位置才能互相同步
     const dispStartD = new Date();
-    dispStartD.setDate(dispStartD.getDate() - 165);
+    dispStartD.setDate(dispStartD.getDate() - DAILY_DISPLAY_DAYS);
     const displayStart = dispStartD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 
     // 建立 OHLC 日期序列（由舊到新），並裁到顯示視窗起點
@@ -2132,7 +2161,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         dealer:  inst ? inst.dealer  : null,
       };
     });
-  }, [activeView, ohlcSeries, effectiveHoldings, foreignBSignals, institutionalData]);
+  }, [ohlcSeries, effectiveHoldings, foreignBSignals, institutionalData]);
 
   /** 有日 K 時以 Yahoo 交易日為 X（與疊加 K 線逐根對齊）；否則退回 RS 歷史日序 */
   const chartData = useMemo(() => {
@@ -2154,8 +2183,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       // 在完整序列上算 MA（前段無更早資料暖身時，最前面數根 MA 為空值）
       const ma10Arr = computeMaSeries(baseOhlc, 10);
       const ma20Arr = computeMaSeries(baseOhlc, 20);
-      // 顯示視窗起點：日線近 165 曆日（~110 交易日）、週線近 770 曆日（~110 週，與日線 K 棒數相當）
-      const dispDays = chartTf === 'W' ? 770 : 165;
+      // 資料範圍起點：日線一年（打開時只顯示最近約 110 根，可往左拖）、週線近 770 曆日（~110 週）
+      const dispDays = chartTf === 'W' ? 770 : DAILY_DISPLAY_DAYS;
       const dispStartD = new Date();
       dispStartD.setDate(dispStartD.getDate() - dispDays);
       const displayStart = dispStartD.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
@@ -2167,15 +2196,18 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         const ymd = o.dateStr;
         const r = rsMap.get(ymd);
         let closestIdx = null;
+        let closestIdxDate = null;
         for (const id of indexDates) {
-          if (id <= ymd) closestIdx = indexMap[id];
+          if (id <= ymd) { closestIdx = indexMap[id]; closestIdxDate = id; }
           else break;
         }
+        const idxOk = closestIdx != null && Number.isFinite(closestIdx);
         points.push({
           dateKey: ymd,
           date: ymd.slice(5),
           rs: r != null && Number.isFinite(r) ? r : null,
-          idx: closestIdx != null && Number.isFinite(closestIdx) ? Math.round(closestIdx) : null,
+          idx: idxOk ? Math.round(closestIdx) : null,
+          idxDate: idxOk ? closestIdxDate : null,
           open: Number.isFinite(o.open) ? o.open : null,
           high: Number.isFinite(o.high) ? o.high : null,
           low: Number.isFinite(o.low) ? o.low : null,
@@ -2210,7 +2242,6 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const weeklyPending = activeView === 'rs' && chartTf === 'W' && weeklyOhlc === null;
   const isEmpty = !loading && !error && !weeklyPending && chartData.length === 0;
   const marketBadge = formatIbdMarketLabel(stock?.market);
-  const tradingViewUrl = stock ? getTradingViewChartUrl(stock) : null;
   const moneyDjSearchUrl = stock ? getMoneyDjSearchUrl(stock) : null;
 
   const swipeTouchRef = useRef({ x0: null, y0: null, id: null, t0: null });
@@ -2218,14 +2249,16 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   useEffect(() => {
     if (!stock || !onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
     const handleKey = (e) => {
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      // ↑ 上一檔、↓ 下一檔（← → 留給切換 股價／籌碼／基本面 分頁）
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       if (isDomTypingTarget(e.target)) return;
+      if (subDialogOpenRef.current) return;
       const idx = navigationList.findIndex((s) => s.id === stock.id);
       if (idx < 0) return;
-      if (e.key === 'ArrowLeft' && idx > 0) {
+      if (e.key === 'ArrowUp' && idx > 0) {
         e.preventDefault();
         onNavigate(navigationList[idx - 1]);
-      } else if (e.key === 'ArrowRight' && idx < navigationList.length - 1) {
+      } else if (e.key === 'ArrowDown' && idx < navigationList.length - 1) {
         e.preventDefault();
         onNavigate(navigationList[idx + 1]);
       }
@@ -2309,12 +2342,17 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     if (!stock) return;
     const handleKey = (e) => {
       if (isDomTypingTarget(e.target)) return;
+      if (subDialogOpenRef.current) return; // 基本面分頁的提醒設定開著：Esc 只關它，不關整個視窗
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose?.();
-      } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
-        setActiveView((v) => v === 'rs' ? 'foreign' : 'rs');
+        const step = e.key === 'ArrowRight' ? 1 : -1;
+        setActiveView((v) => {
+          const i = MODAL_VIEWS.indexOf(v);
+          return MODAL_VIEWS[(Math.max(0, i) + step + MODAL_VIEWS.length) % MODAL_VIEWS.length];
+        });
       } else if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
         if (priorityBusy || watchlistBusy) return;
         if (typeof onToggleWatchlist !== 'function' && typeof onSetPriority !== 'function') return;
@@ -2342,7 +2380,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [stock, onClose, onToggleWatchlist, watchlistBusy, inWatchlist, onSetPriority, watchlistPriority, priorityBusy]);
 
-  /** 手機橫滑切換個股：須「快滑」；慢慢拖著看 RS tooltip 不觸發（與 ←／→ 方向相同） */
+  /** 手機橫滑切換個股：須「快滑」；慢慢拖著看 RS tooltip 不觸發（鍵盤換股是 ↑／↓） */
   const handleSwipeTouchStart = useCallback(
     (e) => {
       if (!onNavigate || !Array.isArray(navigationList) || navigationList.length < 2) return;
@@ -2426,8 +2464,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           boxSizing: 'border-box',
           width: '100%',
           maxWidth: 800,
-          height: 'min(90vh, 860px)',
-          maxHeight: 'min(90vh, 860px)',
+          height: 'min(94vh, 960px)',
+          maxHeight: 'min(94vh, 960px)',
           overflow: 'hidden',
           background: 'var(--app-surface)',
           borderRadius: 12,
@@ -2462,7 +2500,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               flex: '1 1 auto',
             }}
           >
-            <span style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>{stock.id}</span>
+            {/* 第一層：名稱（大、粗）＋代號（灰）＋市場 */}
             {moneyDjSearchUrl ? (
               <a
                 href={moneyDjSearchUrl}
@@ -2471,8 +2509,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                 title={`搜尋 MoneyDJ：${stock.id} ${stock.name ?? ''}`.trim()}
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  fontWeight: 500,
-                  fontSize: 14,
+                  fontWeight: 700,
+                  fontSize: 18,
                   lineHeight: 1.2,
                   color: 'inherit',
                   textDecoration: 'none',
@@ -2481,8 +2519,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                 {stock.name}
               </a>
             ) : (
-              <span style={{ fontWeight: 500, fontSize: 14, lineHeight: 1.2 }}>{stock.name}</span>
+              <span style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.2 }}>{stock.name}</span>
             )}
+            <span style={{ fontWeight: 500, fontSize: 15, lineHeight: 1.2, color: 'var(--app-text-soft)', fontVariantNumeric: 'tabular-nums' }}>
+              {stock.id}
+            </span>
             <span
               title={
                 stock.market === 'TWSE'
@@ -2493,44 +2534,66 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               }
               style={{
                 fontSize: 11,
-                fontWeight: 700,
+                fontWeight: 600,
                 lineHeight: 1.2,
                 color: marketBadge.color,
-                padding: '2px 7px',
-                borderRadius: 6,
+                padding: '2px 6px',
+                borderRadius: 5,
                 background: marketBadge.bg,
+                alignSelf: 'center',
               }}
             >
               {marketBadge.text}
             </span>
-            {closeQuote != null ? (
-              <span
-                title="Yahoo Finance 日 K 最近一筆；非交易日則為前一交易日收盤"
-                style={{ fontSize: 13, color: '#1565c0', fontWeight: 700, lineHeight: 1.2 }}
-              >
-                {formatYmdSlash(closeQuote.dateStr)} 收盤 {closeQuote.price.toFixed(1)}
-              </span>
-            ) : (
+            {/* 第二層：收盤價（大、依漲跌上色）＋漲跌幅；日期退成小灰字 */}
+            {closeQuote != null ? (() => {
+              const chgPct = Number.isFinite(closeQuote.prevPrice) && closeQuote.prevPrice
+                ? ((closeQuote.price - closeQuote.prevPrice) / closeQuote.prevPrice) * 100
+                : null;
+              const priceColor = chgPct == null || chgPct === 0
+                ? 'inherit'
+                : chgPct > 0 ? 'var(--chart-k-up)' : 'var(--chart-k-down)';
+              return (
+                <span
+                  title="Yahoo Finance 日 K 最近一筆；非交易日則為前一交易日收盤"
+                  style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, marginLeft: 6, whiteSpace: 'nowrap' }}
+                >
+                  <span style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2, color: priceColor, fontVariantNumeric: 'tabular-nums' }}>
+                    {closeQuote.price.toFixed(1)}
+                  </span>
+                  {chgPct != null && (
+                    <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: priceColor, fontVariantNumeric: 'tabular-nums' }}>
+                      {chgPct > 0 ? '+' : ''}{chgPct.toFixed(2)}%
+                    </span>
+                  )}
+                  <span style={{ fontSize: 11, lineHeight: 1.2, color: 'var(--app-text-soft)' }}>
+                    {formatYmdSlash(closeQuote.dateStr).slice(5)} 收盤
+                  </span>
+                </span>
+              );
+            })() : (
               <span
                 aria-hidden
                 style={{
-                  fontSize: 13,
+                  fontSize: 18,
                   fontWeight: 700,
                   lineHeight: 1.2,
+                  marginLeft: 6,
                   visibility: 'hidden',
                   whiteSpace: 'nowrap',
                 }}
               >
-                0000/00/00 收盤 000.00
+                000.0 +0.00%
               </span>
             )}
-            {/* VCP：與收盤價同一基線；載入中占位避免版面跳動 */}
+            {/* 第三層：VCP／HL 小灰字；載入中占位避免版面跳動 */}
             <span
-style={{
-                fontSize: 12,
+              style={{
+                fontSize: 11,
                 fontWeight: 500,
                 lineHeight: 1.2,
-                color: '#6b7280',
+                marginLeft: 6,
+                color: 'var(--app-text-soft)',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -2572,34 +2635,14 @@ style={{
               )}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
-              {tradingViewUrl && (
-                <a
-                  href={tradingViewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="TradingView K 線圖（新分頁）"
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: '#1565c0',
-                    textDecoration: 'none',
-                    borderBottom: '1px solid rgba(21, 101, 192, 0.4)',
-                    lineHeight: 1.2,
-                    flexShrink: 0,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  K 線圖
-                </a>
-              )}
-              {signalNote && (
+              {/* 籌碼訊號（例：外資今日大買）只在籌碼分頁顯示 */}
+              {signalNote && activeView === 'foreign' && (
                 <span className="ibd-rs-signal-note" style={{
                   fontSize: 11,
-                  fontWeight: 500,
-                  borderRadius: 4,
-                  padding: '2px 7px',
-                  lineHeight: 1.4,
+                  fontWeight: 600,
+                  borderRadius: 5,
+                  padding: '2px 6px',
+                  lineHeight: 1.2,
                   flexShrink: 1,
                   minWidth: 0,
                   overflow: 'hidden',
@@ -2711,11 +2754,8 @@ style={{
                 alignSelf: 'center',
                 width: '100%',
                 maxWidth: 760,
-                border: '1px solid var(--app-border)',
-                borderRadius: 10,
-                padding: '8px 4px 4px',
+                padding: '4px 0 0',
                 background: 'var(--app-surface)',
-                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
               }}
               onWheel={(e) => {
                 e.preventDefault();
@@ -2729,40 +2769,32 @@ style={{
                   alignItems: 'center',
                   gap: 8,
                   marginBottom: 4,
-                  paddingBottom: 6,
-                  borderBottom: '1px solid var(--app-border)',
+                  paddingBottom: 4,
                   flexShrink: 0,
                 }}
               >
-                <span
-                  style={{
-                    width: 4,
-                    alignSelf: 'stretch',
-                    minHeight: 22,
-                    borderRadius: 3,
-                    background: activeView === 'rs' ? '#c0392b' : '#d97706',
-                    flexShrink: 0,
-                  }}
-                  aria-hidden
-                />
-                {/* 視窗切換 tabs */}
-                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                {/* 視窗切換：分段切換鈕（無邊框，作用中那格浮起） */}
+                <div style={{ display: 'flex', gap: 2, flexShrink: 0, padding: 2, borderRadius: 7, background: 'var(--app-segment-bg)' }}>
                   {[
-                    { key: 'rs',      label: 'RS' },
+                    { key: 'rs',      label: '股價' },
                     { key: 'foreign', label: '籌碼' },
+                    { key: 'fund',    label: '基本面' },
                   ].map(({ key, label }) => (
                     <button
                       key={key}
                       type="button"
                       onClick={() => setActiveView(key)}
                       style={{
-                        padding: '2px 9px',
+                        padding: '2px 10px',
                         fontSize: 12,
                         fontWeight: activeView === key ? 700 : 500,
                         borderRadius: 5,
-                        border: `1px solid ${activeView === key ? (key === 'rs' ? 'var(--rs-tab-rs-fg)' : 'var(--rs-tab-chip-fg)') : 'var(--app-border)'}`,
-                        background: activeView === key ? (key === 'rs' ? 'var(--rs-tab-rs-bg)' : 'var(--rs-tab-chip-bg)') : 'transparent',
-                        color: activeView === key ? (key === 'rs' ? 'var(--rs-tab-rs-fg)' : 'var(--rs-tab-chip-fg)') : '#94a3b8',
+                        border: 'none',
+                        background: activeView === key ? 'var(--app-segment-active)' : 'transparent',
+                        boxShadow: activeView === key ? '0 1px 2px rgba(15, 23, 42, 0.12)' : 'none',
+                        color: activeView === key
+                          ? (key === 'rs' ? 'var(--rs-tab-rs-fg)' : key === 'foreign' ? 'var(--rs-tab-chip-fg)' : 'var(--rs-tab-fund-fg)')
+                          : 'var(--app-text-soft)',
                         cursor: 'pointer',
                         lineHeight: 1.4,
                       }}
@@ -2804,26 +2836,25 @@ style={{
                           title="點擊切換均線顯示（也可按 Shift 鍵）"
                           style={{ cursor: 'pointer', userSelect: 'none', opacity: showMA ? 1 : 0.4 }}
                         >
-                          <strong style={{ color: '#f59e0b' }}>MA10</strong> <strong style={{ color: '#7c3aed' }}>MA20</strong>
+                          <strong style={{ color: 'var(--ma10)' }}>MA10</strong> <strong style={{ color: 'var(--ma20)' }}>MA20</strong>
                         </span>
                       </span>
                     </>
-                  ) : (
+                  ) : activeView === 'foreign' ? (
                     <span
                       style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, fontSize: 11 }}
                     >
                       <strong style={{ color: '#1565c0' }}>藍線</strong>＝外資持股
                       {effectiveHoldings === null && fetchedHoldings !== false && <span style={{ color: '#94a3b8' }}> 持股載入中…</span>}
                       {fetchedHoldings === false && effectiveHoldings === null && <span style={{ color: '#f87171' }}> 持股數據不可用</span>}
-                      　<strong style={{ color: '#ff2d87' }}>●</strong>＝B訊號
                       {institutionalLoading && <span style={{ color: '#94a3b8' }}>法人載入中…</span>}
                       {!institutionalLoading && institutionalData && Object.keys(institutionalData).length > 0 && (
-                        <><span style={{ color: '#1565c0' }}>■</span>外資 <span style={{ color: '#16a34a' }}>■</span>投信 <span style={{ color: '#f97316' }}>■</span>自營</>
+                        <>　<span style={{ color: '#1565c0' }}>■</span>外資 <span style={{ color: '#16a34a' }}>■</span>投信 <span style={{ color: '#f97316' }}>■</span>自營</>
                       )}
                     </span>
-                  )}
+                  ) : null}
                 </div>
-                <span style={{ fontSize: 10, color: '#cbd5e1', flexShrink: 0, marginLeft: 4 }}>↑↓ 切換</span>
+                <span style={{ fontSize: 10, color: '#cbd5e1', flexShrink: 0, marginLeft: 4 }}>←→ 切換</span>
               </header>
               <div
                 className="ibd-rs-chart-modal-svg-bleed"
@@ -2833,12 +2864,29 @@ style={{
                   width: '100%',
                   display: 'flex',
                   flexDirection: 'column',
+                  position: 'relative',
                 }}
               >
-                {activeView === 'rs' ? (
-                  <IbdRsComboChart data={chartData} showMA={showMA} showRs={chartTf !== 'W'} />
-                ) : (
-                  <ForeignChipChart data={foreignChartData} allHoldings={effectiveHoldings?.holdings} />
+                {/* 股價、籌碼兩張圖都一直掛著，切分頁只切換顯示：不重建圖表，K 棒不會閃、不會跳。
+                    用透明度而非 visibility:hidden 隱藏：隱藏中的圖仍照常重繪，切過去時已是最終版面 */}
+                <div style={chartLayerStyle(activeView === 'rs')}>
+                  <IbdRsLwcChart
+                    data={chartData} showMA={showMA} showRs={chartTf !== 'W'}
+                    axisWidth={chartAxisWidth} onAxisWidth={handleChartAxisWidth}
+                    active={activeView === 'rs'}
+                    syncHub={chartSyncHubRef.current} syncEnabled={chartTf === 'D'}
+                  />
+                </div>
+                <div style={chartLayerStyle(activeView === 'foreign')}>
+                  <IbdChipLwcChart
+                    data={foreignChartData} axisWidth={chartAxisWidth} onAxisWidth={handleChartAxisWidth}
+                    active={activeView === 'foreign'} syncHub={chartSyncHubRef.current}
+                  />
+                </div>
+                {activeView === 'fund' && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', background: 'var(--app-surface)' }}>
+                    <RsFundamentalsTab stock={stock} onSubDialogChange={handleSubDialogChange} />
+                  </div>
                 )}
               </div>
             </section>
@@ -2857,11 +2905,19 @@ style={{
             flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: 10, color: '#94a3b8', textAlign: 'left', flex: '1 1 auto', minWidth: 0 }}>
-            {activeView === 'rs'
-              ? 'RS 歷史隨每日 sync 累積；股價與 VCP 同源（Yahoo）'
-              : '外資持股日頻（晚上 10 點後更新）；三大法人即時抓取；B 訊號回溯至近 130 交易日'}
-          </span>
+          <span style={{ flex: '1 1 auto', minWidth: 0 }} />
+          {/* lightweight-charts 授權（Apache-2.0 NOTICE）要求頁面標示並連到 tradingview.com；圖上 logo 已關，這裡留最小標示 */}
+          {activeView === 'rs' && (
+            <a
+              href="https://www.tradingview.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="TradingView Lightweight Charts™ Copyright © TradingView, Inc."
+              style={{ fontSize: 10, color: 'var(--app-text-soft)', opacity: 0.55, textDecoration: 'none', flex: '0 0 auto', whiteSpace: 'nowrap' }}
+            >
+              © TradingView
+            </a>
+          )}
           {typeof onToggleWatchlist === 'function' && (
             <div style={{ position: 'relative', flex: '0 0 auto', display: 'inline-flex' }}>
               <button
@@ -3955,7 +4011,7 @@ export default function IBDRsRankingPage() {
   const [lastSyncDateLocal, setLastSyncDateLocal] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
-  /** 從今日重點開折線圖時：←→ 依此清單；主表點名則為 null */
+  /** 從今日重點開折線圖時：↑↓ 換股依此清單；主表點名則為 null */
   const [chartNavOverride, setChartNavOverride] = useState(null);
   const [majorMovesOpen, setMajorMovesOpen] = useState(false);
   const [testMsg, setTestMsg] = useState(null);
@@ -4454,7 +4510,7 @@ export default function IBDRsRankingPage() {
     utilityMetrics,
   ]);
 
-  /** 折線圖 ←／→：今日重點開啟時用合併清單；否則主表 filtered／globalSorted */
+  /** 折線圖 ↑／↓ 換股：今日重點開啟時用合併清單；否則主表 filtered／globalSorted */
   const chartNavigationList = useMemo(() => {
     if (Array.isArray(chartNavOverride?.list) && chartNavOverride.list.length > 0) {
       return chartNavOverride.list;
