@@ -91,6 +91,9 @@ const AnalysisPage = () => {
     const [mounted, setMounted] = useState(false);
     const [bigColumnConfig, setBigColumnConfig] = useState({});
     const [columnLabels, setColumnLabels] = useState(Array(NUM_BIG_COLUMNS).fill(''));
+    const [baseDate, setBaseDate] = useState(''); // YYYY-MM-DD，「基準」欄的起算日
+    const [baseDraft, setBaseDraft] = useState(''); // 輸入框內容：逐字打年份時會短暫出現 0202-xx-xx，不寫入
+    useEffect(() => { setBaseDraft(baseDate); }, [baseDate]);
     const [selectedRsId, setSelectedRsId] = useState(null);
     const [openWithChipView, setOpenWithChipView] = useState(false);
 
@@ -244,6 +247,7 @@ const AnalysisPage = () => {
                 while (arr.length < NUM_BIG_COLUMNS) arr.push('');
                 setColumnLabels(arr.slice(0, NUM_BIG_COLUMNS));
             }
+            setBaseDate(typeof d.baseDate === 'string' ? d.baseDate : '');
         }, (err) => console.error('分析版面 Firestore 監聽失敗:', err));
         return () => unsub();
     }, []);
@@ -292,6 +296,25 @@ const AnalysisPage = () => {
         return out;
     }, [stocks, rsById, bigColumnConfig]);
 
+    // 「基準」欄：基準日（非交易日取之前最近一個交易日）收盤 → 現價的漲跌幅；
+    // 日期收盤取 RS 文件的 priceMap（約 15 個月），沒有 RS 文件或基準日早於資料起點就不顯示
+    const baseChangeByCode = useMemo(() => {
+        if (!baseDate) return {};
+        const out = {};
+        for (const s of stocks || []) {
+            const key = String(s.code ?? s.id ?? '');
+            const pm = rsById[key]?.priceMap;
+            const cur = Number(s.currentPrice);
+            if (!pm || typeof pm !== 'object' || !(cur > 0)) continue;
+            let bestD = null;
+            for (const d of Object.keys(pm)) {
+                if (d <= baseDate && (bestD === null || d > bestD) && Number(pm[d]) > 0) bestD = d;
+            }
+            if (bestD) out[key] = ((cur - Number(pm[bestD])) / Number(pm[bestD])) * 100;
+        }
+        return out;
+    }, [baseDate, stocks, rsById]);
+
     const selectedStock = selectedRsId ? rsById[selectedRsId] : null;
 
     const openStockModal = (st) => {
@@ -338,6 +361,10 @@ const AnalysisPage = () => {
         next[idx] = val;
         setColumnLabels(next);
         setDoc(ANALYSIS_LAYOUT_DOC_REF, { columnLabels: next }, { merge: true }).catch((e) => console.error('寫入欄位標籤失敗:', e));
+    };
+    const saveBaseDate = (val) => {
+        setBaseDate(val);
+        setDoc(ANALYSIS_LAYOUT_DOC_REF, { baseDate: val }, { merge: true }).catch((e) => console.error('寫入基準日失敗:', e));
     };
     const needReload = lastSyncAllAt != null && lastFetchedAt != null && lastSyncAllAt > lastFetchedAt;
 
@@ -390,7 +417,8 @@ const AnalysisPage = () => {
 
     return (
         <Layout title="量化分析追蹤表">
-            <main style={{ padding: '8px 0 20px', overflowX: 'hidden' }}>
+            {/* 整頁等比例縮小；個股視窗在 main 外，不受影響 */}
+            <main style={{ padding: '8px 0 20px', overflowX: 'hidden', zoom: 0.92 }}>
                 <div style={{ padding: '0 0 0 20px', maxWidth: '1650px', margin: '0 auto' }}>
 
                     {/*  1. 表格 */}
@@ -410,6 +438,8 @@ const AnalysisPage = () => {
                             bigColumnConfig={bigColumnConfig}
                             columnLabels={columnLabels}
                             onColumnLabelChange={saveColumnLabel}
+                            baseDate={baseDate}
+                            baseChangeByCode={baseChangeByCode}
                             onStockNameClick={openStockModal}
                             onFlowDotClick={handleFlowDotClick}
                         />
@@ -517,6 +547,23 @@ const AnalysisPage = () => {
                                 />
                             </div>
                         </details>
+
+                        <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--app-text)' }}>
+                            <strong>基準日</strong>
+                            <input
+                                type="date"
+                                value={baseDraft}
+                                onChange={(e) => {
+                                    const v = e.target.value;
+                                    setBaseDraft(v);
+                                    if (v === '' || v >= '2000-01-01') saveBaseDate(v);
+                                }}
+                                style={{ padding: '2px 6px', border: '1px solid var(--app-border)', borderRadius: '4px', fontSize: '12px', background: 'var(--app-surface)', color: 'var(--app-text)', colorScheme: 'light dark' }}
+                            />
+                            {baseDate && (
+                                <button type="button" onClick={() => saveBaseDate('')} style={{ padding: '2px 8px', border: '1px solid var(--app-border)', borderRadius: '4px', background: 'transparent', color: 'var(--app-text-soft)', fontSize: '12px', cursor: 'pointer' }}>清除</button>
+                            )}
+                        </div>
 
                         <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             <button

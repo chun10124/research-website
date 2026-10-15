@@ -39,20 +39,13 @@ const getCurvatureStyle = (val, isShowBg) => {
     };
 };
 
-// 量比熱力圖：量縮藍、約 1 中性(透明)、量增黃/琥珀。回傳 { bg, fg }（與 getChangeHeatmap 同構）。
-// 中性/缺值用 transparent 融入表格（暗色不再出現整排刺眼白塊，原本量比≈1 是純白）；
-// 有色塊永遠淺底、文字固定深色，暗色才不會淺字疊淺底。HSL + gamma 讓小量增/量減也看得出色，
-// 且最深仍夠淺、深字可讀。
-const getVolumeHeatmap = (ratio) => {
-    const v = Number(ratio);
-    if (ratio == null || !isFinite(v) || (v >= 0.98 && v <= 1.05)) return { bg: 'transparent', fg: 'var(--app-text-soft)' };
+// 基準欄色階：跌藍、漲琥珀，與旁邊漲跌欄的紅綠區隔；±30% 到頂。有色塊永遠淺底、文字固定深色，暗色才看得到字
+const getBaseHeatmap = (pct) => {
+    const v = Number(pct);
+    if (pct == null || !isFinite(v) || v === 0) return { bg: 'transparent', fg: 'var(--app-text-soft)' };
     const lerp = (a, b, t) => a + (b - a) * t;
-    if (v < 0.98) { // 量縮（藍）
-        const t = Math.pow(Math.min((0.98 - v) / 0.98, 1), 0.62);
-        return { bg: `hsl(${lerp(206, 214, t).toFixed(1)}, ${lerp(60, 92, t).toFixed(1)}%, ${lerp(92, 66, t).toFixed(1)}%)`, fg: '#111827' };
-    }
-    // 量增（黃/琥珀）
-    const t = Math.pow(Math.min((v - 1.05) / 2, 1), 0.62);
+    const t = Math.pow(Math.min(Math.abs(v), 30) / 30, 0.62);
+    if (v < 0) return { bg: `hsl(${lerp(206, 214, t).toFixed(1)}, ${lerp(60, 92, t).toFixed(1)}%, ${lerp(92, 66, t).toFixed(1)}%)`, fg: '#111827' };
     return { bg: `hsl(${lerp(46, 40, t).toFixed(1)}, ${lerp(92, 98, t).toFixed(1)}%, ${lerp(93, 64, t).toFixed(1)}%)`, fg: '#111827' };
 };
 
@@ -80,7 +73,7 @@ const getChangeHeatmap = (changePercent) => {
 // 相容舊呼叫：只取背景色
 const getChangeHeatmapBg = (changePercent) => getChangeHeatmap(changePercent).bg;
 
-const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnConfig = {}, columnLabels = [], onColumnLabelChange, onStockNameClick, onFlowDotClick }) => {
+const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnConfig = {}, columnLabels = [], onColumnLabelChange, baseDate = '', baseChangeByCode = {}, onStockNameClick, onFlowDotClick }) => {
     const [showColor, setShowColor] = useState(true);
 
     if (loading && stocks.length === 0) return <p>載入中... 請稍候</p>;
@@ -99,7 +92,6 @@ const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnCon
             ...stock,
             ...indicators,
             displayPrice: formatNumber(price, 0),
-            displayHoldingGrowth: indicators.HoldingGrowth_M ? indicators.HoldingGrowth_M : '0',
         };
     });
 
@@ -116,7 +108,7 @@ const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnCon
         if (b === '自選') return 1;
         return a.localeCompare(b, 'zh-TW');
     });
-    const ROW_H = 22;
+    const ROW_H = 21;
     const rowH = `${ROW_H}px`;
     const trStyle = { height: rowH, maxHeight: rowH };
     const NUM_BIG_COLUMNS = 8;
@@ -147,8 +139,8 @@ const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnCon
     const thStyle = (extra = {}) => ({ height: rowH, maxHeight: rowH, padding: '2px 4px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden', ...extra });
     const tdBase = { height: rowH, maxHeight: rowH, padding: '1px 4px', border: '1px solid var(--app-border)', boxSizing: 'border-box', verticalAlign: 'middle', overflow: 'hidden' };
 
-    // 44+44+50+52+42+42+50+40 = 364px per big column
-    const SUB_COL_WIDTHS_PX = [44, 44, 50, 52, 42, 42, 50, 40];
+    // 44+44+50+46+46+40 = 270px per big column
+    const SUB_COL_WIDTHS_PX = [44, 44, 50, 46, 46, 40];
     const SUB_COL_WIDTHS = SUB_COL_WIDTHS_PX.map(w => `${w}px`);
     const BIG_COL_WIDTH_PX = SUB_COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
     const TABLE_TOTAL_WIDTH = NUM_BIG_COLUMNS * BIG_COL_WIDTH_PX;
@@ -165,6 +157,17 @@ const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnCon
     };
 
     const GROUP_BORDER = '2px solid var(--app-border)';
+    // 漲跌／基準：只把數字本體置中（漲跌 ±10.0 顯示成 ±10，與 9.9 同寬），負號掛在左邊不佔寬度 → 有沒有負號，數字都在格子正中間
+    const numBox = (text) => {
+        const t = String(text);
+        const neg = t.startsWith('-') && t !== '--';
+        return (
+            <span style={{ position: 'relative', fontVariantNumeric: 'tabular-nums' }}>
+                {neg && <span style={{ position: 'absolute', right: '100%' }}>-</span>}
+                {neg ? t.slice(1) : t}
+            </span>
+        );
+    };
     const renderMainCellBlock = (item, blockIndex) => {
         if (!item) {
             return (
@@ -205,18 +208,15 @@ const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnCon
                 </td>
                 <td style={{ ...tdBase, width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2], textAlign: 'right', whiteSpace: 'nowrap' }}>{stock.displayPrice}</td>
                 {(() => { const hm = getChangeHeatmap(stock.DailyChange); return (
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3], textAlign: 'center', color: hm.fg ?? '#888', whiteSpace: 'nowrap', backgroundColor: hm.bg }}>{stock.DailyChange != null ? Number(stock.DailyChange).toFixed(1) : '--'}%</td>
+                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3], textAlign: 'center', padding: '1px 0', color: hm.fg ?? '#888', whiteSpace: 'nowrap', backgroundColor: hm.bg }}>{numBox(stock.DailyChange != null ? Number(stock.DailyChange).toFixed(1).replace(/^(-?10)\.0$/, '$1') : '--')}</td>
                 ); })()}
-                {(() => { const vh = getVolumeHeatmap(stock.VolumeRatio); return (
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4], textAlign: 'center', color: vh.fg, backgroundColor: vh.bg }}>{stock.VolumeRatio != null ? stock.VolumeRatio.toFixed(1) : '--'}</td>
+                {(() => {
+                    const bc = baseChangeByCode[String(stock.code ?? stock.id)];
+                    const has = bc != null && isFinite(bc);
+                    const hm = getBaseHeatmap(has ? bc : null);
+                    return (
+                <td title={baseDate ? `${baseDate} 起` : '未設定基準日'} style={{ ...tdBase, width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4], textAlign: 'center', padding: '1px 0', color: hm.fg, whiteSpace: 'nowrap', backgroundColor: hm.bg }}>{has ? numBox(bc.toFixed(Math.abs(bc) >= 100 ? 0 : 1)) : (baseDate ? '--' : '')}</td>
                 ); })()}
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5], textAlign: 'center', fontWeight: 'bold', padding: 0, ...(stock.foreignSignal === 'B' ? (() => { const n = Math.min(Math.max(1, Number(stock.foreignBCount) || 1), 5); const l = [46, 56, 68, 81, 90][n - 1]; const s = [68, 66, 62, 58, 55][n - 1]; return { backgroundColor: `hsl(354, ${s}%, ${l}%)`, color: l < 58 ? '#fff' : 'hsl(354, 50%, 30%)' }; })() : { backgroundColor: 'transparent', color: 'var(--app-text-soft)' }) }}>
-                    <div style={{ height: rowH, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 }}>
-                        <div style={{ fontSize: '12px' }}>{stock.foreignSignal === 'B' ? `B${stock.foreignBCount}` : 'N'}</div>
-                        {stock.foreignSignal === 'B' && <div style={{ fontSize: '7px', fontWeight: 'normal', opacity: 0.85 }}>{stock.zScore}x</div>}
-                    </div>
-                </td>
-                <td style={{ ...tdBase, width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6], textAlign: 'center', color: stock.HoldingGrowth_M > 0 ? 'hsl(8, 76%, 48%)' : 'hsl(150, 52%, 34%)' }}>{stock.HoldingGrowth_M != null ? Number(stock.HoldingGrowth_M).toFixed(0) : '0'}%</td>
                 {/* 流量預警（外資 🟠 + 投信 🟣 合併欄，hover 看細節） */}
                 {(() => {
                     // active=實色大點，persist=訊號消退仍持續實色，day1=空心小點，無訊號=不渲染
@@ -246,7 +246,7 @@ const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnCon
                         return <span style={style} onClick={e => { e.stopPropagation(); onFlowDotClick ? onFlowDotClick(stock, msg) : alert(msg); }} />;
                     };
                     return (
-                        <td title={anySignal ? tip : undefined} style={{ ...tdBase, width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7], textAlign: 'center', padding: 0 }}>
+                        <td title={anySignal ? tip : undefined} style={{ ...tdBase, width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5], textAlign: 'center', padding: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', height: rowH }}>
                                 {dot(fActive, fPersist, fWatch, '#1565c0', stock.foreignFlowDays, stock.foreignFlowCum, stock.foreignFlowPersist, '外資')}
                                 {dot(tActive, tPersist, tWatch, '#16a34a', stock.trustFlowDays,   stock.trustFlowCum,   stock.trustFlowPersist,   '投信')}
@@ -283,10 +283,8 @@ const IndustryAnalysisTable = ({ stocks = [], refreshData, loading, bigColumnCon
                                     <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[1], minWidth: SUB_COL_WIDTHS[1], maxWidth: SUB_COL_WIDTHS[1], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>名稱</th>
                                     <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[2], minWidth: SUB_COL_WIDTHS[2], maxWidth: SUB_COL_WIDTHS[2] }) }}>現價</th>
                                     <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[3], minWidth: SUB_COL_WIDTHS[3], maxWidth: SUB_COL_WIDTHS[3] }) }}>漲跌</th>
-                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4] }) }}>量</th>
-                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5] }) }}>外資</th>
-                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[6], minWidth: SUB_COL_WIDTHS[6], maxWidth: SUB_COL_WIDTHS[6] }) }}>月增</th>
-                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[7], minWidth: SUB_COL_WIDTHS[7], maxWidth: SUB_COL_WIDTHS[7] }) }}>法人</th>
+                                    <th title={baseDate ? `${baseDate} 起漲跌幅` : '在下方設定基準日'} style={{ ...thStyle({ width: SUB_COL_WIDTHS[4], minWidth: SUB_COL_WIDTHS[4], maxWidth: SUB_COL_WIDTHS[4] }) }}>基準</th>
+                                    <th style={{ ...thStyle({ width: SUB_COL_WIDTHS[5], minWidth: SUB_COL_WIDTHS[5], maxWidth: SUB_COL_WIDTHS[5] }) }}>法人</th>
                                 </tr>
                             </thead>
                             <tbody>

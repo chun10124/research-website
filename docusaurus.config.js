@@ -13,6 +13,14 @@ import {themes as prismThemes} from 'prism-react-renderer';
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
+  plugins: [
+    // lightweight-charts 只有 ESM（exports 只給 import 條件），伺服器端建置會用 require 解析而失敗；
+    // 圖表只在瀏覽器的 useEffect 裡動態載入，伺服器端直接換成空模組即可
+    () => ({
+      name: 'lightweight-charts-server-stub',
+      configureWebpack: (_config, isServer) => (isServer ? { resolve: { alias: { 'lightweight-charts': false } } } : {}),
+    }),
+  ],
   title: 'TzuChun-Research',
   tagline: '研究網站',
   favicon: 'img/author.jpeg',
