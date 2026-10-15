@@ -417,8 +417,8 @@ const AnalysisPage = () => {
 
     return (
         <Layout title="量化分析追蹤表">
-            {/* 整頁等比例縮小；個股視窗在 main 外，不受影響 */}
-            <main style={{ padding: '8px 0 20px', overflowX: 'hidden', zoom: 0.92 }}>
+            {/* 整頁縮放（1＝不縮放，表格本身另有 0.9）；個股視窗在 main 外，不受影響 */}
+            <main style={{ padding: '8px 0 20px', overflowX: 'hidden', zoom: 1 }}>
                 <div style={{ padding: '0 0 0 20px', maxWidth: '1650px', margin: '0 auto' }}>
 
                     {/*  1. 表格 */}
