@@ -1,6 +1,7 @@
 /* 訂閱頁。主色：低彩度的鋼藍（試過靛紫、灰藍紫、綠之後定案），只作用於本頁，不動全站香檳金；
-   台股慣例漲紅跌綠。色票在 .root 上定義，暗色於下方覆蓋。 */
-.root {
+   台股慣例漲紅跌綠。色票在 .root 上定義，暗色於下方覆蓋。
+   .theme＝同一組色票但不帶頁面版面，給嵌進別頁（RS 個股視窗「基本面」分頁）用。 */
+.root, .theme {
   --sub-accent: #4f7cac;          /* 鋼藍：毛利率線、最新一期長條、按鈕 */
   --sub-accent-2: #4f7cac;        /* 不用漸層，保留變數給按鈕 */
   --sub-accent-text: #35577d;     /* 淺底上的標題字 */
@@ -19,7 +20,8 @@
   --sub-badge: #ff3b30;            /* 提醒數量：iPhone 通知紅 */
   --sub-tip-bg: #f1f5fa;           /* 圖表浮動提示框：比面板深一階的淺鋼藍，和圖表底分得開 */
   --sub-tip-border: #c7d5e5;
-
+}
+.root {
   width: 100%; /* Layout 的 main 是 flex，不寫會縮成內容寬 */
   box-sizing: border-box;
   max-width: 1180px;
@@ -27,7 +29,8 @@
   padding: 12px 16px 48px;
   color: var(--app-text);
 }
-:global([data-theme='dark']) .root {
+:global([data-theme='dark']) .root,
+:global([data-theme='dark']) .theme {
   --sub-accent: #7ea3cc;          /* 深底用亮一階的鋼藍 */
   --sub-accent-2: #7ea3cc;
   --sub-accent-text: #a9c2de;
@@ -46,6 +49,8 @@
   --sub-badge: #ff453a;            /* 暗色用 iOS 暗色模式的紅 */
   --sub-tip-bg: #323d4b;           /* 提示框比面板亮一階 */
   --sub-tip-border: #4a5a6e;
+}
+:global([data-theme='dark']) .root {
   /* 本頁暗色面板改用帶一點鋼藍的深灰（全站是中性灰 #242526，配鋼藍主色顯得髒），只作用在本頁 */
   --app-surface: #1f242b;
   --app-surface-2: #272e37;
@@ -280,9 +285,11 @@
 .noteDel:hover { color: var(--sub-fire); }
 .noteText { font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
 .modalFoot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
-.modal .btn { padding: 3px 9px; font-size: 11.5px; }
-.modal .hint { font-size: 11px; }
-.modal .textarea { font-size: 12px; min-height: 52px; padding: 5px 8px; }
+.modal .btn, .embed .btn { padding: 3px 9px; font-size: 11.5px; }
+.modal .hint, .embed .hint { font-size: 11px; }
+.modal .textarea, .embed .textarea { font-size: 12px; min-height: 52px; padding: 5px 8px; }
+/* 嵌在 RS 個股視窗：外層已有標題與價格，這裡只放內容 */
+.embed { color: var(--app-text); padding: 2px 2px 4px; }
 
 /* ── 提醒設定視窗 ── */
 .setGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 20px; border-top: 1px solid var(--app-border); }
@@ -348,21 +355,26 @@
 /* 觸控裝置（手機、平板）：iOS Safari 點進字級 < 16px 的輸入框會自動放大整頁且不縮回，
    視窗就像「超出螢幕」。輸入框一律 16px，欄寬跟著放寬；電腦版維持原本的小字。 */
 @media (hover: none) and (pointer: coarse) {
-  .root input, .root textarea, .root select { font-size: 16px !important; }
+  .root input, .root textarea, .root select,
+  .theme input, .theme textarea, .theme select { font-size: 16px !important; }
   .codeInput { width: 88px; }
   .setRow .numInput { width: 52px; }
   .setRow .numWide { width: 88px; }
 }
 
 /* 其他頁的全域規則 [data-theme=dark] textarea 會蓋成黑底白框（含 !important），這裡蓋回來 */
-:global([data-theme='dark']) .root .textarea {
+:global([data-theme='dark']) .root .textarea,
+:global([data-theme='dark']) .theme .textarea {
   background: var(--app-surface-2);
   border: 1px solid var(--app-border) !important;
   color: var(--app-text) !important;
 }
-:global([data-theme='dark']) .root .textarea:focus { border-color: var(--sub-accent) !important; }
-:global([data-theme='dark']) .root .noteInput {
+:global([data-theme='dark']) .root .textarea:focus,
+:global([data-theme='dark']) .theme .textarea:focus { border-color: var(--sub-accent) !important; }
+:global([data-theme='dark']) .root .noteInput,
+:global([data-theme='dark']) .theme .noteInput {
   background: transparent; color: var(--app-text) !important;
   border: none !important; border-bottom: 1px solid var(--app-border) !important;
 }
-:global([data-theme='dark']) .root .noteInput:focus { border-bottom-color: var(--sub-accent) !important; }
+:global([data-theme='dark']) .root .noteInput:focus,
+:global([data-theme='dark']) .theme .noteInput:focus { border-bottom-color: var(--sub-accent) !important; }
