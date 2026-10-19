@@ -1,7 +1,7 @@
 /* src/pages/AnalysisPage.jsx */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { setDoc, onSnapshot, getDocs, query, where, documentId } from 'firebase/firestore';
+import { setDoc, updateDoc, onSnapshot, getDocs, query, where, documentId } from 'firebase/firestore';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
@@ -92,6 +92,7 @@ const AnalysisPage = () => {
     const [bigColumnConfig, setBigColumnConfig] = useState({});
     const [columnLabels, setColumnLabels] = useState(Array(NUM_BIG_COLUMNS).fill(''));
     const [baseDate, setBaseDate] = useState(''); // YYYY-MM-DD，「基準」欄的起算日
+    const [storedBaseCloses, setStoredBaseCloses] = useState(null); // 版面設定文件裡的 { baseDate, closes }
     const [baseDraft, setBaseDraft] = useState(''); // 輸入框內容：逐字打年份時會短暫出現 0202-xx-xx，不寫入
     useEffect(() => { setBaseDraft(baseDate); }, [baseDate]);
     const [selectedRsId, setSelectedRsId] = useState(null);
@@ -181,6 +182,7 @@ const AnalysisPage = () => {
                 setColumnLabels(arr.slice(0, NUM_BIG_COLUMNS));
             }
             setBaseDate(typeof d.baseDate === 'string' ? d.baseDate : '');
+            setStoredBaseCloses(d.baseCloses && typeof d.baseCloses === 'object' ? d.baseCloses : null);
         }, (err) => console.error('分析版面 Firestore 監聽失敗:', err));
         return () => unsub();
     }, []);
@@ -231,22 +233,51 @@ const AnalysisPage = () => {
 
     // 「基準」欄：基準日（非交易日取之前最近一個交易日）收盤 → 現價的漲跌幅；
     // 日期收盤取 RS 文件的 priceMap（約 15 個月），沒有 RS 文件或基準日早於資料起點就不顯示
-    const baseChangeByCode = useMemo(() => {
+    const freshBaseCloses = useMemo(() => {
         if (!baseDate) return {};
         const out = {};
         for (const s of stocks || []) {
             const key = String(s.code ?? s.id ?? '');
             const pm = rsById[key]?.priceMap;
-            const cur = Number(s.currentPrice);
-            if (!pm || typeof pm !== 'object' || !(cur > 0)) continue;
+            if (!pm || typeof pm !== 'object') continue;
             let bestD = null;
             for (const d of Object.keys(pm)) {
                 if (d <= baseDate && (bestD === null || d > bestD) && Number(pm[d]) > 0) bestD = d;
             }
-            if (bestD) out[key] = ((cur - Number(pm[bestD])) / Number(pm[bestD])) * 100;
+            if (bestD) out[key] = Number(pm[bestD]);
         }
         return out;
     }, [baseDate, stocks, rsById]);
+    // RS 文件要等追蹤表讀完才開始讀（約慢 2 秒）：先用版面設定文件裡存的基準日收盤（跟追蹤表同時到）顯示，
+    // RS 到了再覆蓋；有差異（改基準日、新加股票、除權息調整）才寫回，平常不寫。存 Firestore 而非瀏覽器，無痕視窗也有效
+    const storedCloses = storedBaseCloses?.baseDate === baseDate && storedBaseCloses.closes && typeof storedBaseCloses.closes === 'object'
+        ? storedBaseCloses.closes
+        : null;
+    const baseChangeByCode = useMemo(() => {
+        if (!baseDate) return {};
+        const closes = { ...storedCloses, ...freshBaseCloses };
+        const out = {};
+        for (const s of stocks || []) {
+            const key = String(s.code ?? s.id ?? '');
+            const base = closes[key];
+            const cur = Number(s.currentPrice);
+            if (base > 0 && cur > 0) out[key] = ((cur - base) / base) * 100;
+        }
+        return out;
+    }, [baseDate, stocks, storedCloses, freshBaseCloses]);
+    const baseClosesWrittenRef = useRef(null);
+    useEffect(() => {
+        const keys = Object.keys(freshBaseCloses);
+        if (!baseDate || !keys.length || baseClosesWrittenRef.current === freshBaseCloses) return;
+        const same = storedCloses
+            && Object.keys(storedCloses).length === keys.length
+            && keys.every((k) => storedCloses[k] === freshBaseCloses[k]);
+        if (same) return;
+        baseClosesWrittenRef.current = freshBaseCloses;
+        // updateDoc 整個欄位替換（setDoc merge 會深層合併，已移除的股票會殘留、永遠比對不同而反覆寫）
+        updateDoc(ANALYSIS_LAYOUT_DOC_REF, { baseCloses: { baseDate, closes: freshBaseCloses } })
+            .catch((e) => console.warn('寫入基準收盤失敗（未登入時屬正常）:', e?.message));
+    }, [baseDate, freshBaseCloses, storedCloses]);
 
     const selectedStock = selectedRsId ? rsById[selectedRsId] : null;
 
