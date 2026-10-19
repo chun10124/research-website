@@ -2463,14 +2463,14 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         style={{
           boxSizing: 'border-box',
           width: '100%',
-          maxWidth: 800,
+          maxWidth: 780,
           height: 'min(94vh, 960px)',
           maxHeight: 'min(94vh, 960px)',
           overflow: 'hidden',
           background: 'var(--app-surface)',
           borderRadius: 12,
           boxShadow: '0 20px 56px rgba(0,0,0,0.28)',
-          padding: '12px 14px 8px',
+          padding: '12px 10px 8px',
           display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
@@ -2487,6 +2487,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
             marginBottom: 8,
             minHeight: 36,
             flexShrink: 0,
+            paddingLeft: 4, // 視窗左右 padding 只有 10px，標題文字再內縮一點
           }}
         >
           <div

@@ -17,7 +17,7 @@ import { useStockNotes } from '../features/Subscriptions/notesStore';
 import styles from './SubscriptionPage.module.css';
 
 export const todayYmd = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-const fmtYi = (v) => (v == null ? '—' : (v / 1e8).toLocaleString('zh-TW', { maximumFractionDigits: v / 1e8 >= 100 ? 0 : 2 }));
+const fmtYi = (v) => (v == null ? '—' : (v / 1e8).toLocaleString('zh-TW', { maximumFractionDigits: v / 1e8 >= 100 ? 0 : 1 }));
 export const fmtPct = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`);
 export const fmtPrice = (v) => (v == null ? '—' : v.toLocaleString('zh-TW', { maximumFractionDigits: 2 }));
 export const signCls = (v) => (v == null ? styles.muted : v > 0 ? styles.up : v < 0 ? styles.down : '');
@@ -90,6 +90,7 @@ export default function StockFundamentals({
   // 長條點選：被選的那根變藍並在標題列顯示該期資訊；沒點過（null）時預設選最新一期
   const [pickRev, setPickRev] = useState(null); // 營收月 x 標籤
   const [pickEps, setPickEps] = useState(null); // 季度 '2026-Q2'
+  const [pickGm, setPickGm] = useState(null); // 毛利率季度 x 標籤 '26Q2'
   const [note, setNote] = useState('');
   const noteRef = useRef(null);
   const notes = useStockNotes(stock?.id);
@@ -124,15 +125,19 @@ export default function StockFundamentals({
     cursor: { fill: colors.grid, fillOpacity: 0.5, stroke: colors.grid }, // 預設淺灰底在暗色下很刺眼
   };
   const axis = colors && { tick: { fontSize: 10, fill: colors.text }, tickLine: false };
-  const revRows = (s?.rows || []).slice(-24).map((r) => ({ x: ymLabel(r.ym), rev: r.revenue / 1e8, yoy: r.yoy, mom: r.mom }));
-  const finRows = (d?.fin || []).slice(-12).map((r) => ({ x: qLabel(r.q), gm: r.gm, eps: r.eps }));
+  // 月營收畫最近 18 個月（與季度圖的 6 季同長度）
+  const revRows = (s?.rows || []).slice(-18).map((r) => ({ x: ymLabel(r.ym), rev: r.revenue / 1e8, yoy: r.yoy, mom: r.mom }));
+  // 季度圖（EPS、毛利率）只畫最近 6 季；較前季、去年同季的比較仍用完整資料
+  const SHOW_QS = 6;
+  const finAll = (d?.fin || []).map((r) => ({ x: qLabel(r.q), gm: r.gm, eps: r.eps }));
+  const finRows = finAll.slice(-SHOW_QS);
   const hasGm = finRows.some((r) => r.gm != null);
   // EPS＋股價：共用時間軸（毫秒）。EPS 長條放在該季中間（2、5、8、11 月 15 日），股價是週收盤，
   // 只取第一個顯示季度（財報抓取的起點，今年往回 2 年的 Q1）之後的部分，兩者才對得齊。
   const qMid = (k) => { const [y, qq] = k.split('-Q').map(Number); return Date.UTC(y, (qq - 1) * 3 + 1, 15); };
   const qStart = (k) => { const [y, qq] = k.split('-Q').map(Number); return Date.UTC(y, (qq - 1) * 3, 1); };
   const qEnd = (k) => { const [y, qq] = k.split('-Q').map(Number); return Date.UTC(y, qq * 3, 1); };
-  const epsQs = d?.fin || [];
+  const epsQs = (d?.fin || []).slice(-SHOW_QS);
   const epsPrice = (() => {
     if (!epsQs.length) return null;
     const from = qStart(epsQs[0].q);
@@ -164,23 +169,37 @@ export default function StockFundamentals({
   const selRevRow = revRows.find((r) => r.x === selRev);
   const revInfo = selRevRow && (
     <>
-      {selRevRow.x}　營收 <b>{selRevRow.rev.toFixed(2)} 億</b>
+      {selRevRow.x}　營收 <b>{selRevRow.rev.toFixed(1)} 億</b>
       　YoY <b className={signCls(selRevRow.yoy)}>{fmtPct(selRevRow.yoy)}</b>
       　MoM <b className={signCls(selRevRow.mom)}>{fmtPct(selRevRow.mom)}</b>
     </>
   );
   const selEpsRow = selEps && epsQs.find((r) => r.q === selEps);
-  const epsInfo = selEpsRow && (() => {
-    // 該季最後一個週收盤當作季末股價
-    const end = new Date(qEnd(selEpsRow.q) - 86400000).toISOString().slice(0, 10);
-    const px = [...(q?.series || [])].reverse().find((p) => p.date <= end);
-    return (
-      <>
-        {qLabel(selEpsRow.q)}　EPS <b>{selEpsRow.eps == null ? '—' : selEpsRow.eps.toFixed(2)}</b>
-        {px && <>　季末股價 <b>{fmtPrice(px.close)}</b></>}
-      </>
-    );
+  // 毛利率：預設最新一季，標題列顯示該季數值與較前季、去年同季的百分點變化
+  const gmIdx = (() => {
+    const i = pickGm ? finRows.findIndex((r) => r.x === pickGm) : -1;
+    if (i >= 0) return i;
+    for (let k = finRows.length - 1; k >= 0; k--) if (finRows[k].gm != null) return k;
+    return -1;
   })();
+  const gmRow = gmIdx >= 0 ? finRows[gmIdx] : null;
+  const gmAt = gmIdx + finAll.length - finRows.length; // 在完整資料中的位置
+  const ppDiff = (j) => (gmRow?.gm != null && finAll[j]?.gm != null ? gmRow.gm - finAll[j].gm : null);
+  const fmtPp = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}pp`);
+  const gmQoq = ppDiff(gmAt - 1);
+  const gmYoy = ppDiff(gmAt - 4);
+  const gmInfo = gmRow && (
+    <>
+      {gmRow.x}　毛利率 <b>{gmRow.gm == null ? '—' : `${gmRow.gm.toFixed(1)}%`}</b>
+      　QoQ <b className={signCls(gmQoq)}>{fmtPp(gmQoq)}</b>
+      　YoY <b className={signCls(gmYoy)}>{fmtPp(gmYoy)}</b>
+    </>
+  );
+  const epsInfo = selEpsRow && (
+    <>
+      {qLabel(selEpsRow.q)}　EPS <b>{selEpsRow.eps == null ? '—' : selEpsRow.eps.toFixed(2)}</b>
+    </>
+  );
   const tLabel = (t) => {
     const hit = epsQs.find((r) => qMid(r.q) === t);
     return hit ? qLabel(hit.q) : new Date(t).toISOString().slice(0, 10);
@@ -223,18 +242,22 @@ export default function StockFundamentals({
     )}
 
     <div className={styles.chartGrid}>
-      <ChartCard title="營收 ＋ YoY" info={revInfo} empty={!revRows.length && (loading.rev ? '抓取中…' : d?.revErr || '沒有營收資料')}>
+      <ChartCard title="營收" info={revInfo} empty={!revRows.length && (loading.rev ? '抓取中…' : d?.revErr || '沒有營收資料')}>
         {colors && (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
-              data={revRows} margin={{ top: 6, right: 0, left: -12, bottom: 0 }} style={{ cursor: 'pointer' }}
+              data={revRows} margin={{ top: 6, right: 4, left: 4, bottom: 0 }} style={{ cursor: 'pointer' }}
               onClick={(st) => { const x = st?.activeLabel; if (x) setPickRev(x); }}
             >
               <CartesianGrid stroke={colors.grid} vertical={false} />
-              <XAxis dataKey="x" {...axis} interval={3} axisLine={{ stroke: colors.grid }} />
-              <YAxis yAxisId="rev" {...axis} axisLine={false} width={48} />
-              <YAxis yAxisId="yoy" orientation="right" {...axis} axisLine={false} width={42} tickFormatter={(v) => `${v}%`} />
-              <Tooltip {...tip} formatter={(v, k) => (k === 'rev' ? [`${v.toFixed(2)} 億`, '營收'] : [v == null ? '—' : `${v.toFixed(1)}%`, 'YoY'])} />
+              {/* 從最新月往回每 3 個月標一次，最新月一定有標籤 */}
+              <XAxis
+                dataKey="x" {...axis} interval={0} axisLine={{ stroke: colors.grid }}
+                tickFormatter={(v, i) => ((revRows.length - 1 - i) % 3 ? '' : v)}
+              />
+              <YAxis yAxisId="rev" {...axis} axisLine={false} width="auto" />
+              <YAxis yAxisId="yoy" orientation="right" {...axis} axisLine={false} width="auto" tickFormatter={(v) => `${v}%`} />
+              <Tooltip {...tip} formatter={(v, k) => (k === 'rev' ? [`${v.toFixed(1)} 億`, '營收'] : [v == null ? '—' : `${v.toFixed(1)}%`, 'YoY'])} />
               {/* 點選用整張圖的 onClick（點該月那一欄任何位置都算），長條本身會被停留游標蓋住點不到 */}
               <Bar yAxisId="rev" dataKey="rev" radius={[2, 2, 0, 0]} isAnimationActive={false}>
                 {revRows.map((r) => <Cell key={r.x} fill={r.x === selRev ? colors.accent : colors.bar} />)}
@@ -246,19 +269,19 @@ export default function StockFundamentals({
       </ChartCard>
 
       <ChartCard
-        boxRef={epsBoxRef} title="EPS ＋ 股價" info={epsInfo}
+        boxRef={epsBoxRef} title="EPS" info={epsInfo}
         empty={!epsPrice && (loading.fin ? '抓取中…' : d?.finErr || '沒有財報資料')}
       >
         {colors && epsPrice && (
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={epsPrice.rows} margin={{ top: 6, right: 0, left: -12, bottom: 0 }}>
+            <ComposedChart data={epsPrice.rows} margin={{ top: 6, right: 4, left: 4, bottom: 0 }}>
               <CartesianGrid stroke={colors.grid} vertical={false} />
               <XAxis
-                dataKey="t" type="number" scale="time" domain={epsPrice.domain} ticks={epsPrice.ticks}
+                dataKey="t" type="number" scale="time" domain={epsPrice.domain} ticks={epsPrice.ticks} interval={0}
                 tickFormatter={tLabel} {...axis} axisLine={{ stroke: colors.grid }}
               />
-              <YAxis yAxisId="eps" {...axis} axisLine={false} width={46} />
-              <YAxis yAxisId="px" orientation="right" {...axis} axisLine={false} width={52} domain={['auto', 'auto']} />
+              <YAxis yAxisId="eps" {...axis} axisLine={false} width="auto" />
+              <YAxis yAxisId="px" orientation="right" {...axis} axisLine={false} width="auto" domain={['auto', 'auto']} />
               <ReferenceLine yAxisId="eps" y={0} stroke={colors.grid} />
               <Tooltip
                 {...tip} cursor={false} labelFormatter={tLabel}
@@ -279,17 +302,27 @@ export default function StockFundamentals({
       </ChartCard>
 
       <ChartCard
-        title="毛利率"
+        title="毛利率" info={gmInfo}
         empty={!hasGm && (loading.fin ? '抓取中…' : d?.finErr || (finRows.length ? '金融業無毛利率' : '沒有財報資料'))}
       >
         {colors && (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={finRows} margin={{ top: 6, right: 4, left: -12, bottom: 0 }}>
+            <LineChart
+              data={finRows} margin={{ top: 6, right: 16, left: -12, bottom: 0 }} style={{ cursor: 'pointer' }}
+              onClick={(st) => { const x = st?.activeLabel; if (x) setPickGm(x); }}
+            >
               <CartesianGrid stroke={colors.grid} vertical={false} />
-              <XAxis dataKey="x" {...axis} axisLine={{ stroke: colors.grid }} />
+              {/* 每季都標，不讓 recharts 自動略過而缺一格 */}
+              <XAxis dataKey="x" {...axis} interval={0} axisLine={{ stroke: colors.grid }} />
               <YAxis {...axis} axisLine={false} width={46} domain={['auto', 'auto']} tickFormatter={(v) => `${Math.round(v)}%`} />
               <Tooltip {...tip} formatter={(v) => [v == null ? '—' : `${v.toFixed(2)}%`, '毛利率']} />
-              <Line dataKey="gm" stroke={colors.accent} strokeWidth={2} dot={{ r: 2.5 }} connectNulls isAnimationActive={false} />
+              <Line
+                dataKey="gm" stroke={colors.accent} strokeWidth={2} connectNulls isAnimationActive={false}
+                dot={({ cx, cy, index, value }) => (value == null ? null : index === gmIdx
+                  ? <circle key={index} cx={cx} cy={cy} r={4.5} fill={colors.accent} stroke={colors.surface} strokeWidth={1.5} />
+                  : <circle key={index} cx={cx} cy={cy} r={2.5} fill={colors.surface} stroke={colors.accent} strokeWidth={1.5} />)}
+                activeDot={{ r: 4, fill: colors.accent, stroke: colors.surface }}
+              />
             </LineChart>
           </ResponsiveContainer>
         )}
