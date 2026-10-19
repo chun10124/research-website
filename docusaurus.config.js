@@ -119,21 +119,22 @@ const config = {
             label: '訂閱',
             position: 'left',
           },
-          {
-            to: '/whiteboard', // 指向白板頁面
-            label: '白板', // 導航欄上顯示的名稱
-            position: 'left', // 放在左側
-          },
-          {
-            to: '/mindmap', // 指向心智圖頁面
-            label: '心智圖', // 導航欄上顯示的名稱
-            position: 'left', // 放在左側
-          },
-          {
-            to: '/calendar',
-            label: '日曆',
-            position: 'left',
-          },
+          // 白板、心智圖、日曆暫時從導覽列隱藏（頁面保留，直接輸入網址仍可開）
+          // {
+          //   to: '/whiteboard', // 指向白板頁面
+          //   label: '白板', // 導航欄上顯示的名稱
+          //   position: 'left', // 放在左側
+          // },
+          // {
+          //   to: '/mindmap', // 指向心智圖頁面
+          //   label: '心智圖', // 導航欄上顯示的名稱
+          //   position: 'left', // 放在左側
+          // },
+          // {
+          //   to: '/calendar',
+          //   label: '日曆',
+          //   position: 'left',
+          // },
           {
             to: '/IBDRsRankingPage',
             label: 'RS',
