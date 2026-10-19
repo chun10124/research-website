@@ -1927,6 +1927,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         let fsHoldingsDone = false;
         let fsInstDone     = false;
         let staleInstBase  = null; // Firestore 有舊資料但過期時暫存，供增量合併
+        let staleHoldings  = null; // Firestore 持股過期時暫存：API 失敗（如 FinMind 402）就先顯示舊資料
         try {
           const snap = await getDoc(doc(db, 'stockWatchlist', stock.id));
           if (snap.exists()) {
@@ -1944,6 +1945,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               if (Array.isArray(h) && h.length > 100 && ld && ld >= holdingsBound) {
                 setFetchedHoldings({ holdings: h, holdingDates: hd, latestDate: ld });
                 fsHoldingsDone = true;
+              } else if (Array.isArray(h) && h.length > 100) {
+                staleHoldings = { holdings: h, holdingDates: hd, latestDate: ld };
               }
             }
 
@@ -2006,10 +2009,10 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               }
               saveToFirestore(saveFields).catch(() => {});
             } else {
-              setFetchedHoldings(false);
+              setFetchedHoldings(staleHoldings ?? false);
             }
           } catch (_) {
-            setFetchedHoldings(false);
+            setFetchedHoldings(staleHoldings ?? false);
           }
         }
         if (needInst && !fsInstDone) {

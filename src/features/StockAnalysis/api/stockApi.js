@@ -970,17 +970,6 @@ export const fetchInstitutionalInvestorsSeries = async (stockId, startDate) => {
   }
 };
 
-// 營收 API 日期轉「資料所屬月」YYYY-MM（公告日 1～15 日視為上月）
-const toRevenueMonthStr = (dateStr) => {
-  if (!dateStr || dateStr.length < 10) return null;
-  const y = parseInt(dateStr.slice(0, 4), 10);
-  const m = parseInt(dateStr.slice(5, 7), 10);
-  const d = parseInt(dateStr.slice(8, 10), 10);
-  if (d <= 15 && m >= 2) return `${y}-${String(m - 1).padStart(2, '0')}`;
-  if (d <= 15 && m === 1) return `${y - 1}-12`;
-  return `${y}-${String(m).padStart(2, '0')}`;
-};
-
 export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, options = {}) => {
   const sCode = String(stockCode || "").trim();
   if (!sCode || sCode === "NaN" || sCode === "undefined") {
@@ -1178,13 +1167,6 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
   }
 };
 
-// 籌碼面（持股）台灣時間晚上 9 點才更新，9 點前不會有新資料
-const isBeforeTaiwan9PM = () => {
-  const utcHour = new Date().getUTCHours();
-  const taiwanHour = (utcHour + 8) % 24;
-  return taiwanHour < 21;
-};
-
 /**
  * 目前「應該已公告」的最近一個交易日（YYYY-MM-DD，台灣時區）。
  * 用於三大法人快取新鮮度判定：快取的 latestInstDate >= 此日即視為新鮮、不需補抓。
@@ -1257,27 +1239,18 @@ export const holdingsFreshnessBound = (latestPriceDate) => {
  *   - 'holdingsRevenue': 僅更新外資持股與營收（跳過價量）
  */
 export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
-  const modeLabel = syncMode === 'priceVolume' ? '價量' : syncMode === 'holdingsRevenue' ? '籌碼/營收' : '全部';
+  const modeLabel = syncMode === 'priceVolume' ? '價量' : syncMode === 'holdingsRevenue' ? '籌碼' : '全部';
   console.log(`🚀 正在同步 ${stock.name || stock.code}（${modeLabel}）...`);
   try {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const lastCompleteMonth = now.getMonth() === 0
-      ? `${now.getFullYear() - 1}-12`
-      : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
-    // 已有本月資料，或今天已嘗試抓過（資料還沒出來也不再重打）
-    const haveLatestRevenue = (stock.latestRevenueFetchedDate === todayStr) || (stock.latestRevenueDate && toRevenueMonthStr(stock.latestRevenueDate) === lastCompleteMonth);
-    // 9 點前不抓籌碼（FinMind 尚未更新今日資料），但若 DB 資料已落後超過一天（昨天以前）仍需補抓
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-    const holdingsUpToDate = stock.latestHoldingsDate >= yesterdayStr;
+    // 新鮮度基準一律用「應已公告的交易日」（封頂在股價最新交易日），不用日曆天：
+    // 舊版以日曆昨天/今天判斷，週末、週一 20:37 與國定假日隔天會把週五資料誤判為過期而整批重抓
+    // （一週約 1,300 次白打 FinMind）。前一晚同步失敗時，持股日期仍會落後基準 → 照常補抓。
     const hasHoldingsData = stock.history?.foreignTotalHolding?.length > 0;
     // 加入 hasHoldingsData 判斷：即使日期夠新，若資料是空陣列也必須重抓（防止空資料卡死）
-    const skipHoldingsThisSync = (isBeforeTaiwan9PM() && holdingsUpToDate && hasHoldingsData) || (stock.latestHoldingsDate === todayStr && hasHoldingsData);
-    // 新鮮度基準：應公告交易日，但封頂在實際股價最新交易日 → 端午等假日不會誤判而每次重抓。
-    const instUpToDate = stock.latestInstDate >= instFreshnessBound(stock.market, stock.latestPriceDate);
-    const skipInstThisSync = (isBeforeTaiwan9PM() && instUpToDate) || (stock.latestInstDate === todayStr && stock.history?.instDates?.length > 0);
+    const skipHoldingsThisSync = hasHoldingsData && stock.latestHoldingsDate >= holdingsFreshnessBound(stock.latestPriceDate);
+    const skipInstThisSync = stock.history?.instDates?.length > 0 && stock.latestInstDate >= instFreshnessBound(stock.market, stock.latestPriceDate);
     const havePriceData = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
     const haveLatestPrice = havePriceData;
     const opts = {};
@@ -1285,7 +1258,6 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
     // ── syncMode 強制跳過邏輯 ──
     const forceSkipPrice = syncMode === 'holdingsRevenue';
     const forceSkipHoldings = syncMode === 'priceVolume';
-    const forceSkipRevenue = syncMode === 'priceVolume';
 
     if (haveLatestPrice || forceSkipPrice) {
       opts.skipPrice = true;
@@ -1297,10 +1269,9 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
         latestPriceDate: stock.latestPriceDate,
       };
     }
-    if (haveLatestRevenue || forceSkipRevenue) {
-      opts.skipRevenue = true;
-      opts.existingRevenue = { revenueRaw: stock.history?.revenueRaw, revenueYoY: stock.history?.revenueYoY, latestRevenueDate: stock.latestRevenueDate, latestRevenueFetchedDate: stock.latestRevenueFetchedDate };
-    }
+    // 月營收不再同步：追蹤表已無營收欄，基本面分頁另從觀測站抓。沿用 Firestore 既有值，不打 FinMind
+    opts.skipRevenue = true;
+    opts.existingRevenue = { revenueRaw: stock.history?.revenueRaw, revenueYoY: stock.history?.revenueYoY, latestRevenueDate: stock.latestRevenueDate, latestRevenueFetchedDate: stock.latestRevenueFetchedDate };
     if (skipHoldingsThisSync || forceSkipHoldings) {
       opts.skipHoldings = true;
       opts.existingHoldings = { foreignTotalHolding: stock.history?.foreignTotalHolding || [], foreignHoldingDates: stock.history?.foreignHoldingDates || [], latestHoldingsDate: stock.latestHoldingsDate };

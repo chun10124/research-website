@@ -1,15 +1,15 @@
 /* src/pages/AnalysisPage.jsx */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { setDoc, onSnapshot, updateDoc, doc, getDocs, query, where, documentId } from 'firebase/firestore';
+import { setDoc, onSnapshot, getDocs, query, where, documentId } from 'firebase/firestore';
 import Layout from '@theme/Layout'; 
 import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
 import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable';
 import BigColumnDragBoard from '../features/StockAnalysis/components/BigColumnDragBoard';
-import { syncStockSnapshots, fetchForeignHoldingSeries } from '../features/StockAnalysis/api/stockApi';
+import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
 import { calculateFlowSignal } from '../features/StockAnalysis/utils/analysisUtils';
-import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF, RS_RATINGS_COLLECTION, db } from '../utils/firebaseConfig';
+import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF, RS_RATINGS_COLLECTION } from '../utils/firebaseConfig';
 import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
 import { RsChartModal } from './IBDRsRankingPage';
 import {
@@ -101,73 +101,6 @@ const AnalysisPage = () => {
     // 記錄上次「背景同步完成時間」，用來偵測雲端(GitHub Actions)同步完成後自動刷新追蹤表
     const bgSyncTsRef = useRef(0);
     const { idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } = useIbdRsWatchlist();
-
-    // ── 追蹤表籌碼懶載入 ──────────────────────────────────────────────
-    // 初次載入完成後，對持股資料不足的股票自動背景補抓 FinMind，
-    // 確保 calculateForeignForce (需 ≥710 筆) 能正常計算 B/N 訊號。
-    const chipAutoFetchDoneRef = useRef(false);
-    useEffect(() => {
-        if (loading || stocks.length === 0) return;
-        if (chipAutoFetchDoneRef.current) return; // 每次掛載只跑一次
-        chipAutoFetchDoneRef.current = true;
-
-        const HOLDING_MIN = 710; // calculateForeignForce 門檻
-        const incomplete = stocks.filter((s) => {
-            const h = s.history?.foreignTotalHolding;
-            return !Array.isArray(h) || h.length < HOLDING_MIN;
-        });
-        if (incomplete.length === 0) return;
-
-        console.log(`[追蹤表] ${incomplete.length} 支股票外資持股不足，背景補抓中…`);
-        let cancelled = false;
-        (async () => {
-            let updated = 0;
-            for (const stock of incomplete) {
-                if (cancelled) break;
-                const code = stock.code || stock.id;
-                try {
-                    const result = await fetchForeignHoldingSeries(code);
-                    if (result?.holdings?.length > 100) {
-                        const docRef = doc(db, 'stockWatchlist', stock.id);
-                        const saveFields = {
-                            'history.foreignTotalHolding': result.holdings,
-                            latestHoldingsDate: result.latestDate ?? null,
-                        };
-                        if (Array.isArray(result.holdingDates) && result.holdingDates.length > 0) {
-                            saveFields['history.foreignHoldingDates'] = result.holdingDates;
-                        }
-                        try {
-                            await updateDoc(docRef, saveFields);
-                        } catch (e) {
-                            if (e?.code === 'not-found') {
-                                // 文件不存在（新加的股票）→ setDoc 建立
-                                await setDoc(docRef, {
-                                    code,
-                                    history: {
-                                        foreignTotalHolding: result.holdings,
-                                        ...(result.holdingDates?.length ? { foreignHoldingDates: result.holdingDates } : {}),
-                                    },
-                                    latestHoldingsDate: result.latestDate ?? null,
-                                }, { merge: true });
-                            }
-                        }
-                        updated++;
-                        console.log(`[追蹤表] ${code} 籌碼補抓完成 (${result.holdings.length} 筆)`);
-                    }
-                } catch (e) {
-                    console.warn(`[追蹤表] ${code} 籌碼補抓失敗:`, e?.message);
-                }
-                if (!cancelled) await new Promise((r) => setTimeout(r, 600)); // 限速，避免 API 過載
-            }
-            if (!cancelled && updated > 0) {
-                console.log(`[追蹤表] 籌碼補抓完畢 (${updated}/${incomplete.length})，重新整理資料`);
-                refreshData().catch(() => {});
-            }
-        })();
-
-        return () => { cancelled = true; };
-    }, [loading, stocks, refreshData]);
-    // ─────────────────────────────────────────────────────────────────
 
     useEffect(() => {
         setMounted(true);
@@ -500,7 +433,7 @@ const AnalysisPage = () => {
                             </span>
                         </div>
                         <p style={{ fontSize: '0.85em', color: '#888', marginTop: '10px', paddingLeft: '5px' }}>
-                            * 輸入股票代碼後點擊同步，系統將自動從 API 獲取最新的股價、營收與籌碼數據。同一檔可重複新增，請在「設定產業」為各筆設定不同產業（例如同一檔放在多個產業觀察）。
+                            * 輸入股票代碼後點擊同步，系統將自動從 API 獲取最新的股價與籌碼數據。同一檔可重複新增，請在「設定產業」為各筆設定不同產業（例如同一檔放在多個產業觀察）。
                         </p>
 
                         <details style={{ marginTop: '12px' }}>
@@ -598,7 +531,7 @@ const AnalysisPage = () => {
                                     transition: 'opacity 0.2s',
                                 }}
                             >
-                                {syncingMode === 'holdingsRevenue' ? `更新外資/營收中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新外資/營收'}
+                                {syncingMode === 'holdingsRevenue' ? `更新外資/法人中（${syncAllProgress.current}/${syncAllProgress.total}）…` : '更新外資/法人'}
                             </button>
                             {stocks.length > 0 && !syncingAll && (
                                 <span style={{ fontSize: '0.85em', color: 'var(--app-text-soft)' }}>
@@ -627,26 +560,6 @@ const AnalysisPage = () => {
                             </div>
                             {mounted && stocks.length > 0 && (() => {
                                 const formatDate = (str) => str ? `${str.slice(0, 4)}/${Number(str.slice(5, 7))}/${Number(str.slice(8, 10))}` : '';
-                                const revenueDates = stocks.map(s => s.latestRevenueDate).filter(Boolean);
-                                const latestRevenueDateStr = revenueDates.length ? revenueDates.sort().slice(-1)[0] : null;
-                                // 營收 API 常回傳「公告日」（如 2 月初），需轉成「資料所屬月」顯示：當月 1～15 日多為上月營收
-                                const toRevenueMonth = (str) => {
-                                    if (!str || str.length < 10) return null;
-                                    const y = parseInt(str.slice(0, 4), 10);
-                                    const m = parseInt(str.slice(5, 7), 10);
-                                    const d = parseInt(str.slice(8, 10), 10);
-                                    if (d <= 15 && m >= 2) return { y, m: m - 1 };
-                                    if (d <= 15 && m === 1) return { y: y - 1, m: 12 };
-                                    return { y, m };
-                                };
-                                const formatRevenueMonth = (str) => {
-                                    const r = toRevenueMonth(str);
-                                    return r ? `${r.y} 年 ${r.m} 月` : '';
-                                };
-                                const now = new Date();
-                                const lastCompleteMonth = now.getMonth() === 0
-                                    ? `${now.getFullYear() - 1}-12`
-                                    : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
                                 /** 股價／量能：以全表「價格資料日」眾數為準（曆日換日但尚未開盤時，昨收資料仍算最新，不會變成 0/n） */
                                 const latestPriceDateStr = (() => {
                                     const freq = {};
@@ -678,11 +591,6 @@ const AnalysisPage = () => {
                                 const holdingsOk = latestHoldingsDateStr
                                     ? stocks.filter((s) => (s.latestHoldingsDate || '') === latestHoldingsDateStr).length
                                     : 0;
-                                const revenueOk = stocks.filter(s => {
-                                    const parsed = toRevenueMonth(s.latestRevenueDate || '');
-                                    const mStr = parsed ? `${parsed.y}-${String(parsed.m).padStart(2, '0')}` : '';
-                                    return mStr === lastCompleteMonth;
-                                }).length;
                                 /** 法人買賣超：以全表 latestInstDate（root 欄位）最新值為基準 */
                                 const latestInstDateStr = (() => {
                                     const dates = stocks.map((s) => s.latestInstDate).filter(Boolean);
@@ -696,7 +604,6 @@ const AnalysisPage = () => {
                                 const hasPriceAll = overNine(priceOk);
                                 const hasVolumeAll = overNine(volumeOk);
                                 const hasHoldingsAll = overNine(holdingsOk);
-                                const hasRevenueAll = overNine(revenueOk);
                                 const hasInstAll = overNine(instOk);
                                 const countStr = (n, t) => t > 0 ? `（${n}/${t}）` : '';
                                 const priceDataLabel = (n, t) =>
@@ -712,7 +619,6 @@ const AnalysisPage = () => {
                                     { label: '量能', has: hasVolumeAll, text: () => priceDataLabel(volumeOk, total) },
                                     { label: '外資持股（外資指標）', has: hasHoldingsAll, text: () => holdingsDataLabel(holdingsOk, total) },
                                     { label: '法人買賣超', has: hasInstAll, text: () => latestInstDateStr ? `${formatDate(latestInstDateStr)}${countStr(instOk, total)}` : '尚無資料' },
-                                    { label: '營收', has: hasRevenueAll, text: () => latestRevenueDateStr ? `最新：${formatRevenueMonth(latestRevenueDateStr)}${countStr(revenueOk, total)}` : '尚無資料' },
                                 ];
                                 return (
                                     <div style={{ fontSize: '0.85em', color: 'var(--app-text-soft)' }}>
