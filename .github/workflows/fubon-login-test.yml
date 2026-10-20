@@ -1,0 +1,69 @@
+# 測試：GitHub Actions（國外機房 IP）能否登入富邦新一代 API 並取得行情。
+# 結果（不含任何金鑰/token）寫到 Firestore ibdRsMeta/fubonLoginTest，並印在 log。
+# 需要 repo secrets：FUBON_ID、FUBON_API_KEY（Secret Key）、FUBON_CERT_B64（cert.p12 的 base64）
+name: fubon-login-test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安裝富邦 SDK（Linux x86_64，官方下載點）
+        run: |
+          curl -sSL -o sdk.zip https://www.fbs.com.tw/TradeAPI_SDK/fubon_binary/fubon_neo-2.4.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.zip
+          unzip -q sdk.zip -d sdk
+          pip install -q sdk/*.whl requests
+
+      - name: 還原憑證
+        env:
+          FUBON_CERT_B64: ${{ secrets.FUBON_CERT_B64 }}
+        run: |
+          umask 077
+          echo "$FUBON_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          test -s "$RUNNER_TEMP/cert.p12" && echo "憑證 $(stat -c%s "$RUNNER_TEMP/cert.p12") bytes"
+
+      - name: 登入並抓快照
+        env:
+          FUBON_ID: ${{ secrets.FUBON_ID }}
+          FUBON_API_KEY: ${{ secrets.FUBON_API_KEY }}
+        run: |
+          python - <<'EOF'
+          import json, os, time, requests
+          from datetime import datetime, timezone, timedelta
+          from fubon_neo.sdk import FubonSDK
+          TW = timezone(timedelta(hours=8))
+          out = {"at": datetime.now(TW).isoformat(), "runner": "github-actions"}
+          try:
+              out["egressIp"] = requests.get("https://api.ipify.org", timeout=10).text
+          except Exception:
+              out["egressIp"] = None
+          sdk = FubonSDK()
+          res = sdk.apikey_login(os.environ["FUBON_ID"], os.environ["FUBON_API_KEY"], os.environ["RUNNER_TEMP"] + "/cert.p12")
+          out["login"] = {"ok": bool(res.is_success), "message": res.message, "accounts": len(res.data or [])}
+          if res.is_success:
+              try:
+                  sdk.init_realtime()
+                  d = sdk.marketdata.rest_client.stock.snapshot.quotes(market="TSE", type="ALLBUT0999")
+                  out["snapshot"] = {"ok": True, "date": d.get("date"), "time": d.get("time"), "count": len(d.get("data", []))}
+              except Exception as e:
+                  out["snapshot"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+          print(json.dumps(out, ensure_ascii=False, indent=1))
+          key = "AIzaSyAUDHCT_dtMHQFPcUh6-gFSIFXT6dR9MVg"
+          url = f"https://firestore.googleapis.com/v1/projects/my-tools-1228/databases/(default)/documents/ibdRsMeta/fubonLoginTest?key={key}"
+          requests.patch(url, json={"fields": {"json": {"stringValue": json.dumps(out, ensure_ascii=False)},
+                                               "updatedAt": {"integerValue": str(int(time.time() * 1000))}}}, timeout=20)
+          EOF
+
+      - name: 清除憑證
+        if: always()
+        run: rm -f "$RUNNER_TEMP/cert.p12"
