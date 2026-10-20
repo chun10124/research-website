@@ -16,6 +16,8 @@ globalThis.localStorage = {
   setItem: (k, v) => { _ls.set(k, String(v)); },
   removeItem: (k) => { _ls.delete(k); },
   clear: () => { _ls.clear(); },
+  key: (i) => [..._ls.keys()][i] ?? null,   // 籌碼頁同步要列舉快取鍵
+  get length() { return _ls.size; },
 };
 
 const MODE = process.env.SYNC_MODE || 'DRY';
@@ -45,7 +47,7 @@ if (MODE === 'futuresChips') {
   const dryRun = process.env.FUTURES_DRY === '1'; // 本機測試：只算不寫
   const r = await buildAndStoreFuturesChips({ dryRun });
   if (dryRun) { console.log('[futuresChips] DRY 最新一列', JSON.stringify(r.sample)); }
-  console.log(`[futuresChips] ✅ ${dryRun ? '(DRY 未寫入) ' : ''}寫入 ${r.count} 列，最新 ${r.through}，${Math.round(r.bytes / 1024)} KB`);
+  console.log(`[futuresChips] ✅ ${dryRun ? '(DRY 未寫入) ' : ''}寫入 ${r.count} 列，最新 ${r.through}，${Math.round(r.bytes / 1024)} KB；原始資料 ${Math.round(r.rawBytes / 1024)} KB、新存 ${r.newChunks} 段`);
   process.exit(0);
 }
 

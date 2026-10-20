@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import styles from './FuturesChipsPage.module.css';
-import { readTheme, chartOptions, timeKeyOf } from '../features/StockAnalysis/components/lwcShared';
+import { readTheme, chartOptions, timeKeyOf, attachWheelHandler } from '../features/StockAnalysis/components/lwcShared';
 
 /**
  * 籌碼頁「圖表」分頁：上下兩格。
@@ -103,7 +103,7 @@ export default function FuturesChipsChart({ rows }) {
             return `${Number(m)}/${Number(d)}`;
           },
         },
-        // 滾輪留給整頁捲動；拖曳平移、拖曳刻度軸縮放
+        // 滾輪／觸控板改由 attachWheelHandler（與個股圖同一套）：兩指左右滑平移、上下滑或捏合縮放；拖曳也可平移
         handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
         handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
       });
@@ -162,10 +162,12 @@ export default function FuturesChipsChart({ rows }) {
       chipPane.setHeight(Math.round((hostRef.current.clientHeight || 500) * CHIP_PANE_RATIO));
       chart.timeScale().fitContent();
       chart.subscribeCrosshairMove((param) => setHoverKey(param?.time ? timeKeyOf(param.time) : null));
-      apiRef.current = { chart, series, leftOn: Object.values(axes).includes('left') };
+      const detachWheel = attachWheelHandler(chart, hostRef.current, () => rows.length);
+      apiRef.current = { chart, series, detachWheel, leftOn: Object.values(axes).includes('left') };
     });
     return () => {
       disposed = true;
+      apiRef.current?.detachWheel?.();
       apiRef.current?.chart.remove();
       apiRef.current = null;
     };

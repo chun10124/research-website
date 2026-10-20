@@ -46,7 +46,11 @@ function lsSet(key, value, permanent) {
 }
 
 /** 經 proxy 抓期交所 CSV（Big5）；回 HTML 代表日期錯誤或區間太長，視為失敗。 */
+let netFetches = 0; // 實際向期交所發出的請求數（快取命中不算），每日同步記錄用
+export const getNetFetchCount = () => netFetches;
+
 async function fetchCsv(page, params) {
+  netFetches++;
   const url = `${TAIFEX}${page}?${new URLSearchParams(params).toString()}`;
   for (let attempt = 0; ; attempt++) {
     try {
@@ -63,6 +67,23 @@ async function fetchCsv(page, params) {
 }
 
 /** 區間抓取＋快取：已過去 3 天以上的區間永久快取，含近期的 30 分鐘 */
+/** 匯出／匯入已永久快取的區段（每日同步用：存進 Firestore，下次只抓沒存過的月份） */
+export function exportPermanentChunks() {
+  const out = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(CACHE_PREFIX)) continue;
+      const c = JSON.parse(localStorage.getItem(k) || 'null');
+      if (c?.permanent) out[k.slice(CACHE_PREFIX.length)] = c.value;
+    }
+  } catch (_) {}
+  return out;
+}
+export function importPermanentChunks(entries) {
+  for (const [k, value] of Object.entries(entries || {})) lsSet(CACHE_PREFIX + k, value, true);
+}
+
 async function cached(kind, id, a, b, loader) {
   const key = `${CACHE_PREFIX}${kind}_${id}_${a}_${b}`;
   const hit = lsGet(key);
@@ -72,28 +93,18 @@ async function cached(kind, id, a, b, loader) {
   return value;
 }
 
-/** 依月切段（每日行情單次上限約一個月） */
+/** 依日曆月切段（每日行情單次上限約一個月；法人表也照月切，區段才固定） */
 function monthChunks(start, end) {
   const out = [];
+  // 一律從該月 1 號切起（整月），區段鍵固定，過去月份才能永久快取、每天只重抓當月
   let d = parseYmd(start);
+  d = new Date(d.getFullYear(), d.getMonth(), 1);
   const e = parseYmd(end);
   while (d <= e) {
     const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
     const b = last < e ? last : e;
     out.push([ymd(d), ymd(b)]);
     d = new Date(b.getFullYear(), b.getMonth(), b.getDate() + 1);
-  }
-  return out;
-}
-/** 依年切段（法人表） */
-function yearChunks(start, end) {
-  const out = [];
-  let a = start;
-  while (a <= end) {
-    const b0 = addDays(addDays(a, 365), -1);
-    const b = b0 < end ? b0 : end;
-    out.push([a, b]);
-    a = addDays(b, 1);
   }
   return out;
 }
@@ -192,9 +203,9 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
   const txIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadFutOi('TX', a, b)));
   const mtxIdx = monthChunks(addDays(start, -10), today).map(([a, b]) => addTask(() => loadFutOi('MTX', a, b)));
   const tmfIdx = monthChunks(TMF_START, today).map(([a, b]) => addTask(() => loadFutOi('TMF', a, b)));
-  const mxfInstIdx = yearChunks(addDays(start, -10), today).map(([a, b]) => addTask(() => loadFutInst('MXF', a, b)));
-  const tmfInstIdx = yearChunks(TMF_START, today).map(([a, b]) => addTask(() => loadFutInst('TMF', a, b)));
-  const optIdx = yearChunks(pre, today).map(([a, b]) => addTask(() => loadForeignCall(a, b)));
+  const mxfInstIdx = monthChunks(addDays(start, -10), today).map(([a, b]) => addTask(() => loadFutInst('MXF', a, b)));
+  const tmfInstIdx = monthChunks(TMF_START, today).map(([a, b]) => addTask(() => loadFutInst('TMF', a, b)));
+  const optIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadForeignCall(a, b)));
 
   let done = 0;
   onProgress?.(0, tasks.length);
