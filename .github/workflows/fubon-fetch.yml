@@ -1,0 +1,65 @@
+# 富邦新一代 API 抓取（由 Cloudflare Worker research-daily-sync-trigger 準點 workflow_dispatch）
+#   token      登入取行情 token → 推給即時報價 Worker（盤前＋盤中）
+#   closeBars  全市場收盤 K 棒＋加權指數 → Firestore（收盤後；RS 同步優先用）
+#   inst       追蹤表三大法人 → Firestore（傍晚；每日同步優先用，省 FinMind 配額）
+#
+# 安全：此 workflow 刻意與 daily-sync 分開——不跑 npm ci、只裝富邦官方 SDK，
+# 富邦 secrets 不會出現在安裝大量第三方套件的 job 裡。Action 一律鎖 commit SHA。
+# secrets：FUBON_ID、FUBON_API_KEY（Secret Key，只開行情權限）、FUBON_CERT_B64、QUOTE_PUSH_SECRET
+name: fubon-fetch
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: '工作'
+        required: true
+        type: choice
+        options: [token, closeBars, inst]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fubon-${{ github.event.inputs.job }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4（鎖 SHA）
+        with:
+          sparse-checkout: temp_scripts
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5（鎖 SHA）
+        with:
+          python-version: "3.12"
+
+      - name: 安裝富邦 SDK（Linux x86_64，官方下載點）
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/sdk.zip" https://www.fbs.com.tw/TradeAPI_SDK/fubon_binary/fubon_neo-2.4.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.zip
+          unzip -q "$RUNNER_TEMP/sdk.zip" -d "$RUNNER_TEMP/sdk"
+          pip install -q "$RUNNER_TEMP"/sdk/*.whl requests
+
+      # 憑證只在這一步還原、用完即刪
+      - name: 執行 ${{ github.event.inputs.job }}
+        env:
+          FUBON_ID: ${{ secrets.FUBON_ID }}
+          FUBON_API_KEY: ${{ secrets.FUBON_API_KEY }}
+          FUBON_CERT_B64: ${{ secrets.FUBON_CERT_B64 }}
+          QUOTE_PUSH_SECRET: ${{ secrets.QUOTE_PUSH_SECRET }}
+          JOB: ${{ github.event.inputs.job }}
+        run: |
+          umask 077
+          export FUBON_CERT_PATH="$RUNNER_TEMP/cert.p12"
+          echo "$FUBON_CERT_B64" | base64 -d > "$FUBON_CERT_PATH"
+          trap 'rm -f "$FUBON_CERT_PATH"' EXIT
+          case "$JOB" in
+            token)     python temp_scripts/20261020_fubon_token_push_tmp.py ;;
+            closeBars) python temp_scripts/20261020_fubon_close_bars_tmp.py --write ;;
+            inst)      python temp_scripts/20261020_fubon_inst_tmp.py --write ;;
+            *) echo "未知工作 $JOB"; exit 1 ;;
+          esac

@@ -8,7 +8,8 @@
   - 每日一列 [date, 外資買, 外資賣, 投信買, 投信賣, 自營買, 自營賣]（股）；同步端轉回 FinMind 形狀沿用 parseInstRows
     （FinMind 形狀 325 檔逼近 Firestore 單文件 1MB 上限，故存精簡陣列）
 用法：temp_scripts/.venv_fubon/bin/python temp_scripts/20261020_fubon_inst_tmp.py [--write] [--limit N]
-憑據：鑰匙圈 research-fubon ＋ ~/.fubon/cert.p12
+憑據：環境變數 FUBON_ID / FUBON_API_KEY / FUBON_CERT_PATH（GitHub Actions）；未設時讀鑰匙圈 research-fubon ＋ ~/.fubon/cert.p12
+排程會在傍晚多次觸發：當日文件已存在就直接結束；尚未公布也正常結束（結束碼 0），等下一次觸發
 輸出：output/fubon_inst/YYYYMMDD.json（每日獨立檔）
 """
 import json
@@ -38,8 +39,15 @@ def log(msg):
 
 
 def kc(account):
+    if os.environ.get(account):
+        return os.environ[account]
     return subprocess.run(["security", "find-generic-password", "-s", "research-fubon", "-a", account, "-w"],
                           capture_output=True, text=True, check=True).stdout.strip()
+
+
+def doc_exists(doc_id):
+    r = requests.get(f"{FS_BASE}/ibdRsMeta/{doc_id}", params={"key": FIREBASE_API_KEY, "mask.fieldPaths": "date"}, timeout=20)
+    return r.status_code == 200
 
 
 def watchlist_codes():
@@ -72,13 +80,21 @@ def main():
     today = datetime.now(TW).date()
     today_s, from_s = today.isoformat(), (today - timedelta(days=LOOKBACK_DAYS)).isoformat()
 
+    if write and doc_exists(f"fubonInst_{today_s.replace('-', '')}"):
+        log("今日富邦法人已寫入過，略過")
+        return
+    if today.weekday() >= 5:
+        log("週末，略過")
+        return
+
     codes = watchlist_codes()
     if limit:
         codes = codes[:limit]
     log(f"追蹤表 {len(codes)} 檔，查詢 {from_s} ~ {today_s}")
 
     sdk = FubonSDK()
-    res = sdk.apikey_login(kc("FUBON_ID"), kc("FUBON_API_KEY"), os.path.expanduser("~/.fubon/cert.p12"))
+    cert = os.environ.get("FUBON_CERT_PATH") or os.path.expanduser("~/.fubon/cert.p12")
+    res = sdk.apikey_login(kc("FUBON_ID"), kc("FUBON_API_KEY"), cert)
     if not getattr(res, "is_success", False):
         sys.exit(f"富邦登入失敗：{getattr(res, 'message', None)}")
     sdk.init_realtime()
@@ -120,8 +136,8 @@ def main():
     log(f"本機已存：{out.relative_to(ROOT)}（{out.stat().st_size/1024:.0f} KB）")
 
     if not recent or len(with_today) * 2 < len(recent):
-        log("今日法人資料尚未公布（未過半），不寫 Firestore")
-        sys.exit(2)
+        log("今日法人資料尚未公布（未過半），不寫 Firestore，等下一次觸發")
+        return
     if write:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         fields = {"json": {"stringValue": body}, "date": {"stringValue": today_s},

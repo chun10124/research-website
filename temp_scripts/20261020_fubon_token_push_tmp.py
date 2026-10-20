@@ -1,7 +1,8 @@
 """
 登入富邦取得行情 sdk_token，推送到 Cloudflare Worker（research-quote）供網頁即時報價使用。
-憑據：鑰匙圈 research-fubon（FUBON_ID / FUBON_API_KEY / QUOTE_PUSH_SECRET）＋ ~/.fubon/cert.p12
-由 launchd 於交易日盤前與盤中定時執行（token 效期實測後再決定頻率）。不印出任何 token。
+憑據：環境變數 FUBON_ID / FUBON_API_KEY / QUOTE_PUSH_SECRET / FUBON_CERT_PATH（GitHub Actions）；
+      未設時讀鑰匙圈 research-fubon ＋ ~/.fubon/cert.p12。不印出任何 token。
+由 Cloudflare Worker（cron-trigger）盤前與盤中觸發 fubon-fetch.yml 執行。
 """
 import os
 import subprocess
@@ -16,13 +17,16 @@ WORKER = os.environ.get("QUOTE_WORKER_URL", "https://research-quote.tzuchun11232
 
 
 def kc(account):
+    if os.environ.get(account):
+        return os.environ[account]
     return subprocess.run(["security", "find-generic-password", "-s", "research-fubon", "-a", account, "-w"],
                           capture_output=True, text=True, check=True).stdout.strip()
 
 
 def main():
     sdk = FubonSDK()
-    res = sdk.apikey_login(kc("FUBON_ID"), kc("FUBON_API_KEY"), os.path.expanduser("~/.fubon/cert.p12"))
+    cert = os.environ.get("FUBON_CERT_PATH") or os.path.expanduser("~/.fubon/cert.p12")
+    res = sdk.apikey_login(kc("FUBON_ID"), kc("FUBON_API_KEY"), cert)
     if not getattr(res, "is_success", False):
         sys.exit(f"富邦登入失敗：{getattr(res, 'message', None)}")
     sdk.init_realtime()

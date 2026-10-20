@@ -31,22 +31,39 @@
  *   TRIGGER_KEY  選填。設了才會開啟手動測試端點；沒設時該端點一律 403。
  */
 
-/** cron(UTC) → { workflow, inputs }。workflow 省略時用 env.GH_WORKFLOW（daily-sync.yml）。 */
-const CRON_JOB = {
+/**
+ * 排程表：UTC「HH:MM」→ 要 dispatch 的工作。workflow 省略時用 env.GH_WORKFLOW（daily-sync.yml）。
+ *
+ * 2026-10-20 起改成「每分鐘醒一次、查表 dispatch」：Cloudflare 免費方案整個帳號只能有 5 個
+ * Cron Trigger，原本 5 個已用滿，加富邦工作只能合併成單一 "* * * * *"。原 5 個工作時間完全不變。
+ * 富邦三項（fubon-fetch.yml）都可重複觸發：token 每次重推、closeBars 覆寫同日文件、
+ * inst 當日已寫過或尚未公布都會直接結束。
+ */
+const FUBON = (job) => ({ workflow: "fubon-fetch.yml", inputs: { job } });
+const SCHEDULE = {
+  // 富邦：推行情 token（台灣 08:50、10:50、12:50；實測 token 3 小時以上仍有效，中午補推當保險）
+  "00:50": [FUBON("token")],
+  "02:50": [FUBON("token")],
+  "04:50": [FUBON("token")],
+  // 富邦：全市場收盤 K 棒＋加權指數（台灣 13:36，14:00 再補一次）
+  "05:36": [FUBON("closeBars")],
+  "06:00": [FUBON("closeBars")],
   // 資料同步
-  "37 7 * * *": { inputs: { mode: "rsThenPrice", limit: "0" } }, // 台灣 15:37
-  "37 12 * * *": { inputs: { mode: "holdingsRevenue", limit: "0" } }, // 台灣 20:37
-  "37 13 * * *": { inputs: { mode: "holdingsRevenue", limit: "0" } }, // 台灣 21:37
+  "07:37": [{ inputs: { mode: "rsThenPrice", limit: "0" } }], // 台灣 15:37
+  "12:37": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }], // 台灣 20:37
+  "13:37": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }], // 台灣 21:37
+  // 富邦：追蹤表三大法人（台灣 17:00～20:15 多次嘗試，公布後第一次寫入，之後自動略過）
+  "09:00": [FUBON("inst")],
+  "10:00": [FUBON("inst")],
+  "11:00": [FUBON("inst")],
+  "11:45": [FUBON("inst")],
+  "12:15": [FUBON("inst")],
   // 報告
-  "30 8 * * *": {
-    workflow: "daily-report.yml",
-    inputs: { kind: "price", no_mail: "false", force: "false" },
-  }, // 台灣 16:30
-  "0 15 * * *": {
-    workflow: "daily-report.yml",
-    inputs: { kind: "chip", no_mail: "false", force: "false" },
-  }, // 台灣 23:00
+  "08:30": [{ workflow: "daily-report.yml", inputs: { kind: "price", no_mail: "false", force: "false" } }], // 台灣 16:30
+  "15:00": [{ workflow: "daily-report.yml", inputs: { kind: "chip", no_mail: "false", force: "false" } }], // 台灣 23:00
 };
+
+const hhmmUtc = (ms) => new Date(ms).toISOString().slice(11, 16);
 
 /** 打一次 workflow_dispatch；成功回 204 No Content，其餘視為失敗。 */
 async function dispatch(env, job) {
@@ -72,20 +89,21 @@ async function dispatch(env, job) {
 export default {
   /** Cron Trigger 進入點 */
   async scheduled(event, env, ctx) {
-    const job = CRON_JOB[event.cron];
-    if (!job) {
-      console.log(`未知 cron「${event.cron}」，略過`);
-      return;
-    }
-    const label = `${job.workflow || env.GH_WORKFLOW} ${JSON.stringify(job.inputs)}`;
-    console.log(`cron ${event.cron} → dispatch ${label}`);
+    const jobs = SCHEDULE[hhmmUtc(event.scheduledTime)];
+    if (!jobs) return; // 每分鐘都會醒，大多數時間沒有工作
     ctx.waitUntil(
-      dispatch(env, job).then(
-        () => console.log(`✅ 已觸發：${label}`),
-        (err) => {
-          console.error(`❌ ${err.message}`);
-          throw err; // 讓 CF 後台把這次 cron 標記為失敗，方便排查
-        },
+      Promise.all(
+        jobs.map((job) => {
+          const label = `${job.workflow || env.GH_WORKFLOW} ${JSON.stringify(job.inputs)}`;
+          console.log(`${hhmmUtc(event.scheduledTime)} UTC → dispatch ${label}`);
+          return dispatch(env, job).then(
+            () => console.log(`✅ 已觸發：${label}`),
+            (err) => {
+              console.error(`❌ ${err.message}`);
+              throw err; // 讓 CF 後台把這次 cron 標記為失敗，方便排查
+            },
+          );
+        }),
       ),
     );
   },
@@ -94,6 +112,7 @@ export default {
    *    GET /health                                  → 健康檢查
    *    GET /?key=<KEY>&mode=DRY                     → 觸發同步（驗證 PAT）
    *    GET /?key=<KEY>&report=price&force=true      → 觸發報告（report=price|chip）
+   *    GET /?key=<KEY>&fubon=token                  → 觸發富邦工作（fubon=token|closeBars|inst）
    */
   async fetch(req, env) {
     const u = new URL(req.url);
@@ -102,7 +121,10 @@ export default {
       return new Response("forbidden\n", { status: 403 });
     }
     const report = u.searchParams.get("report");
-    const job = report
+    const fubon = u.searchParams.get("fubon");
+    const job = fubon
+      ? FUBON(fubon)
+      : report
       ? {
           workflow: "daily-report.yml",
           inputs: {

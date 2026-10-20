@@ -97,7 +97,8 @@ def main():
         snap_date = d.get("date")
         snap_meta[mkt] = {"date": snap_date, "time": d.get("time"), "count": len(d.get("data", []))}
         if snap_date != today_s:
-            sys.exit(f"{mkt} 快照日期 {snap_date} ≠ 今日 {today_s}（非交易日或尚未更新），不輸出")
+            log(f"{mkt} 快照日期 {snap_date} ≠ 今日 {today_s}（非交易日或尚未更新），不輸出")
+            sys.exit(0)
         for r in d.get("data", []):
             if r.get("isTrial"):
                 continue
