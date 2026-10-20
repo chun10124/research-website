@@ -29,10 +29,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4（鎖 SHA）
-        with:
-          sparse-checkout: temp_scripts
-          persist-credentials: false
+      # 只需 3 支腳本：直接抓本次 commit 的版本（不用 checkout——repo 內殘留的
+      # .claude/worktrees gitlink 會讓 checkout 失敗，也少一個第三方 Action）
+      - name: 取得腳本（本次 commit）
+        run: |
+          mkdir -p temp_scripts
+          for f in fubon_token_push fubon_close_bars fubon_inst; do
+            curl -sSfL -o "temp_scripts/20261020_${f}_tmp.py" \
+              "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/temp_scripts/20261020_${f}_tmp.py"
+          done
+          ls -la temp_scripts
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5（鎖 SHA）
         with:
