@@ -23,6 +23,7 @@ import { doc, getDoc, setDoc, getDocs, writeBatch, query, orderBy, limit, startA
 import { db, RS_RATINGS_COLLECTION } from '../../../utils/firebaseConfig';
 import { fetchYahooHistoricalPriceMap, fetchHistoricalPriceMap, fetchYahooHistoricalPriceVolumeMaps } from './stockApi';
 import { fetchTaiwanStockList } from './rsStockList';
+import { loadFubonCloseBars, buildRsPriceDataFromFubon } from './fubonCloseBars';
 import {
   calculateRsRaw,
   assignRsRatings,
@@ -319,11 +320,33 @@ export async function patchIbdrsRatingFromHistory({ onProgress = () => {}, signa
   return { patched: total };
 }
 
+/** 本輪同步的富邦收盤 K 棒（syncAllRsRatings 開頭載入；null＝全部走 Yahoo） */
+let fubonCloseBarsCtx = null;
+const rsPriceSourceCount = { fubon: 0, yahoo: 0 };
+
+/** 本輪 RS 同步各價量來源的檔數（給 daily-sync 記錄用） */
+export function getRsPriceSourceCount() {
+  return { ...rsPriceSourceCount, fubonCloseBars: !!fubonCloseBarsCtx };
+}
+
 /**
  * 抓單一股票收盤價（Yahoo Finance via proxy）
  * 回溯 {@link RS_PRICE_LOOKBACK_MONTHS} 個月，供今日／7 日／30 日錨點 RS_raw 使用
  */
-export async function fetchRsPriceData(stockCode, market) {
+export async function fetchRsPriceData(stockCode, market, existing = null) {
+  // 當日富邦收盤 K 棒可用 → 既有歷史接今日一根，不打 Yahoo（條件不符回 null 照舊走 Yahoo）
+  const fromFubon = buildRsPriceDataFromFubon(stockCode, existing, fubonCloseBarsCtx);
+  if (fromFubon) {
+    rsPriceSourceCount.fubon++;
+    return {
+      priceMap: roundPriceMap(fromFubon.priceMap),
+      volumeMap: fromFubon.volumeMap,
+      openMap: roundPriceMap(fromFubon.openMap),
+      highMap: roundPriceMap(fromFubon.highMap),
+      lowMap: roundPriceMap(fromFubon.lowMap),
+    };
+  }
+  rsPriceSourceCount.yahoo++;
   const endDate = new Date();
   const startDate = new Date();
   startDate.setMonth(startDate.getMonth() - RS_PRICE_LOOKBACK_MONTHS);
@@ -668,6 +691,7 @@ async function runMonolithicSync(
   let fetchDone = 0;
   for (let i = 0; i < todoTotal; i += concurrency) {
     if (signal?.aborted) throw new Error('已取消');
+    const yahooBefore = rsPriceSourceCount.yahoo;
     const batch = todoList.slice(i, i + concurrency);
     const batchSnapshots = [];
 
@@ -688,7 +712,7 @@ async function runMonolithicSync(
       let lowMap = {};
       let openMap = {};
       try {
-        const fetched = await fetchRsPriceData(stock.id, stock.market);
+        const fetched = await fetchRsPriceData(stock.id, stock.market, existingMap[stock.id]);
         priceMap = fetched.priceMap;
         volumeMap = fetched.volumeMap;
         highMap = fetched.highMap || {};
@@ -779,7 +803,8 @@ async function runMonolithicSync(
       );
     }
 
-    if (i + concurrency < todoTotal) {
+    // 整批都用富邦（沒打 Yahoo）就不必限流休息
+    if (i + concurrency < todoTotal && rsPriceSourceCount.yahoo > yahooBefore) {
       const absEnd = skippedYahooCount + fetchDone;
       const isRestPoint = crossesSuperBatch(absEnd, superBatchSize);
       if (isRestPoint) {
@@ -862,6 +887,7 @@ async function runPriceFetchSlice(
   let localDone = 0;
   for (let i = 0; i < todoSlice.length; i += concurrency) {
     if (signal?.aborted) throw new Error('已取消');
+    const yahooBefore = rsPriceSourceCount.yahoo;
     const batch = todoSlice.slice(i, i + concurrency);
 
     for (const stock of batch) {
@@ -882,7 +908,7 @@ async function runPriceFetchSlice(
       let lowMap = {};
 
       try {
-        const fetched = await fetchRsPriceData(stock.id, stock.market);
+        const fetched = await fetchRsPriceData(stock.id, stock.market, existingMap[stock.id]);
         priceMap = fetched.priceMap;
         volumeMap = fetched.volumeMap;
         openMap = fetched.openMap || {};
@@ -942,7 +968,7 @@ async function runPriceFetchSlice(
       });
     }
 
-    if (i + concurrency < todoSlice.length) {
+    if (i + concurrency < todoSlice.length && rsPriceSourceCount.yahoo > yahooBefore) {
       const absEnd = offset + skippedYahooCount + localDone;
       const isRestPoint = crossesSuperBatch(absEnd, superBatchSize);
       if (isRestPoint) {
@@ -1036,6 +1062,18 @@ export async function syncAllRsRatings({
   }
 
   let existingMap = await readExistingRsData();
+  fubonCloseBarsCtx = await loadFubonCloseBars(todayStr);
+  rsPriceSourceCount.fubon = 0;
+  rsPriceSourceCount.yahoo = 0;
+  onProgress({
+    phase: 'list',
+    done: 0,
+    total: stockListTotal,
+    msg: fubonCloseBarsCtx
+      ? `富邦收盤 K 棒 ${Object.keys(fubonCloseBarsCtx.bars).length} 檔可用（配股／股本變動 ${fubonCloseBarsCtx.eventSymbols.size} 檔改走 Yahoo）`
+      : '無當日富邦收盤 K 棒，全部走 Yahoo',
+    ...listMeta,
+  });
   const anchor7Str = taipeiYmdAddDays(todayStr, -7);
   const anchor30Str = taipeiYmdAddDays(todayStr, -30);
 

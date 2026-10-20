@@ -18,6 +18,7 @@ import {
     LAST_SYNC_ALL_KEY,
 } from '../features/StockAnalysis/services/analysisSyncService';
 import { subscribeIbdRsSync } from '../features/StockAnalysis/services/ibdRsSyncService';
+import { useRealtimeQuotes } from '../features/StockAnalysis/api/realtimeQuotes';
 
 const NUM_BIG_COLUMNS = 8;
 
@@ -98,7 +99,21 @@ const AnalysisPage = () => {
     const [selectedRsId, setSelectedRsId] = useState(null);
     const [openWithChipView, setOpenWithChipView] = useState(false);
 
-    const { stocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
+    const { stocks: storedStocks, loading, refreshData, updateStockField, lastFetchedAt } = useStockData();
+    // 盤中即時價（富邦，僅白名單登入者）覆蓋現價與昨收 → 漲跌幅、基準欄跟著即時；盤外就是同步存的收盤資料
+    const live = useRealtimeQuotes((storedStocks || []).map((s) => s.code ?? s.id));
+    const stocks = useMemo(() => {
+        if (!storedStocks || Object.keys(live.quotes).length === 0) return storedStocks;
+        return storedStocks.map((s) => {
+            const q = live.quotes[String(s.code ?? s.id ?? '').replace(/\.(TW|TWO)$/i, '')];
+            if (!q) return s;
+            return {
+                ...s,
+                currentPrice: q.price,
+                yesterdayClose: Number.isFinite(q.change) ? q.price - q.change : s.yesterdayClose,
+            };
+        });
+    }, [storedStocks, live.quotes]);
     // 記錄上次「背景同步完成時間」，用來偵測雲端(GitHub Actions)同步完成後自動刷新追蹤表
     const bgSyncTsRef = useRef(0);
     const { idSet: rsWatchlistIdSet, priorities: rsWatchlistPriorities, toggle: toggleRsWatchlist, setPriority: setRsWatchlistPriority } = useIbdRsWatchlist();

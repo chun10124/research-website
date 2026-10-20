@@ -55,6 +55,8 @@ if (MODE === 'rs') {
     superBatchSize: rsApi.RS_SYNC_SUPER_BATCH_SIZE,
     interBatchRestMs: rsApi.RS_SYNC_INTER_BATCH_REST_MS,
   });
+  const src = rsApi.getRsPriceSourceCount();
+  console.log(`[rs] 價量來源：富邦 ${src.fubon} 檔、Yahoo ${src.yahoo} 檔${src.fubonCloseBars ? '' : '（無當日富邦收盤 K 棒）'}`);
   // 非交易日（國定假日／週末）同步本身已略過寫入；同步日期也不更新，保持為最後一個交易日
   if (rsResult?.skippedNonTradingDay) {
     console.log('[rs] 非交易日，不更新 rsLastSyncDate');

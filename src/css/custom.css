@@ -44,6 +44,7 @@
   /* 篩選面板等處的青綠作用色（原本各處寫死 #0d9488 / #134e4a，暗色下偏暗）*/
   --app-accent: #0d9488;        /* 區塊標題、強調標籤 */
   --app-accent-strong: #134e4a; /* 標題列、粗體標籤 */
+  --app-live: #16a34a;          /* 即時報價燈號 */
   /* RS 圖表 RS/籌碼 分頁作用色（亮色＝原本配色；暗色於下方覆蓋）*/
   --rs-tab-rs-fg: #c0392b;      /* RS 紅：字＋框 */
   --rs-tab-rs-bg: #fef2f2;      /* RS 作用底（淺粉）*/
@@ -93,6 +94,7 @@
   /* 暗色覆蓋：青綠提亮，深底上才讀得清楚 */
   --app-accent: #2dd4bf;
   --app-accent-strong: #5eead4;
+  --app-live: #4ade80;
   /* 暗色覆蓋：提亮的紅/琥珀（字＋框）＋半透明深色作用底（不再淺底白框）*/
   --rs-tab-rs-fg: #ef5350;
   --rs-tab-rs-bg: rgba(192, 57, 43, 0.22);
@@ -535,4 +537,20 @@ input.ibd-rs-topbar-search::-webkit-search-results-button,
 input.ibd-rs-topbar-search::-webkit-search-results-decoration {
   appearance: none;
   -webkit-appearance: none;
+}
+/* 即時報價燈號（navbar 右上，見 RealtimeIndicator.jsx） */
+@keyframes app-live-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-live) 60%, transparent); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.app-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--app-live);
+  animation: app-live-pulse 2s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-live-dot { animation: none; }
 }

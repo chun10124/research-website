@@ -5,7 +5,7 @@ import { getTaiwanStockDisplayName } from './rsStockList';
 import { calculateSingleStockIndicators } from '../utils/analysisUtils';
 import { normalizeYmdToTaiwanTradingDay, taipeiYmdAddDays } from '../utils/rsCalculator';
 import { getDoc, doc, setDoc } from 'firebase/firestore';
-import { RS_RATINGS_COLLECTION, STOCK_WATCHLIST_COLLECTION, NAV_CACHE_COLLECTION } from '../../../utils/firebaseConfig';
+import { db, RS_RATINGS_COLLECTION, STOCK_WATCHLIST_COLLECTION, NAV_CACHE_COLLECTION } from '../../../utils/firebaseConfig';
 
 // 與 rsApi.js 的 getTaiwanYmd() 相同邏輯：14:00 前取前一交易日，14:00 後取當日
 function getLatestTradingYmd() {
@@ -626,10 +626,74 @@ export const fetchYahooHistoricalPriceVolumeMaps = async (stockCode, startStr, e
  * 抓台股加權指數（^TWII）歷史收盤，回傳 { dateStr: price }。
  * 直接用 ^TWII symbol，不加 .TW/.TWO 後綴。
  */
+/**
+ * 富邦三大法人（Mac 晚上由 temp_scripts/20261020_fubon_inst_tmp.py 寫入 ibdRsMeta/fubonInst_YYYYMMDD）。
+ * 每檔每日一列 [date, 外資買, 外資賣, 投信買, 投信賣, 自營買, 自營賣]（股），轉回 FinMind 形狀給 parseInstRows。
+ * 富邦外資不含外資自營商（FinMind Foreign_Dealer_Self）；實測近 3 個月該欄恆為 0，數字一致。
+ */
+const fubonInstPromises = {};
+const loadFubonInst = (todayStr) => {
+  if (!(todayStr in fubonInstPromises)) {
+    fubonInstPromises[todayStr] = getDoc(doc(db, 'ibdRsMeta', `fubonInst_${todayStr.replace(/-/g, '')}`))
+      .then((snap) => {
+        const p = snap.exists() ? JSON.parse(snap.data()?.json || 'null') : null;
+        return p && p.schema === 1 && p.date === todayStr && p.rows ? p : null;
+      })
+      .catch((e) => {
+        console.warn('fubonInst 讀取失敗，改用 FinMind:', e?.message);
+        return null;
+      });
+  }
+  return fubonInstPromises[todayStr];
+};
+
+/** 富邦涵蓋 instStartDate 起的區間且有該檔 → FinMind 形狀 { data: rows }；否則 null（走 FinMind） */
+async function fubonInstAsFinmind(code, instStartDate) {
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const p = await loadFubonInst(todayStr);
+  if (!p || !instStartDate || instStartDate < p.from || (p.failed || []).includes(code)) return null;
+  const rows = p.rows[code];
+  if (!Array.isArray(rows)) return null;
+  const data = [];
+  for (const [d, fb, fs, tb, ts, db2, ds] of rows) {
+    if (d < instStartDate) continue;
+    data.push(
+      { date: d, name: 'Foreign_Investor', buy: fb, sell: fs },
+      { date: d, name: 'Investment_Trust', buy: tb, sell: ts },
+      { date: d, name: 'Dealer_self', buy: db2, sell: ds },
+    );
+  }
+  return { data, source: 'fubon' };
+}
+
+/** 富邦 IX0001 日收盤（Mac 收盤後寫入 ibdRsMeta/fubonIndexDaily）；同頁多次呼叫共用一次讀取 */
+let fubonIndexPromise = null;
+const loadFubonIndexDaily = () => {
+  if (!fubonIndexPromise) {
+    fubonIndexPromise = getDoc(doc(db, 'ibdRsMeta', 'fubonIndexDaily'))
+      .then((snap) => (snap.exists() ? JSON.parse(snap.data()?.json || 'null') : null))
+      .catch((e) => {
+        console.warn('fubonIndexDaily 讀取失敗，改用 Yahoo ^TWII:', e?.message);
+        return null;
+      });
+  }
+  return fubonIndexPromise;
+};
+
 export const fetchIndexPriceMap = async (startStr, endStr) => {
   const start = (startStr || '').slice(0, 10);
   const end = (endStr || '').slice(0, 10);
   if (!start) return {};
+  // 富邦資料涵蓋所需起點、且 4 天內有更新（含週末）→ 直接用；否則退回 Yahoo
+  const fb = await loadFubonIndexDaily();
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  if (fb?.closes && fb.start <= start && fb.through >= taipeiYmdAddDays(todayStr, -4)) {
+    const out = {};
+    for (const [d, c] of Object.entries(fb.closes)) {
+      if (d >= start && (!end || d <= end) && c > 0) out[d] = c;
+    }
+    return out;
+  }
   const startDay = new Date(start).getTime() / (24 * 60 * 60 * 1000);
   const endDay = end ? new Date(end).getTime() / (24 * 60 * 60 * 1000) : startDay + 365;
   const days = Math.ceil(endDay - startDay) + 1;
@@ -1009,7 +1073,11 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
       : fetchTrackingTablePriceVolumeRows(sCode, options.market, options.yahooChartOpts);
     const holdingPromise = skipHoldings ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockShareholding", THREE_YEARS_START));
     const revenuePromise = skipRevenue ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockMonthRevenue", REVENUE_START_DATE));
-    const institutionalPromise = skipInstitutional ? Promise.resolve(null) : safeFetch(getFinmindUrl("TaiwanStockInstitutionalInvestorsBuySell", instStartDate));
+    // 三大法人：當晚富邦資料涵蓋所需區間就用富邦（省 FinMind 每小時配額），否則照舊 FinMind
+    const institutionalPromise = skipInstitutional
+      ? Promise.resolve(null)
+      : fubonInstAsFinmind(sCode, instStartDate)
+          .then((fb) => fb ?? safeFetch(getFinmindUrl("TaiwanStockInstitutionalInvestorsBuySell", instStartDate)));
     const [priceBundle, holdingRes, revenueRes, institutionalRes] = await Promise.all([
       priceBundlePromise,
       holdingPromise,

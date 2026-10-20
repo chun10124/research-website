@@ -1,0 +1,15 @@
+name = "research-quote"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# 部署前：npx wrangler kv namespace create QUOTE_KV → 把回傳的 id 填到下面
+#         npx wrangler secret put PUSH_SECRET
+[[kv_namespaces]]
+binding = "QUOTE_KV"
+id = "1a2a5c684fbb425fb3fcff98d2b98acd"
+
+[vars]
+FIREBASE_PROJECT = "my-tools-1228"
+# 只開放擁有者；要開放朋友就把對方 Firebase uid 加進來（逗號分隔）
+ALLOWED_UIDS = "pRnvvRH8KlcK5Jq6GXHpBuh1eKA2"
+ALLOWED_ORIGINS = "https://chun10124.github.io,http://localhost:3000"

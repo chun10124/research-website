@@ -6,6 +6,7 @@ import { db } from '../utils/firebaseConfig';
 import Layout from '@theme/Layout';
 import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache, fetchInstitutionalInvestorsSeries, fetchForeignHoldingSeries, instArraysToDateMap, instFreshnessBound, holdingsFreshnessBound } from '../features/StockAnalysis/api/stockApi';
 import { syncSingleStock, syncTestBatch } from '../features/StockAnalysis/api/rsApi';
+import { useRealtimeQuotes, mergeLiveDailyBar } from '../features/StockAnalysis/api/realtimeQuotes';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
 import {
   IBDRS_LAST_SYNC_DATE_KEY,
@@ -1702,7 +1703,11 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   /** VCP：價格項／成交量項／加權合成；error 表示 Yahoo 失敗 */
   const [vcpSnapshot, setVcpSnapshot] = useState(null);
   /** Yahoo 日 K OHLC，與 VCP 同一請求 */
-  const [ohlcSeries, setOhlcSeries] = useState([]);
+  const [ohlcSeriesRaw, setOhlcSeries] = useState([]);
+  // 盤中即時價（富邦，僅白名單登入者）併入今日 K 棒；盤外／無權限時就是原本的日 K
+  const live = useRealtimeQuotes(stock?.id ? [stock.id] : []);
+  const liveQuote = stock?.id ? live.quotes[stock.id] : null;
+  const ohlcSeries = useMemo(() => mergeLiveDailyBar(ohlcSeriesRaw, liveQuote), [ohlcSeriesRaw, liveQuote]);
   /** 視窗切換：'rs' = 預設，'foreign' = 外資籌碼視窗（A 鍵切換） */
   const [activeView, setActiveView] = useState(initialView ?? 'rs');
   /** 基本面分頁的提醒設定小視窗是否開著（開著時停用 Esc／方向鍵等快捷鍵） */
@@ -2550,20 +2555,27 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               {marketBadge.text}
             </span>
             {/* 第二層：收盤價（大、依漲跌上色）＋漲跌幅；日期退成小灰字 */}
-            {closeQuote != null ? (() => {
-              const chgPct = Number.isFinite(closeQuote.prevPrice) && closeQuote.prevPrice
-                ? ((closeQuote.price - closeQuote.prevPrice) / closeQuote.prevPrice) * 100
+            {(liveQuote || closeQuote != null) ? (() => {
+              const shownQuote = liveQuote
+                ? {
+                  dateStr: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }),
+                  price: liveQuote.price,
+                  prevPrice: Number.isFinite(liveQuote.change) ? liveQuote.price - liveQuote.change : null,
+                }
+                : closeQuote;
+              const chgPct = Number.isFinite(shownQuote.prevPrice) && shownQuote.prevPrice
+                ? ((shownQuote.price - shownQuote.prevPrice) / shownQuote.prevPrice) * 100
                 : null;
               const priceColor = chgPct == null || chgPct === 0
                 ? 'inherit'
                 : chgPct > 0 ? 'var(--chart-k-up)' : 'var(--chart-k-down)';
               return (
                 <span
-                  title="Yahoo Finance 日 K 最近一筆；非交易日則為前一交易日收盤"
+                  title={liveQuote ? '富邦即時報價' : 'Yahoo Finance 日 K 最近一筆；非交易日則為前一交易日收盤'}
                   style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, marginLeft: 6, whiteSpace: 'nowrap' }}
                 >
                   <span style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2, color: priceColor, fontVariantNumeric: 'tabular-nums' }}>
-                    {closeQuote.price.toFixed(1)}
+                    {shownQuote.price.toFixed(1)}
                   </span>
                   {chgPct != null && (
                     <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: priceColor, fontVariantNumeric: 'tabular-nums' }}>
@@ -2571,7 +2583,9 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                     </span>
                   )}
                   <span style={{ fontSize: 11, lineHeight: 1.2, color: 'var(--app-text-soft)' }}>
-                    {formatYmdSlash(closeQuote.dateStr).slice(5)} 收盤
+                    {liveQuote && live.time
+                      ? `即時 ${live.time.slice(0, 2)}:${live.time.slice(2, 4)}`
+                      : `${formatYmdSlash(shownQuote.dateStr).slice(5)} 收盤`}
                   </span>
                 </span>
               );

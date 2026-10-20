@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import { useLocation } from '@docusaurus/router';
 import { useAuth } from '../utils/useAuth';
 import AccountChip from './AccountChip';
+import RealtimeIndicator from './RealtimeIndicator';
 
 const SLOT_ATTR = 'data-account-slot';
 
@@ -92,5 +93,11 @@ export default function NavbarAccount() {
 
   // host 可能已被換頁時的 navbar 汰換而脫離文件，這時先不渲染，等 ensureSlot 補上
   if (!host || !host.isConnected || !signedIn) return null;
-  return createPortal(<AccountChip user={user} onLogout={logout} />, host);
+  return createPortal(
+    <>
+      <RealtimeIndicator />
+      <AccountChip user={user} onLogout={logout} />
+    </>,
+    host
+  );
 }
