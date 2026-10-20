@@ -38,6 +38,17 @@ if (MODE === 'DRY') {
   process.exit(1);
 }
 
+// ── 籌碼頁（期貨籌碼表）預算：抓期交所一年份、算好寫入 ibdRsMeta/futuresChips ──
+if (MODE === 'futuresChips') {
+  const { buildAndStoreFuturesChips } = await import('../../src/features/FuturesChips/futuresChipsStore.js');
+  console.log('[futuresChips] 開始…');
+  const dryRun = process.env.FUTURES_DRY === '1'; // 本機測試：只算不寫
+  const r = await buildAndStoreFuturesChips({ dryRun });
+  if (dryRun) { console.log('[futuresChips] DRY 最新一列', JSON.stringify(r.sample)); }
+  console.log(`[futuresChips] ✅ ${dryRun ? '(DRY 未寫入) ' : ''}寫入 ${r.count} 列，最新 ${r.through}，${Math.round(r.bytes / 1024)} KB`);
+  process.exit(0);
+}
+
 // ── RS 全市場同步（抓全市場價量 + 算 RS 排名，寫入 ibdRsRatings）──
 if (MODE === 'rs') {
   const rsApi = await import('../../src/features/StockAnalysis/api/rsApi.js');

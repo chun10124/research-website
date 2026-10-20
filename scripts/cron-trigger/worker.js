@@ -51,11 +51,13 @@ const SCHEDULE = {
   // 資料同步
   // 台灣 14:00（原 15:37）：富邦收盤 K 棒 13:36 已寫入；Yahoo 延遲 20 分，14:00 也已有最終收盤
   "06:00": [{ inputs: { mode: "rsThenPrice", limit: "0" } }],
+  // 籌碼頁（期貨籌碼表）預算：期交所約 15:00 公布法人與行情；16:00 先跑、18:00 再跑一次補晚公布的部分（18:00 併在下方 10:00）
+  "08:00": [{ inputs: { mode: "futuresChips", limit: "0" } }], // 台灣 16:00
   "12:37": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }], // 台灣 20:37
   "13:37": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }], // 台灣 21:37
   // 富邦：追蹤表三大法人（10/20 實測 17:00～17:09 間公布；17:15 起嘗試，公布後第一次寫入，之後自動略過）
   "09:15": [FUBON("inst")],
-  "10:00": [FUBON("inst")],
+  "10:00": [FUBON("inst"), { inputs: { mode: "futuresChips", limit: "0" } }], // 富邦法人＋籌碼頁補跑（台灣 18:00）
   "11:00": [FUBON("inst")],
   "11:45": [FUBON("inst")],
   "12:15": [FUBON("inst")],

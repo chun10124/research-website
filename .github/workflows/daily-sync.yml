@@ -18,6 +18,7 @@ on:
           - rs
           - priceVolume
           - holdingsRevenue
+          - futuresChips  # 籌碼頁：期交所期貨／選擇權籌碼一年份預算 → ibdRsMeta/futuresChips
       limit:
         description: '限制檔數（0=全部，測試可填 3）'
         required: false

@@ -140,6 +140,11 @@ const config = {
             label: 'RS',
             position: 'left',
           },
+          {
+            to: '/futures-chips',
+            label: '籌碼',
+            position: 'left',
+          },
         ],
       },
       footer: {
