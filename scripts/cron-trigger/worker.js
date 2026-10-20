@@ -52,8 +52,8 @@ const SCHEDULE = {
   "07:37": [{ inputs: { mode: "rsThenPrice", limit: "0" } }], // 台灣 15:37
   "12:37": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }], // 台灣 20:37
   "13:37": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }], // 台灣 21:37
-  // 富邦：追蹤表三大法人（台灣 17:00～20:15 多次嘗試，公布後第一次寫入，之後自動略過）
-  "09:00": [FUBON("inst")],
+  // 富邦：追蹤表三大法人（10/20 實測 17:00～17:09 間公布；17:15 起嘗試，公布後第一次寫入，之後自動略過）
+  "09:15": [FUBON("inst")],
   "10:00": [FUBON("inst")],
   "11:00": [FUBON("inst")],
   "11:45": [FUBON("inst")],
