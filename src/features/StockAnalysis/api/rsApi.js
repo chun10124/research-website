@@ -324,6 +324,21 @@ export async function patchIbdrsRatingFromHistory({ onProgress = () => {}, signa
 let fubonCloseBarsCtx = null;
 const rsPriceSourceCount = { fubon: 0, yahoo: 0 };
 
+/**
+ * 待抓清單排序：能用富邦（不打 Yahoo）的排前面、要打 Yahoo 的排後面。
+ * 每批只要含一檔 Yahoo 就得限流休息；Yahoo 檔若散在清單各處（輪值每 10 檔 1 檔），
+ * 幾乎每批都會休息、富邦省下的時間就全吃掉（10/20 實測 1688 富邦／295 Yahoo 仍跑 17 分）。
+ */
+function sortFubonFirst(list, existingMap) {
+  if (!fubonCloseBarsCtx) return list;
+  const fubon = [];
+  const yahoo = [];
+  for (const stock of list) {
+    (buildRsPriceDataFromFubon(stock.id, existingMap[stock.id], fubonCloseBarsCtx) ? fubon : yahoo).push(stock);
+  }
+  return [...fubon, ...yahoo];
+}
+
 /** 本輪 RS 同步各價量來源的檔數（給 daily-sync 記錄用） */
 export function getRsPriceSourceCount() {
   return { ...rsPriceSourceCount, fubonCloseBars: !!fubonCloseBarsCtx };
@@ -675,6 +690,9 @@ async function runMonolithicSync(
     }
   }
 
+  const todoSorted = sortFubonFirst(todoList, existingMap);
+  todoList.length = 0;
+  todoList.push(...todoSorted);
   const todoTotal = todoList.length;
   onProgress({
     phase: 'fetch',
@@ -870,6 +888,11 @@ async function runPriceFetchSlice(
     } else {
       todoSlice.push(stock);
     }
+  }
+  {
+    const sorted = sortFubonFirst(todoSlice, existingMap);
+    todoSlice.length = 0;
+    todoSlice.push(...sorted);
   }
 
   onProgress({
