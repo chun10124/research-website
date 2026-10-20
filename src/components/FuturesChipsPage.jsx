@@ -84,7 +84,8 @@ export default function FuturesChipsPage() {
     // 舊版存過 1m／3m，已拿掉 → 改回半年
     try { const v = localStorage.getItem(RANGE_KEY); return v === '1y' ? '1y' : '6m'; } catch (_) { return '6m'; }
   });
-  const [state, setState] = useState({ loading: true, rows: [], warnings: [], progress: [0, 0], error: null });
+  // rows＝所選區間（表格用）；allRows＝手上全部資料（圖表用，可往前滑到一年前）
+  const [state, setState] = useState({ loading: true, rows: [], allRows: [], warnings: [], progress: [0, 0], error: null });
   const [view, setView] = useState(() => {
     try { return localStorage.getItem(VIEW_KEY) || 'table'; } catch (_) { return 'table'; }
   });
@@ -107,13 +108,15 @@ export default function FuturesChipsPage() {
       .then((stored) => {
         if (stored && stored.from <= start) {
           const s0 = start.replace(/-/g, '/');
-          return { rows: stored.rows.filter((r) => r.date >= s0), warnings: [] };
+          return { rows: stored.rows.filter((r) => r.date >= s0), allRows: stored.rows, warnings: [] };
         }
         return loadFuturesChipTable(start, {
           onProgress: (done, total) => alive && setState((s) => ({ ...s, progress: [done, total] })),
         });
       })
-      .then(({ rows, warnings }) => alive && setState({ loading: false, rows, warnings, progress: [0, 0], error: null }))
+      .then(({ rows, allRows, warnings }) => alive && setState({
+        loading: false, rows, allRows: allRows || rows, warnings, progress: [0, 0], error: null,
+      }))
       .catch((e) => alive && setState((s) => ({ ...s, loading: false, error: e.message })));
     return () => { alive = false; };
   }, [range]);
@@ -184,7 +187,7 @@ export default function FuturesChipsPage() {
         <div className={styles.error}>部分資料缺漏：{warnings.join('；')}</div>
       )}
 
-      {!loading && rows.length > 0 && view === 'chart' && <FuturesChipsChart rows={rows} />}
+      {!loading && rows.length > 0 && view === 'chart' && <FuturesChipsChart rows={state.allRows} visibleFrom={startFor(RANGES.find((r) => r.key === range)?.months ?? 6)} />}
 
       {!loading && rows.length > 0 && view === 'table' && (
         <div className={styles.card}>

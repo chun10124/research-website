@@ -64,7 +64,16 @@ function loadSel() {
   return new Set(DEFAULT_ON);
 }
 
-export default function FuturesChipsChart({ rows }) {
+/** 一打開顯示 visibleFrom 起到最新；更早的資料在左邊，可滑過去看 */
+function showRange(chart, rows, visibleFrom) {
+  const ts = chart.timeScale();
+  const first = rows[0]?.date.replace(/\//g, '-');
+  const last = rows[rows.length - 1]?.date.replace(/\//g, '-');
+  if (!first || !visibleFrom || visibleFrom <= first) { ts.fitContent(); return; }
+  ts.setVisibleRange({ from: visibleFrom, to: last });
+}
+
+export default function FuturesChipsChart({ rows, visibleFrom }) {
   const hostRef = useRef(null);
   const apiRef = useRef(null);
   const [sel, setSel] = useState(loadSel);
@@ -160,7 +169,7 @@ export default function FuturesChipsChart({ rows }) {
       const chipPane = chart.panes()[CHIP_PANE];
       chart.applyOptions({ leftPriceScale: { visible: Object.values(axes).includes('left'), borderVisible: false } });
       chipPane.setHeight(Math.round((hostRef.current.clientHeight || 500) * CHIP_PANE_RATIO));
-      chart.timeScale().fitContent();
+      showRange(chart, rows, visibleFrom);
       chart.subscribeCrosshairMove((param) => setHoverKey(param?.time ? timeKeyOf(param.time) : null));
       const detachWheel = attachWheelHandler(chart, hostRef.current, () => rows.length);
       apiRef.current = { chart, series, detachWheel, leftOn: Object.values(axes).includes('left') };
@@ -173,7 +182,7 @@ export default function FuturesChipsChart({ rows }) {
     };
     // 勾選改變只切 visible（下方 effect），不重建圖
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, dark]);
+  }, [rows, dark, visibleFrom]);
 
   useEffect(() => {
     try { localStorage.setItem(SEL_KEY, JSON.stringify([...sel])); } catch (_) {}
@@ -185,7 +194,7 @@ export default function FuturesChipsChart({ rows }) {
     const leftOn = Object.values(axes).includes('left');
     api.chart.applyOptions({ leftPriceScale: { visible: leftOn } });
     // 左軸出現／消失會改變繪圖寬度，時間軸被擠掉最新幾天 → 重新塞滿整段
-    if (api.leftOn !== leftOn) { api.leftOn = leftOn; requestAnimationFrame(() => api.chart.timeScale().fitContent()); }
+    if (api.leftOn !== leftOn) { api.leftOn = leftOn; requestAnimationFrame(() => showRange(api.chart, rows, visibleFrom)); }
   }, [sel]);
   const axesNow = useMemo(() => axisMap(sel), [sel]);
 
