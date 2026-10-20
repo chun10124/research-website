@@ -100,6 +100,18 @@ def main():
     sdk.init_realtime()
     own = sdk.marketdata.rest_client.stock.ownership
 
+    # 先探測 3 檔大型股：今日尚未公布就直接結束，不必掃完整份清單（掃一次約 7 分鐘、325 次請求）
+    probe_hits = 0
+    for code in ("2330", "2317", "2454"):
+        try:
+            if own.institutional_trades(symbol=code, **{"from": today_s, "to": today_s}).get("data"):
+                probe_hits += 1
+        except Exception:
+            pass
+    if probe_hits < 2:
+        log(f"探測 3 檔僅 {probe_hits} 檔有今日資料，判定尚未公布，結束（等下一次觸發）")
+        return
+
     per_stock, failed, last = {}, [], 0.0
     for i, code in enumerate(codes, 1):
         for attempt in range(3):

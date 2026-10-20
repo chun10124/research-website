@@ -64,6 +64,8 @@ const SCHEDULE = {
 };
 
 const hhmmUtc = (ms) => new Date(ms).toISOString().slice(11, 16);
+/** 台北時間週六、日（富邦工作不派；daily-sync／報告維持每天，由各自的交易日防呆處理） */
+const isTaipeiWeekend = (ms) => [0, 6].includes(new Date(ms + 8 * 3600_000).getUTCDay());
 
 /** 打一次 workflow_dispatch；成功回 204 No Content，其餘視為失敗。 */
 async function dispatch(env, job) {
@@ -89,8 +91,9 @@ async function dispatch(env, job) {
 export default {
   /** Cron Trigger 進入點 */
   async scheduled(event, env, ctx) {
-    const jobs = SCHEDULE[hhmmUtc(event.scheduledTime)];
-    if (!jobs) return; // 每分鐘都會醒，大多數時間沒有工作
+    const weekend = isTaipeiWeekend(event.scheduledTime);
+    const jobs = (SCHEDULE[hhmmUtc(event.scheduledTime)] || []).filter((j) => !(weekend && j.workflow === "fubon-fetch.yml"));
+    if (!jobs.length) return; // 每分鐘都會醒，大多數時間沒有工作
     ctx.waitUntil(
       Promise.all(
         jobs.map((job) => {

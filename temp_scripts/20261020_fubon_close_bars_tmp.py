@@ -75,10 +75,19 @@ def firestore_put(doc_id, payload, date_s, schema):
     log(f"已寫入 Firestore ibdRsMeta/{doc_id}（{len(body)/1024:.0f} KB）")
 
 
+def already_written(today_s):
+    url = (f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT}/databases/(default)/documents/"
+           f"ibdRsMeta/fubonCloseBars_{today_s.replace('-', '')}")
+    return requests.get(url, params={"key": FIREBASE_API_KEY, "mask.fieldPaths": "date"}, timeout=20).status_code == 200
+
+
 def main():
     write = "--write" in sys.argv
     today = datetime.now(TW).date()
     today_s = today.isoformat()
+    if write and already_written(today_s):
+        log("今日收盤 K 棒已寫入過，略過")
+        return
 
     pid, key, cert = credentials()
     sdk = FubonSDK()
