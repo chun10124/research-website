@@ -378,6 +378,18 @@ export async function fetchRsPriceData(stockCode, market, existing = null) {
       openMap[bar.dateStr] = bar.open;
     }
   }
+  // 走 Yahoo 的檔（輪值、除權等）：歷史用 Yahoo（才有配股追溯調整），今日那根改用富邦——
+  // Yahoo 台股延遲約 20 分且偶爾晚更新，同步提早到 14:00 後不能依賴 Yahoo 的今日 K 棒
+  const fb = fubonCloseBarsCtx?.bars?.[stockCode];
+  if (Array.isArray(fb) && fb[3] > 0 && Object.keys(result.priceMap || {}).length > 0) {
+    const t = fubonCloseBarsCtx.date;
+    const [o, h, l, c, lots] = fb;
+    result.priceMap[t] = c;
+    if (o > 0) openMap[t] = o;
+    if (h > 0) result.highMap = { ...(result.highMap || {}), [t]: h };
+    if (l > 0) result.lowMap = { ...(result.lowMap || {}), [t]: l };
+    if (Number.isFinite(lots)) result.volumeMap = { ...(result.volumeMap || {}), [t]: lots * 1000 };
+  }
   // openMap/highMap/lowMap/volumeMap 只存最近 120 天（K 線 + VCP 夠用）
   // priceMap 維持完整（RS 計算需要 15 個月）
   // 註：寫入用 merge，Firestore 逐鍵合併，舊日期不會被刪 —— 資料庫實際累積的天數比這裡多

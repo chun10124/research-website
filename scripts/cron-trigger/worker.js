@@ -45,11 +45,12 @@ const SCHEDULE = {
   "00:50": [FUBON("token")],
   "02:50": [FUBON("token")],
   "04:50": [FUBON("token")],
-  // 富邦：全市場收盤 K 棒＋加權指數（台灣 13:36，14:00 再補一次）
+  // 富邦：全市場收盤 K 棒＋加權指數（台灣 13:36，13:50 補一次；已寫過會自動略過）
   "05:36": [FUBON("closeBars")],
-  "06:00": [FUBON("closeBars")],
+  "05:50": [FUBON("closeBars")],
   // 資料同步
-  "07:37": [{ inputs: { mode: "rsThenPrice", limit: "0" } }], // 台灣 15:37
+  // 台灣 14:00（原 15:37）：富邦收盤 K 棒 13:36 已寫入；Yahoo 延遲 20 分，14:00 也已有最終收盤
+  "06:00": [{ inputs: { mode: "rsThenPrice", limit: "0" } }],
   "12:37": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }], // 台灣 20:37
   "13:37": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }], // 台灣 21:37
   // 富邦：追蹤表三大法人（10/20 實測 17:00～17:09 間公布；17:15 起嘗試，公布後第一次寫入，之後自動略過）
