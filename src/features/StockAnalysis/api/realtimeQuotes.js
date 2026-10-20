@@ -1,14 +1,13 @@
 /**
  * 富邦即時報價（經 Cloudflare Worker research-quote 中繼；只開放 Worker 白名單內的登入者）。
- * 盤中每 10 秒輪詢；收盤後到當晚每分鐘取一次今日收盤（每日同步 15:37 才把今日寫進資料庫，中間這段
- * 若不補，畫面會停在昨天）。週末、未登入、分頁在背景時不打。任何失敗都回 null，呼叫端沿用原本的收盤價。
+ * 盤中每 10 秒輪詢；收盤後到當晚只取「一次」今日收盤（收盤價不會再變；每日同步 15:37 才把今日寫進
+ * 資料庫，中間這段若不補，畫面會停在昨天）。週末、未登入、分頁在背景時不打。任何失敗都回 null，呼叫端沿用原本的收盤價。
  */
 import { useEffect, useState } from 'react';
 import { auth } from '../../../utils/firebaseConfig';
 
 const QUOTE_WORKER_URL = 'https://research-quote.tzuchun11232004.workers.dev';
 const POLL_MS = 10000;
-const AFTER_CLOSE_POLL_MS = 60000;
 
 /** 最後一次成功取得即時價的時間與富邦資料時間；navbar 燈號訂閱這裡 */
 let liveStatus = { okAt: 0, time: null };
@@ -76,12 +75,14 @@ export function useRealtimeQuotes(codes) {
   useEffect(() => {
     if (!key || typeof window === 'undefined') return undefined;
     let cancelled = false;
-    let lastAt = 0;
+    let closeTried = false; // 收盤後每次開頁只打一次（收盤價不會變；國定假日或失敗也不重打）
     const tick = async () => {
       const phase = twMarketPhase();
       if (!phase || document.visibilityState !== 'visible') return;
-      if (phase === 'afterClose' && Date.now() - lastAt < AFTER_CLOSE_POLL_MS) return;
-      lastAt = Date.now();
+      if (phase === 'afterClose') {
+        if (closeTried) return;
+        closeTried = true;
+      }
       const res = await fetchRealtimeQuotes(key.split(','));
       if (cancelled || !res?.quotes) return;
       // 收盤後只採用「今天」的快照（國定假日富邦回的是前一交易日，資料庫已有，不必覆蓋）
