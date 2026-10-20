@@ -2571,7 +2571,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                 : chgPct > 0 ? 'var(--chart-k-up)' : 'var(--chart-k-down)';
               return (
                 <span
-                  title={liveQuote ? '富邦即時報價' : 'Yahoo Finance 日 K 最近一筆；非交易日則為前一交易日收盤'}
+                  title={liveQuote ? (live.closed ? '富邦今日收盤' : '富邦即時報價') : 'Yahoo Finance 日 K 最近一筆；非交易日則為前一交易日收盤'}
                   style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, marginLeft: 6, whiteSpace: 'nowrap' }}
                 >
                   <span style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2, color: priceColor, fontVariantNumeric: 'tabular-nums' }}>
@@ -2583,7 +2583,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                     </span>
                   )}
                   <span style={{ fontSize: 11, lineHeight: 1.2, color: 'var(--app-text-soft)' }}>
-                    {liveQuote && live.time
+                    {liveQuote && live.time && !live.closed
                       ? `即時 ${live.time.slice(0, 2)}:${live.time.slice(2, 4)}`
                       : `${formatYmdSlash(shownQuote.dateStr).slice(5)} 收盤`}
                   </span>

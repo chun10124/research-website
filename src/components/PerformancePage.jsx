@@ -641,7 +641,9 @@ function PerformancePage() {
         >
           <h4 style={{ margin: '0 0 12px 0' }}>
             持倉明細 {pricesLoading ? '（市價載入中…）' : ''}
-            {realtime.time ? `（即時 ${realtime.time.slice(0, 2)}:${realtime.time.slice(2, 4)}:${realtime.time.slice(4, 6)}）` : ''}
+            {realtime.time
+              ? (realtime.closed ? '（今日收盤）' : `（即時 ${realtime.time.slice(0, 2)}:${realtime.time.slice(2, 4)}:${realtime.time.slice(4, 6)}）`)
+              : ''}
           </h4>
           <table
             style={{
