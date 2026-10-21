@@ -176,7 +176,8 @@ export default function FuturesChipsPage() {
           </div>
           <span className={styles.meta}>
             {loading
-              ? `下載期交所資料中${progress[1] ? `（${progress[0]}/${progress[1]}）` : '…'}`
+              // 有總數＝資料庫沒資料、正在向期交所下載；沒有＝還在讀資料庫
+              ? (progress[1] ? `下載期交所資料中（${progress[0]}/${progress[1]}）` : '讀取中…')
               : lastDate && <>資料日期 <b>{lastDate}</b></>}
           </span>
         </div>
