@@ -126,8 +126,8 @@ export default function FuturesChipsChart({ rows, visibleFrom }) {
       });
       idx.setData(rows.filter((r) => r.close != null).map((r) => ({ time: r.date.replace(/\//g, '-'), value: r.close })));
 
-      // 月結算日淡金色直條：兩格各一組，放在填滿整格高度的隱藏刻度上
-      const settleColor = t.dark ? 'rgba(212, 175, 55, 0.14)' : 'rgba(201, 164, 100, 0.18)';
+      // 月結算日直條（中性色，與表格結算列同色系）：兩格各一組，放在填滿整格高度的隱藏刻度上
+      const settleColor = t.dark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(15, 23, 42, 0.08)';
       const settleData = rows.map((r) => {
         const time = r.date.replace(/\//g, '-');
         return r.settleCode === 999 ? { time, value: 1, color: settleColor } : { time };

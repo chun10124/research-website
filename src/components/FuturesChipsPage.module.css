@@ -13,8 +13,8 @@
   --fc-blue: rgba(0, 112, 192, 0.58);
   --fc-amber: rgba(255, 170, 0, 0.75);
   --fc-teal: rgba(13, 148, 136, 0.58);
-  --fc-settle: rgba(201, 164, 100, 0.12);
-  --fc-settle-badge: #a6874e;
+  --fc-settle: rgba(15, 23, 42, 0.07);
+  --fc-settle-line: rgba(15, 23, 42, 0.40);
   --fc-group-line: #94a3b8;     /* 分區分隔線 */
   --fc-pill-sc: rgba(46, 160, 67, 0.20);
   --fc-pill-sc-soft: rgba(46, 160, 67, 0.09);
@@ -36,8 +36,8 @@
   --fc-blue: rgba(96, 165, 250, 0.60);
   --fc-amber: rgba(250, 190, 60, 0.62);
   --fc-teal: rgba(45, 212, 191, 0.50);
-  --fc-settle: rgba(212, 175, 55, 0.08);
-  --fc-settle-badge: #d4af37;
+  --fc-settle: rgba(255, 255, 255, 0.09);
+  --fc-settle-line: rgba(255, 255, 255, 0.45);
   --fc-group-line: #5b6470;
   --fc-pill-sc: rgba(74, 222, 128, 0.18);
   --fc-pill-sc-soft: rgba(74, 222, 128, 0.08);
@@ -207,7 +207,11 @@
 .up { color: var(--k-up); }
 .down { color: var(--k-down); }
 
-.settleRow td { background-color: var(--fc-settle); }
+/* 月結算日：整列底色＋上下金線，一眼看得出（當天散戶多空下陷、隔天留倉差暴增都是結算造成，數字不另處理） */
+.settleRow td {
+  background-color: var(--fc-settle);
+  box-shadow: inset 0 1px 0 var(--fc-settle-line), inset 0 -1px 0 var(--fc-settle-line);
+}
 .settleRow td.stickyCol,
 .settleRow td.stickyCol2 {
   /* 固定欄要實心底，否則左右捲時底下的格子會透出來 */
@@ -218,8 +222,8 @@
   display: inline-block;
   padding: 0 6px;
   border-radius: 999px;
-  border: 1px solid var(--fc-settle-badge);
-  color: var(--fc-settle-badge);
+  background: var(--app-text);
+  color: var(--app-surface);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
