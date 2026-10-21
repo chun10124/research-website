@@ -10,15 +10,23 @@ import { auth } from '../../../utils/firebaseConfig';
 const QUOTE_WORKER_URL = 'https://research-quote.tzuchun11232004.workers.dev';
 const POLL_MS = 5000;
 
-/** 最後一次成功取得即時價的時間與富邦資料時間；navbar 燈號訂閱這裡 */
-let liveStatus = { okAt: 0, time: null };
+/**
+ * navbar 燈號訂閱的狀態：
+ *   active    目前掛著幾個即時報價 hook（0＝本頁沒有要即時價的東西，不亮燈）
+ *   okAt      盤中最後一次成功取得今日即時價；closeOkAt 收盤後成功取得今日收盤
+ *   time      富邦資料時間 HHMMSS
+ *   waitUntil 開頁等第一筆即時價的截止時間（之前不亮燈，之後還沒成功＝顯示的是資料庫價格→橘燈）
+ *   failAt    最後一次失敗（請求失敗、逾時）
+ *   holiday   今天富邦快照不是今日（國定假日）→ 不亮燈
+ */
+let liveStatus = { active: 0, okAt: 0, closeOkAt: 0, time: null, waitUntil: 0, failAt: 0, holiday: null };
 const liveListeners = new Set();
-const setLiveStatus = (next) => {
-  liveStatus = next;
+const setLiveStatus = (patch) => {
+  liveStatus = { ...liveStatus, ...patch };
   liveListeners.forEach((fn) => fn(liveStatus));
 };
 
-/** 燈號用：{ okAt, time }，okAt 為 0 表示本次開頁尚未成功過 */
+/** 燈號用的即時報價狀態（見 liveStatus） */
 export function useRealtimeStatus() {
   const [st, setSt] = useState(liveStatus);
   useEffect(() => {
@@ -102,13 +110,20 @@ export async function fetchRealtimeQuotes(codes) {
     const r = await fetch(`${QUOTE_WORKER_URL}/quotes?ids=${encodeURIComponent(ids.join(','))}`, {
       headers: { authorization: `Bearer ${idToken}` },
     });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      setLiveStatus({ failAt: Date.now() });
+      return null;
+    }
     const data = await r.json();
-    // 綠燈只代表「盤中即時」；收盤後拿的是今日收盤，不亮燈
-    if (data?.quotes && isTwMarketSession()) setLiveStatus({ okAt: Date.now(), time: data.time || null });
+    if (data?.quotes) {
+      if (data.date !== taipeiToday()) setLiveStatus({ holiday: taipeiToday() });
+      else if (isTwMarketSession()) setLiveStatus({ okAt: Date.now(), time: data.time || null, holiday: null });
+      else setLiveStatus({ closeOkAt: Date.now(), time: data.time || null, holiday: null });
+    }
     return data;
   } catch (e) {
     console.warn('[即時報價] 取得失敗:', e?.message || e);
+    setLiveStatus({ failAt: Date.now() });
     return null;
   }
 }
@@ -133,7 +148,12 @@ export function useRealtimeQuotes(codes) {
     const seed = seedFromCache(key.split(','));
     setState(seed || empty);
     setReady(!twMarketPhase() || !!seed?.complete);
-    const giveUp = setTimeout(() => setReady(true), FIRST_QUOTE_TIMEOUT_MS);
+    let gotLive = !!seed?.complete;
+    setLiveStatus({ active: liveStatus.active + 1, waitUntil: gotLive ? 0 : Date.now() + FIRST_QUOTE_TIMEOUT_MS });
+    const giveUp = setTimeout(() => {
+      setReady(true);
+      if (!gotLive && twMarketPhase() && auth?.currentUser) setLiveStatus({ failAt: Date.now() });
+    }, FIRST_QUOTE_TIMEOUT_MS);
     let cancelled = false;
     let closeTried = false; // 收盤後每次開頁只打一次（收盤價不會變；國定假日或失敗也不重打）
     const tick = async () => {
@@ -146,8 +166,12 @@ export function useRealtimeQuotes(codes) {
       }
       const res = await fetchRealtimeQuotes(key.split(','));
       if (cancelled || !res?.quotes) return;
-      // 收盤後只採用「今天」的快照（國定假日富邦回的是前一交易日，資料庫已有，不必覆蓋）
-      if (phase === 'afterClose' && res.date !== taipeiToday()) return;
+      // 只採用「今天」的快照（國定假日富邦回的是前一交易日，資料庫已有，不必覆蓋、也不算即時）
+      if (res.date !== taipeiToday()) {
+        setReady(true);
+        return;
+      }
+      gotLive = true;
       writeCache(res, phase === 'afterClose');
       const prices = {};
       const quotes = {};
@@ -170,6 +194,7 @@ export function useRealtimeQuotes(codes) {
       clearInterval(t);
       clearTimeout(giveUp);
       unsub();
+      setLiveStatus({ active: Math.max(0, liveStatus.active - 1) });
     };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
