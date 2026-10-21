@@ -13,7 +13,7 @@
  *   vars        FIREBASE_PROJECT、ALLOWED_UIDS（逗號分隔）、ALLOWED_ORIGINS（逗號分隔）
  */
 
-const QUOTE_CACHE_MS = 8000;
+const QUOTE_CACHE_MS = 4000;
 const MAX_IDS = 300;
 const JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 

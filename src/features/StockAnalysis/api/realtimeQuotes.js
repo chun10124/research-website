@@ -1,13 +1,13 @@
 /**
  * 富邦即時報價（經 Cloudflare Worker research-quote 中繼；只開放 Worker 白名單內的登入者）。
- * 盤中每 10 秒輪詢；收盤後到當晚只取「一次」今日收盤（收盤價不會再變；每日同步 15:37 才把今日寫進
+ * 盤中每 5 秒輪詢；收盤後到當晚只取「一次」今日收盤（收盤價不會再變；每日同步 14:00 才把今日寫進
  * 資料庫，中間這段若不補，畫面會停在昨天）。週末、未登入、分頁在背景時不打。任何失敗都回 null，呼叫端沿用原本的收盤價。
  */
 import { useEffect, useState } from 'react';
 import { auth } from '../../../utils/firebaseConfig';
 
 const QUOTE_WORKER_URL = 'https://research-quote.tzuchun11232004.workers.dev';
-const POLL_MS = 10000;
+const POLL_MS = 5000;
 
 /** 最後一次成功取得即時價的時間與富邦資料時間；navbar 燈號訂閱這裡 */
 let liveStatus = { okAt: 0, time: null };
