@@ -157,8 +157,8 @@ export default function FuturesChipsChart({ rows, visibleFrom }) {
           visible: sel.has(l.key),
           priceFormat: { type: 'custom', formatter: fmtAxis, minMove: 1 },
         }, CHIP_PANE);
-        // 結算日不畫點，前後兩天直接連線
-        s.setData(rows.filter((r) => r.settleCode !== 999).map((r) => {
+        // 結算日照常畫點（當天散戶多空會下陷，是到期月扣除造成；由直條標示、讓人自行判斷）
+        s.setData(rows.map((r) => {
           const v = l.get(r);
           const time = r.date.replace(/\//g, '-');
           return v == null ? { time } : { time, value: v };
