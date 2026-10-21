@@ -26,6 +26,14 @@ const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
 const parseYmd = (s) => { const [y, m, d] = s.split('/').map(Number); return new Date(y, m - 1, d); };
 const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
+/** 月契約（YYYYMM）的到期日＝當月第三個星期三；遇假日順延到下一個交易日，所以只會更晚、用「>=」判斷即可 */
+const thirdWednesday = (m) => {
+  const first = new Date(+m.slice(0, 4), +m.slice(4) - 1, 1);
+  first.setDate(1 + ((3 - first.getDay() + 7) % 7) + 14);
+  return ymd(first);
+};
+/** 月契約 m 最後出現在 d：之後還有資料（已消失），或 d 已到第三個星期三（結算日當天，隔天資料還沒出來）→ d 是它的結算日 */
+const isSettleDay = (m, d, end) => d < end || d >= thirdWednesday(m);
 const taipeiToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }).replace(/-/g, '/');
 const num = (x) => {
   const s = String(x ?? '').replace(/,/g, '').trim();
@@ -228,11 +236,11 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
   }
 
   const txDays = Object.keys(tx).sort();
-  // 月結算日：月契約最後一次出現的交易日（且之後還有資料，代表已到期）
+  // 月結算日：月契約最後一次出現的交易日（之後還有資料，或已到第三個星期三＝結算日當天就標）
   const lastSeen = {};
   for (const d of txDays) for (const m of Object.keys(tx[d])) if (/^\d{6}$/.test(m)) lastSeen[m] = d;
   const lastDay = txDays[txDays.length - 1];
-  const settleDays = new Set(Object.values(lastSeen).filter((d) => d < lastDay));
+  const settleDays = new Set(Object.entries(lastSeen).filter(([m, d]) => isSettleDay(m, d, lastDay)).map(([, d]) => d));
 
   const spreadOf = (d) => {
     const ms = Object.keys(tx[d] || {}).filter((m) => /^\d{6}$/.test(m) && tx[d][m] > 0).sort();
@@ -246,7 +254,7 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
     for (const d of days) for (const m of Object.keys(oiMap[d])) last[m] = d;
     const out = {};
     for (const d of days) {
-      out[d] = Object.entries(oiMap[d]).reduce((s, [m, v]) => (/^\d{6}$/.test(m) && last[m] === d && d < end ? s : s + v), 0);
+      out[d] = Object.entries(oiMap[d]).reduce((s, [m, v]) => (/^\d{6}$/.test(m) && last[m] === d && isSettleDay(m, d, end) ? s : s + v), 0);
     }
     return out;
   };
