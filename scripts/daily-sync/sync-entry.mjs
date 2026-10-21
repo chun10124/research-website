@@ -45,7 +45,9 @@ if (MODE === 'futuresChips') {
   const { buildAndStoreFuturesChips } = await import('../../src/features/FuturesChips/futuresChipsStore.js');
   console.log('[futuresChips] 開始…');
   const dryRun = process.env.FUTURES_DRY === '1'; // 本機測試：只算不寫
-  const r = await buildAndStoreFuturesChips({ dryRun });
+  const force = process.env.FUTURES_FORCE === '1'; // 今天已有完整資料也照樣重抓
+  const r = await buildAndStoreFuturesChips({ dryRun, force });
+  if (r.skipped) { console.log(`[futuresChips] ⏭️ 今天（${r.through}）已有完整資料，略過`); process.exit(0); }
   if (dryRun) { console.log('[futuresChips] DRY 最新一列', JSON.stringify(r.sample)); }
   console.log(`[futuresChips] ✅ ${dryRun ? '(DRY 未寫入) ' : ''}寫入 ${r.count} 列，最新 ${r.through}，${Math.round(r.bytes / 1024)} KB；原始資料 ${Math.round(r.rawBytes / 1024)} KB、新存 ${r.newChunks} 段`);
   process.exit(0);
