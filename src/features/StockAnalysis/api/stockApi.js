@@ -1318,7 +1318,14 @@ export const syncStockSnapshots = async (stock, { syncMode = 'all' } = {}) => {
     const hasHoldingsData = stock.history?.foreignTotalHolding?.length > 0;
     // 加入 hasHoldingsData 判斷：即使日期夠新，若資料是空陣列也必須重抓（防止空資料卡死）
     const skipHoldingsThisSync = hasHoldingsData && stock.latestHoldingsDate >= holdingsFreshnessBound(stock.latestPriceDate);
-    const skipInstThisSync = stock.history?.instDates?.length > 0 && stock.latestInstDate >= instFreshnessBound(stock.market, stock.latestPriceDate);
+    // 富邦法人約 17:10 上市、上櫃一起公布，比 FinMind（上櫃 20:00）早：當晚富邦資料比既有新就不跳過，
+    // 否則 17:30 那場上櫃股會被新鮮度基準（20:00）判定為已新鮮而略過
+    const fubonInst = await loadFubonInst(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }));
+    const fubonInstRows = fubonInst?.rows?.[String(stock.code ?? stock.id ?? '').replace(/\.(TW|TWO)$/i, '')];
+    const fubonHasNewerInst = Array.isArray(fubonInstRows) && fubonInstRows.some((r) => r[0] > (stock.latestInstDate || ''));
+    const skipInstThisSync = stock.history?.instDates?.length > 0
+      && stock.latestInstDate >= instFreshnessBound(stock.market, stock.latestPriceDate)
+      && !fubonHasNewerInst;
     const havePriceData = stock.latestPriceDate === todayStr && stock.history?.priceClose?.length > 0;
     const haveLatestPrice = havePriceData;
     const opts = {};

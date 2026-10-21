@@ -57,6 +57,9 @@ const SCHEDULE = {
   "13:37": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }], // 台灣 21:37
   // 富邦：追蹤表三大法人（10/20 實測 17:00～17:09 間公布；17:15 起嘗試，公布後第一次寫入，之後自動略過）
   "09:15": [FUBON("inst")],
+  // 台灣 17:30：三大法人同步（讀 17:15 富邦寫入的資料）。20:37 那場保留當備援——
+  // 17:30 已更新就因新鮮度判斷自動略過、不吃 FinMind；富邦當天失敗則照舊由 FinMind 補
+  "09:30": [{ inputs: { mode: "holdingsRevenue", limit: "0" } }],
   "10:00": [FUBON("inst"), { inputs: { mode: "futuresChips", limit: "0" } }], // 富邦法人＋籌碼頁補跑（台灣 18:00）
   "11:00": [FUBON("inst")],
   "11:45": [FUBON("inst")],
