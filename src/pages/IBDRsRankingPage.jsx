@@ -2555,7 +2555,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
               {marketBadge.text}
             </span>
             {/* 第二層：收盤價（大、依漲跌上色）＋漲跌幅；日期退成小灰字 */}
-            {(liveQuote || closeQuote != null) ? (() => {
+            {live.ready && (liveQuote || closeQuote != null) ? (() => {
               const shownQuote = liveQuote
                 ? {
                   dateStr: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }),

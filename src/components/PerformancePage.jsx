@@ -139,18 +139,22 @@ function PerformancePage() {
 
   // 盤中即時價（富邦，經 Worker；僅白名單登入者）優先於收盤價
   const realtime = useRealtimeQuotes(holdingCodes);
+  // 開頁等第一筆即時價時視同市價載入中：不先秀資料庫（昨日）價格，拿到即時價或逾時才顯示
+  const marketPricesPending = pricesLoading || (holdingCodes.length > 0 && !realtime.ready);
 
   // ── 損益 ──────────────────────────────────────────────────
   const { totalRealizedPnl } = allTimeSummary;
 
   const holdingsWithPnl = useMemo(() => {
     return holdings.map((s) => {
-      const mktPrice = realtime.prices[String(s.code).replace(/\.(TW|TWO)$/i, '')] ?? prices[s.code] ?? null;
+      const mktPrice = realtime.ready
+        ? (realtime.prices[String(s.code).replace(/\.(TW|TWO)$/i, '')] ?? prices[s.code] ?? null)
+        : null;
       // 淨額：已扣預估平倉手續費、證交稅與融資應計利息
       const unrealizedPnl = mktPrice != null && mktPrice > 0 ? calcUnrealizedPnl(s, mktPrice) : 0;
       return { ...s, mktPrice, unrealizedPnl };
     });
-  }, [holdings, prices, realtime.prices]);
+  }, [holdings, prices, realtime.prices, realtime.ready]);
 
   const totalUnrealizedPnl = useMemo(
     () => Math.round(holdingsWithPnl.reduce((s, h) => s + h.unrealizedPnl, 0)),
@@ -333,7 +337,7 @@ function PerformancePage() {
 
       {/* ── 摘要卡片（市價/歷史價未齊時不顯示易錯的數值，避免閃爍） ─────────────────────────────────────── */}
       {(() => {
-        const pendingPrices = holdingCodes.length > 0 && pricesLoading;
+        const pendingPrices = holdingCodes.length > 0 && marketPricesPending;
         const pendingCurve = curveCodes.length > 0 && historicalPricesLoading;
         const showUnrealized = !pendingPrices;
         const showTotalAssets = !pendingPrices && !pendingCurve && !dividendsLoading;
@@ -352,7 +356,7 @@ function PerformancePage() {
                 sub: dividendNote,
               },
               {
-                label: `總未實現損益${pricesLoading ? ' (載入中…)' : ''}`,
+                label: `總未實現損益${marketPricesPending ? ' (載入中…)' : ''}`,
                 value: showUnrealized ? formatPnl(totalUnrealizedPnl) : '—',
                 style: showUnrealized ? pnlColor(totalUnrealizedPnl) : {},
                 sub: showUnrealized && holdingCodes.length > 0 && totalUnrealizedPnl === 0
@@ -381,7 +385,7 @@ function PerformancePage() {
 
       {/* ── 區間報酬率（數字算好前顯示 —） ───────────────────────────────────── */}
       {(() => {
-        const tableReady = !(curveCodes.length > 0 && historicalPricesLoading);
+        const tableReady = !(curveCodes.length > 0 && historicalPricesLoading) && !(holdingCodes.length > 0 && !realtime.ready);
         return (
           <div
             style={{ ...sectionStyle, border: `1px solid ${GOLDEN_BORDER}`, borderRadius: 8, padding: 16, marginBottom: 24 }}
@@ -640,7 +644,7 @@ function PerformancePage() {
           }}
         >
           <h4 style={{ margin: '0 0 12px 0' }}>
-            持倉明細 {pricesLoading ? '（市價載入中…）' : ''}
+            持倉明細 {marketPricesPending ? '（市價載入中…）' : ''}
             {realtime.time
               ? (realtime.closed ? '（今日收盤）' : `（即時 ${realtime.time.slice(0, 2)}:${realtime.time.slice(2, 4)}:${realtime.time.slice(4, 6)}）`)
               : ''}

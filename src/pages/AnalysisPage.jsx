@@ -411,8 +411,8 @@ const AnalysisPage = () => {
                         marginTop: '-8px'
                     }}>
                         <IndustryAnalysisTable
-                            stocks={stocks}
-                            loading={loading}
+                            stocks={live.ready ? stocks : []}
+                            loading={loading || !live.ready}
                             refreshData={refreshData}
                             bigColumnConfig={bigColumnConfig}
                             columnLabels={columnLabels}
