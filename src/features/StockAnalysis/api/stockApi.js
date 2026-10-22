@@ -708,6 +708,34 @@ export const fetchIndexPriceMap = async (startStr, endStr) => {
   }
 };
 
+/** 加權指數日線盤中高低 → { priceMap, highMap, lowMap }，鍵為 YYYY-MM-DD；籌碼頁波段回測用。
+    富邦（fubonIndexDaily 的 highs/lows）優先；Yahoo ^TWII 補富邦沒有的日子（Yahoo 偶爾整根 K 棒是 null，例：2026-10-21） */
+export const fetchIndexHighLowMaps = async (startStr, endStr) => {
+  const start = (startStr || '').slice(0, 10);
+  const end = (endStr || '').slice(0, 10);
+  const out = { priceMap: {}, highMap: {}, lowMap: {} };
+  if (!start) return out;
+  const inRange = (d) => d >= start && (!end || d <= end);
+  try {
+    const startDay = new Date(start).getTime() / (24 * 60 * 60 * 1000);
+    const endDay = end ? new Date(end).getTime() / (24 * 60 * 60 * 1000) : startDay + 365;
+    const json = await fetchYahooChart('^TWII', yahooRangeForDays(Math.ceil(endDay - startDay) + 1));
+    if (json) Object.assign(out, parseChartToPriceVolumeMaps(json, start, end));
+  } catch (e) {
+    console.warn('fetchIndexHighLowMaps(^TWII) failed:', e?.message);
+  }
+  const fb = await loadFubonIndexDaily();
+  for (const [d, h] of Object.entries(fb?.highs || {})) {
+    const l = fb.lows?.[d], c = fb.closes?.[d];
+    if (!inRange(d) || !(h > 0) || !(l > 0) || !(c > 0)) continue;
+    out.highMap[d] = h;
+    out.lowMap[d] = l;
+    out.priceMap[d] = c;
+  }
+  delete out.volumeMap;
+  return out;
+};
+
 /** 僅抓該股票最新收盤價，供績效頁未實現損益用（改走 Yahoo，不依賴 FinMind token） */
 export const fetchCurrentPrice = async (stockCode) => {
   const code = String(stockCode || '').trim();

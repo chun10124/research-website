@@ -12,7 +12,10 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../utils/firebaseConfig';
 import { loadFuturesChipTable, exportPermanentChunks, importPermanentChunks, getNetFetchCount } from './taifexApi';
 
-const SCHEMA = 1;
+// 2：加入外資期貨、外資 PUT、BC 過熱燈號、波段回測欄位
+const SCHEMA = 2;
+// 原始區段另計版本：鍵本身帶種類（oi／inst2／opt2），格式改了換種類名就好，舊的每日行情區段照用，不必整批重抓（會被限流）
+const RAW_SCHEMA = 1;
 const DOC_REF = () => doc(db, 'ibdRsMeta', 'futuresChips');
 const RAW_REF = () => doc(db, 'ibdRsMeta', 'futuresChipsRaw');
 const RAW_MAX_BYTES = 900 * 1024; // Firestore 單一文件上限 1 MiB
@@ -53,7 +56,7 @@ export async function buildAndStoreFuturesChips({ log = console.log, dryRun = fa
   let saved = {};
   try {
     const snap = await getDoc(RAW_REF());
-    if (snap.exists() && snap.data()?.schema === SCHEMA) saved = JSON.parse(snap.data().json || '{}');
+    if (snap.exists() && snap.data()?.schema === RAW_SCHEMA) saved = JSON.parse(snap.data().json || '{}');
   } catch (e) { log(`[futuresChips] 讀原始資料失敗，全部重抓：${e?.message}`); }
   importPermanentChunks(saved);
   log(`[futuresChips] 已存原始區段 ${Object.keys(saved).length} 段`);
@@ -71,16 +74,18 @@ export async function buildAndStoreFuturesChips({ log = console.log, dryRun = fa
   await setDoc(DOC_REF(), { schema: SCHEMA, json, through, updatedAt: Date.now() });
   if (newChunks > 0) {
     if (rawJson.length > RAW_MAX_BYTES) log(`[futuresChips] ⚠️ 原始資料 ${Math.round(rawJson.length / 1024)} KB 超過上限，不存（下次會全部重抓）`);
-    else await setDoc(RAW_REF(), { schema: SCHEMA, json: rawJson, updatedAt: Date.now() });
+    else await setDoc(RAW_REF(), { schema: RAW_SCHEMA, json: rawJson, updatedAt: Date.now() });
   }
   return { count: rows.length, through, bytes: json.length, rawBytes: rawJson.length, newChunks };
 }
 
-/** 頁面呼叫：讀預算資料；沒有、格式不符、或太舊回 null */
+/** 頁面呼叫：讀預算資料；沒有、格式不符、或太舊回 null。
+    舊版（schema 1，沒有外資期貨等新欄位）照樣用，新欄位留白——改版後到第一次同步之前，不必等即時抓一年份 */
 export async function readStoredFuturesChips() {
   try {
     const snap = await getDoc(DOC_REF());
-    if (!snap.exists() || snap.data()?.schema !== SCHEMA) return null;
+    const schema = snap.exists() ? snap.data()?.schema : null;
+    if (!(schema >= 1 && schema <= SCHEMA)) return null;
     const p = JSON.parse(snap.data().json || 'null');
     if (!p?.rows?.length || daysBetween(p.through, taipeiToday()) > STALE_DAYS) return null;
     return { ...p, updatedAt: snap.data().updatedAt };

@@ -166,7 +166,7 @@ def main():
     log(f"本機已存：{out.relative_to(ROOT)}（{out.stat().st_size/1024:.0f} KB）")
 
     # 4. 加權指數日收盤（前端 ^TWII 改讀這份；圖表最多回溯約 930 天 → 抓 3 個一年區段）
-    index_closes = {}
+    index_closes, index_highs, index_lows = {}, {}, {}  # 高低點給籌碼頁的波段回測
     try:
         for k in range(3):
             end = today - timedelta(days=365 * k)
@@ -175,12 +175,19 @@ def main():
                                             timeframe="D", sort="asc").get("data", [])
             for row in rows:
                 index_closes[row["date"][:10]] = row["close"]
+                if num(row.get("high")) and num(row.get("low")):
+                    index_highs[row["date"][:10]] = row["high"]
+                    index_lows[row["date"][:10]] = row["low"]
         q = stock.intraday.quote(symbol="IX0001")  # 日 K 16:30 才有今日 → 以盤後報價補今日收盤
         if q.get("date") == today_s and num(q.get("closePrice")) and datetime.now(TW).strftime("%H%M") >= "1335":
             index_closes.setdefault(today_s, q["closePrice"])
+            if num(q.get("highPrice")) and num(q.get("lowPrice")):
+                index_highs.setdefault(today_s, q["highPrice"])
+                index_lows.setdefault(today_s, q["lowPrice"])
         index_payload = {"schema": 1, "symbol": "IX0001", "through": max(index_closes),
                          "start": min(index_closes), "generatedAt": datetime.now(TW).isoformat(),
-                         "closes": dict(sorted(index_closes.items()))}
+                         "closes": dict(sorted(index_closes.items())),
+                         "highs": dict(sorted(index_highs.items())), "lows": dict(sorted(index_lows.items()))}
         (OUT_DIR / f"index_{today_s.replace('-', '')}.json").write_text(
             json.dumps(index_payload, ensure_ascii=False, separators=(",", ":")))
         log(f"加權指數 {len(index_closes)} 天（{index_payload['start']} ~ {index_payload['through']}）")

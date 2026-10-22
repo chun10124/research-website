@@ -14,7 +14,8 @@ const VIEWS = [{ key: 'table', label: '表格' }, { key: 'chart', label: '圖表
 const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 
 // 欄寬（表頭與表身是兩張表，靠同一組 colgroup 對齊；日期、結算兩欄寬度要和 CSS 的 sticky left 一致）
-const COL_WIDTHS = [42, 34, 104, 72, 64, 90, 90, 90, 90, 90, 90, 84, 84, 84, 84, 104, 104, 104, 320];
+// 順序：日期、結算｜留倉差、加權、漲跌、波段回測｜散戶 6｜位階 4｜外資期貨 4｜CALL：淨口、淨金、BC 較結算、BC 金額、結構｜PUT 3
+const COL_WIDTHS = [42, 34, 104, 72, 64, 74, 90, 90, 90, 90, 90, 90, 84, 84, 84, 84, 96, 86, 96, 96, 104, 104, 104, 92, 320, 96, 96, 104];
 const TABLE_WIDTH = COL_WIDTHS.reduce((a, b) => a + b, 0);
 const Cols = () => <colgroup>{COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>;
 
@@ -23,6 +24,7 @@ const fmtSigned = (v) => (v == null ? '' : `${v > 0 ? '+' : ''}${Math.round(v).t
 const fmtIdx = (v) => (v == null ? '' : Math.round(v).toLocaleString('en-US'));
 const fmtPct = (v) => { if (v == null) return ''; const n = Math.round(v); return `${n > 0 ? '+' : ''}${n}%`; };
 const fmtDate = (d) => { const [, m, dd] = d.split('/'); return `${+m}/${+dd}`; };
+const fmtYi = (v) => (v == null ? '' : `${(v / 1e5).toFixed(1)}`); // 千元 → 億
 
 function startFor(months) {
   const d = new Date();
@@ -34,7 +36,7 @@ const BAR_MAX = 0.8; // 長條最多佔格子 80%（正負長條則是半格的 
 
 /** 資料長條墊在數字後面，最多佔 BAR_MAX 格（數字疊在上面，像 Excel 資料橫條）。gs＝分區第一欄（左側粗線）。
     給 min 時改以 [min, max] 區間畫（最短留 6%）：看多／看空這類水位從 0 畫每天都差不多長，看不出變化 */
-function BarCell({ value, max, min, color, text, gs, className = '' }) {
+function BarCell({ value, max, min, color, text, gs, title, className = '' }) {
   let w = 0;
   if (value != null && max) {
     w = min != null && max > min
@@ -43,7 +45,7 @@ function BarCell({ value, max, min, color, text, gs, className = '' }) {
     w *= BAR_MAX;
   }
   return (
-    <td className={`${styles.num} ${styles.barCell} ${gs ? styles.gs : ''} ${className}`}>
+    <td className={`${styles.num} ${styles.barCell} ${gs ? styles.gs : ''} ${className}`} title={title}>
       <span className={`${styles.bar} ${styles[color]}`} style={{ width: `${w}%` }} />
       <span className={styles.barText}>{text}</span>
     </td>
@@ -143,6 +145,13 @@ export default function FuturesChipsPage() {
       callOi: p95((r) => r.callNetOi),
       callAmt: p95((r) => r.callNetAmt),
       bc: p95((r) => r.bcVsSettle),
+      bcAmt: p95((r) => r.bcAmt),
+      fxNet: p95((r) => r.fxNet),
+      fxChg: p95((r) => r.fxNetChg),
+      fxSettle: p95((r) => [r.fxSettleTx, r.fxSettleAll]),
+      put: p95((r) => [r.bpAmt, r.spAmt]),
+      putNet: p95((r) => r.putNetChg),
+      dd: Math.max(5, ...state.rows.map((r) => r.swingDd || 0)),
     };
   }, [state.rows]);
 
@@ -198,10 +207,12 @@ export default function FuturesChipsPage() {
               <thead>
                 <tr className={styles.groupRow}>
                   <th className={styles.stickyCol} colSpan={2} />
-                  <th className={`${styles.gOi} ${styles.gs}`} colSpan={3}>留倉・大盤</th>
+                  <th className={`${styles.gOi} ${styles.gs}`} colSpan={4}>留倉・大盤</th>
                   <th className={`${styles.gRetail} ${styles.gs}`} colSpan={6}>散戶多空（口）</th>
                   <th className={`${styles.gLevel} ${styles.gs}`} colSpan={4}>散戶位階（微台）</th>
-                  <th className={`${styles.gForeign} ${styles.gs}`} colSpan={4}>外資選擇權布局</th>
+                  <th className={`${styles.gFut} ${styles.gs}`} colSpan={4}>外資期貨（口）</th>
+                  <th className={`${styles.gForeign} ${styles.gs}`} colSpan={5}>外資選擇權布局</th>
+                  <th className={`${styles.gPut} ${styles.gs}`} colSpan={3}>外資賣權（千元）</th>
                 </tr>
                 <tr className={styles.colRow}>
                   <th className={styles.stickyCol}>日期</th>
@@ -209,6 +220,7 @@ export default function FuturesChipsPage() {
                   <th className={`${styles.tOi} ${styles.gs}`} title="大台一般盤：近月未平倉 − 次月未平倉，取日變化">近月留倉差<br />增減</th>
                   <th className={styles.tOi}>加權指數</th>
                   <th className={styles.tOi}>漲跌</th>
+                  <th className={styles.tOi} title="加權指數本波最大回測：波段盤中高點到之後的盤中最低。自高點回落 5% 以上、再從低點反彈 8% 以上，就從反彈那天起算新波段">波段<br />回測</th>
                   <th className={`${styles.tRetail} ${styles.gs}`}>小台<br />看多</th>
                   <th className={styles.tRetail}>小台<br />看空</th>
                   <th className={styles.tRetail} title="（今天看多 − 看空）−（前一日看多 − 看空）；負＝偏空">小台<br />淨增減</th>
@@ -219,10 +231,18 @@ export default function FuturesChipsPage() {
                   <th className={styles.tLevel} title="自訂近似（原公式未能反推）：當日空單口數變化率，在近一年（250 個交易日）中的百分位，帶增減正負號">空單變化<br />強度</th>
                   <th className={styles.tLevel} title="微台散戶多單比例在上市以來全部歷史中的百分位">多單持倉<br />占比</th>
                   <th className={styles.tLevel}>空單持倉<br />占比</th>
+                  <th className={`${styles.tFut} ${styles.gs}`} title="外資臺指期（大台）多空未平倉淨口數">淨未平倉<br />（大台）</th>
+                  <th className={styles.tFut}>日增減</th>
+                  <th className={styles.tFut} title="外資大台淨未平倉 − 上次月結算日的值">較結算日<br />（大台）</th>
+                  <th className={styles.tFut} title="外資淨未平倉換算成大台（大台＋小台÷4＋微台÷20）− 上次月結算日的值">較結算日<br />（大小微）</th>
                   <th className={`${styles.tForeign} ${styles.gs}`} title="外資臺指選擇權買權（CALL）未平倉淨口數">CALL 淨<br />未平倉口數</th>
                   <th className={styles.tForeign} title="外資臺指選擇權買權（CALL）未平倉淨金額（千元）">CALL 淨<br />未平倉金額</th>
                   <th className={styles.tForeign} title="外資 BC 未平倉金額 − 上次月結算日 BC 金額（千元）">BC 金額<br />較結算日</th>
+                  <th className={styles.tForeign} title="外資 BC 未平倉金額（億）。過熱 ≥ 約 10.5 億、紫爆 ≥ 約 20 億，門檻由貼文日期反推">BC 金額<br />（億）</th>
                   <th className={`${styles.tForeign} ${styles.wide}`}>CALL 淨額結構（5 日 ／ 20 日）</th>
+                  <th className={`${styles.tPut} ${styles.gs}`} title="外資買進賣權（BP）未平倉金額">BP 金額</th>
+                  <th className={styles.tPut} title="外資賣出賣權（SP）未平倉金額">SP 金額</th>
+                  <th className={styles.tPut} title="當日 SP 金額增加 − BP 金額增加；正＝SP 增加較多">SP−BP<br />增減</th>
                 </tr>
               </thead>
             </table>
@@ -251,6 +271,13 @@ export default function FuturesChipsPage() {
                     <td className={`${styles.num} ${styles.bold} ${r.change == null ? '' : r.change >= 0 ? styles.up : styles.down}`}>
                       {fmtSigned(r.change)}
                     </td>
+                    <BarCell
+                      value={r.swingDd}
+                      max={max.dd}
+                      color="barGreen"
+                      text={r.swingDd == null ? '' : `${r.swingDd.toFixed(1)}%`}
+                      title={r.swingHighDate ? `波段高點 ${fmtDate(r.swingHighDate)} ${fmtIdx(r.swingHigh)}` : undefined}
+                    />
                     <BarCell gs value={r.mtxRetail?.[0]} min={max.mtxMin} max={max.mtx} color="barAmber" text={fmtInt(r.mtxRetail?.[0])} />
                     <BarCell value={r.mtxRetail?.[1]} min={max.mtxMin} max={max.mtx} color="barBlue" text={fmtInt(r.mtxRetail?.[1])} />
                     <DivergingCell value={r.mtxNetChg} max={max.mtxNet} up="barRed" down="barGreen" text={fmtSigned(r.mtxNetChg)} />
@@ -262,6 +289,10 @@ export default function FuturesChipsPage() {
                     <DivergingCell value={r.shortStr} up="barGreen" down="barRed" />
                     <BarCell value={r.longShare} max={100} color="barAmber" text={r.longShare == null ? '' : `${Math.round(r.longShare)}%`} />
                     <BarCell value={r.shortShare} max={100} color="barBlue" text={r.longShare == null ? '' : `${100 - Math.round(r.longShare)}%`} />
+                    <DivergingCell gs value={r.fxNet} max={max.fxNet} up="barRed" down="barGreen" text={fmtSigned(r.fxNet)} />
+                    <DivergingCell value={r.fxNetChg} max={max.fxChg} up="barRed" down="barGreen" text={fmtSigned(r.fxNetChg)} />
+                    <DivergingCell value={r.fxSettleTx} max={max.fxSettle} up="barRed" down="barGreen" text={fmtSigned(r.fxSettleTx)} />
+                    <DivergingCell value={r.fxSettleAll} max={max.fxSettle} up="barRed" down="barGreen" text={fmtSigned(r.fxSettleAll)} />
                     <DivergingCell gs value={r.callNetOi} max={max.callOi} up="barTeal" down="barTeal" text={fmtSigned(r.callNetOi)} />
                     <DivergingCell
                       value={r.callNetAmt}
@@ -271,9 +302,16 @@ export default function FuturesChipsPage() {
                       text={fmtSigned(r.callNetAmt)}
                     />
                     <BarCell value={r.bcVsSettle} max={max.bc} color="barTeal" text={fmtSigned(r.bcVsSettle)} />
+                    <td className={styles.num}>
+                      {r.heat && <span className={`${styles.heat} ${r.heat === '紫爆' ? styles.heatPurple : styles.heatHot}`}>{r.heat}</span>}
+                      {fmtYi(r.bcAmt)}
+                    </td>
                     <td className={styles.labels}>
                       {r.label5 && <><Pill label={r.label5} /><span className={styles.sep}>／</span><Pill label={r.label20} /></>}
                     </td>
+                    <BarCell gs value={r.bpAmt} max={max.put} color="barGreen" text={fmtInt(r.bpAmt)} />
+                    <BarCell value={r.spAmt} max={max.put} color="barRed" text={fmtInt(r.spAmt)} />
+                    <DivergingCell value={r.putNetChg} max={max.putNet} up="barRed" down="barGreen" text={fmtSigned(r.putNetChg)} />
                   </tr>
                 ))}
               </tbody>

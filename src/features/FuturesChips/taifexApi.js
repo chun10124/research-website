@@ -12,6 +12,12 @@
  * - 持倉占比百分位：微台散戶多單比例在上市以來全部歷史中的百分位（平均誤差 0.8pt）
  * - 變化強度百分位：未破解，這裡是自訂近似（見 STRENGTH_WINDOW）
  *
+ * 2026-10-22 依粉專貼文的數字反推、以期交所資料驗證（temp_scripts/20261022_*_tmp.py）：
+ * - 外資期貨未平倉與結算比：外資淨未平倉 − 上次月結算日的值（2025/3/3、7/4、10/8、2026/10/15 吻合）；
+ *   單位未定，大台與「大台＋小台/4＋微台/20」兩種都算
+ * - 外資 OP 多單過熱／紫爆：外資 BC 未平倉金額 ≥ 約 10.5 億／20 億（只有幾個轉折點可驗，屬推估）
+ * - 波段回測：加權指數波段盤中高點到之後盤中最低（8 例吻合，波段規則見 swingDrawdown）
+ *
  * 期交所限制：法人兩張表只能查近 3 年；每日行情單次區間上限約 1 個月，超過回 HTML。
  */
 
@@ -20,6 +26,15 @@ const TAIFEX = 'https://www.taifex.com.tw/cht/3/';
 const CACHE_PREFIX = 'rw-futchip_';
 const TMF_START = '2024/07/01'; // 微台 2024/7 下旬上市；百分位用上市以來全部歷史
 const RECENT_TTL_MS = 30 * 60 * 1000;
+// 目前使用中的快取種類；匯出永久區段時只帶這些，舊格式（inst、opt）就不會一直留在 Firestore
+const CACHE_KINDS = ['oi', 'inst2', 'opt2'];
+// 外資 BC 未平倉金額（千元）門檻：過熱 ≈ 10.5 億、紫爆 ≈ 20 億（由貼文日期反推）
+const BC_HOT = 1050000;
+const BC_PURPLE = 2000000;
+// 波段：自波段高點回落 ≥ 5%、再從低點反彈 ≥ 8% → 從反彈那天起算新波段（他的 8 個例子在 3–8% ／ 6–12% 間都吻合，取中間）
+const SWING_DROP = 0.05;
+const SWING_REBOUND = 0.08;
+const SWING_WARMUP_DAYS = 200; // 波段狀態要從更早開始跑，第一天才有正確的高點
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const pad = (n) => String(n).padStart(2, '0');
@@ -57,18 +72,36 @@ function lsSet(key, value, permanent) {
 let netFetches = 0; // 實際向期交所發出的請求數（快取命中不算），每日同步記錄用
 export const getNetFetchCount = () => netFetches;
 
+// 保護期交所（避免被 Cloudflare 擋，2026-10-22 曾因測試時請求太密集被擋）：
+// 1. 所有請求排隊，間隔至少 MIN_GAP_MS（併發 4 個 worker 也一樣）
+// 2. 一遇到 429 立刻停：不重試，之後本次所有請求直接失敗；有缺漏時同步本來就不寫入，隔天再補
+const MIN_GAP_MS = 700;
+let nextSlot = 0;
+let rateLimited = false;
+async function throttle() {
+  const wait = nextSlot - Date.now();
+  nextSlot = Math.max(nextSlot, Date.now()) + MIN_GAP_MS;
+  if (wait > 0) await sleep(wait);
+}
+
 async function fetchCsv(page, params) {
-  netFetches++;
   const url = `${TAIFEX}${page}?${new URLSearchParams(params).toString()}`;
   for (let attempt = 0; ; attempt++) {
+    if (rateLimited) throw new Error(`${page} ${params.queryStartDate}~${params.queryEndDate}: 期交所限流中，本次不再請求`);
+    await throttle();
+    netFetches++;
     try {
       const res = await fetch(PROXY_BASE + encodeURIComponent(url));
+      if (res.status === 429) {
+        rateLimited = true;
+        throw new Error('HTTP 429（被限流，停止本次所有請求）');
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = new TextDecoder('big5').decode(await res.arrayBuffer());
       if (text.trimStart().startsWith('<')) throw new Error('期交所回傳網頁（日期超出可查範圍）');
       return text.split(/\r?\n/).map((l) => l.split(',')).filter((r) => /^\d{4}\//.test(r[0] || ''));
     } catch (e) {
-      if (attempt >= 2) throw new Error(`${page} ${params.queryStartDate}~${params.queryEndDate}: ${e.message}`);
+      if (rateLimited || attempt >= 2) throw new Error(`${page} ${params.queryStartDate}~${params.queryEndDate}: ${e.message}`);
       await sleep(1200 * 2 ** attempt);
     }
   }
@@ -82,6 +115,7 @@ export function exportPermanentChunks() {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k || !k.startsWith(CACHE_PREFIX)) continue;
+      if (!CACHE_KINDS.some((kind) => k.startsWith(`${CACHE_PREFIX}${kind}_`))) continue;
       const c = JSON.parse(localStorage.getItem(k) || 'null');
       if (c?.permanent) out[k.slice(CACHE_PREFIX.length)] = c.value;
     }
@@ -130,29 +164,76 @@ const loadFutOi = (cid, a, b) => cached('oi', cid, a, b, async () => {
   return out;
 });
 
-/** 三大法人期貨 → { date: [多方未平倉, 空方未平倉] }（三類法人加總） */
-const loadFutInst = (cid, a, b) => cached('inst', cid, a, b, async () => {
+/**
+ * 法人兩張表可以一次查一整年（期貨每日行情不行）。月份區段沒快取時先整年抓、再切成每月存進快取，
+ * 之後照月份讀；不然一次補十幾個月 × 4 種商品會被限流（HTTP 429）。只預抓已過去 3 天以上的月份（永久快取）
+ */
+async function prefetchByYear(kind, id, chunks, fetchRange) {
+  const missing = chunks.filter(([a, b]) => b < addDays(taipeiToday(), -3)
+    && lsGet(`${CACHE_PREFIX}${kind}_${id}_${a}_${b}`) === undefined);
+  const years = {};
+  for (const c of missing) (years[c[0].slice(0, 4)] ||= []).push(c);
+  for (const list of Object.values(years)) {
+    const byDate = await fetchRange(list[0][0], list[list.length - 1][1]);
+    for (const [a, b] of list) {
+      const part = {};
+      for (const [d, v] of Object.entries(byDate)) if (d >= a && d <= b) part[d] = v;
+      lsSet(`${CACHE_PREFIX}${kind}_${id}_${a}_${b}`, part, true);
+    }
+  }
+}
+
+/** 三大法人期貨 → { date: [三類法人多方未平倉, 空方未平倉, 外資多方未平倉, 外資空方未平倉] }（口） */
+const fetchFutInst = async (cid, a, b) => {
   const rows = await fetchCsv('futContractsDateDown', { queryStartDate: a, queryEndDate: b, commodityId: cid });
   const out = {};
   for (const r of rows) {
     if (r.length < 14) continue;
-    const x = (out[r[0]] ||= [0, 0]);
-    x[0] += num(r[9]) || 0;
-    x[1] += num(r[11]) || 0;
+    const x = (out[r[0]] ||= [0, 0, 0, 0]);
+    const long = num(r[9]) || 0, short = num(r[11]) || 0;
+    x[0] += long;
+    x[1] += short;
+    if ((r[2] || '').includes('外資')) { x[2] = long; x[3] = short; }
   }
   return out;
-});
+};
+const loadFutInst = (cid, a, b) => cached('inst2', cid, a, b, () => fetchFutInst(cid, a, b));
 
-/** 外資臺指選擇權 CALL → { date: [BC口, BC金, SC口, SC金, 淨口, 淨金] }（金額千元） */
-const loadForeignCall = (a, b) => cached('opt', 'TXO', a, b, async () => {
+/** 外資臺指選擇權 → { date: [CALL 的 BC口, BC金, SC口, SC金, 淨口, 淨金, PUT 的 BP口, BP金, SP口, SP金, 淨口, 淨金] }（金額千元） */
+const fetchForeignOpt = async (a, b) => {
   const rows = await fetchCsv('callsAndPutsDateDown', { queryStartDate: a, queryEndDate: b, commodityId: 'TXO' });
   const out = {};
   for (const r of rows) {
-    if (r.length < 16 || !(r[3] || '').includes('外資') || (r[2] || '').trim().toUpperCase() !== 'CALL') continue;
-    out[r[0]] = r.slice(10, 16).map((v) => num(v) || 0);
+    if (r.length < 16 || !(r[3] || '').includes('外資')) continue;
+    const cp = (r[2] || '').trim().toUpperCase();
+    if (cp !== 'CALL' && cp !== 'PUT') continue;
+    const x = (out[r[0]] ||= new Array(12).fill(0));
+    r.slice(10, 16).forEach((v, j) => { x[(cp === 'PUT' ? 6 : 0) + j] = num(v) || 0; });
   }
   return out;
-});
+};
+const loadForeignOpt = (a, b) => cached('opt2', 'TXO', a, b, () => fetchForeignOpt(a, b));
+
+/**
+ * 波段回測（加權指數）：days 依日期排序，回傳 { date: { high, highDate, drawdown } }，drawdown＝本波最大回測 %。
+ * 波段高點＝盤中最高；創新高那天的盤中低點可能在高點之前，所以當天以收盤當作低點起算。
+ * 自高點回落 ≥ SWING_DROP 之後，從低點反彈 ≥ SWING_REBOUND → 從反彈那天起算新波段（新高點可以低於舊高點）
+ */
+export function swingDrawdown(days, highOf, lowOf, closeOf) {
+  const out = {};
+  let H = null, Hd = null, L = null;
+  for (const d of days) {
+    const h = highOf(d), l = lowOf(d), c = closeOf(d);
+    if (h == null || l == null || c == null) continue;
+    if (H == null || h > H || (1 - L / H >= SWING_DROP && h >= L * (1 + SWING_REBOUND))) {
+      H = h; Hd = d; L = c;
+    } else {
+      L = Math.min(L, l);
+    }
+    out[d] = { high: H, highDate: Hd, drawdown: 100 * (1 - L / H) };
+  }
+  return out;
+}
 
 /** 有限併發 */
 async function pool(tasks, limit, onDone) {
@@ -211,12 +292,24 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
   const txIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadFutOi('TX', a, b)));
   const mtxIdx = monthChunks(addDays(start, -10), today).map(([a, b]) => addTask(() => loadFutOi('MTX', a, b)));
   const tmfIdx = monthChunks(TMF_START, today).map(([a, b]) => addTask(() => loadFutOi('TMF', a, b)));
-  const mxfInstIdx = monthChunks(addDays(start, -10), today).map(([a, b]) => addTask(() => loadFutInst('MXF', a, b)));
+  // 法人期貨從 pre 起抓：外資期貨「較結算日」要上次月結算日的基準
+  const txfInstIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadFutInst('TXF', a, b)));
+  const mxfInstIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadFutInst('MXF', a, b)));
   const tmfInstIdx = monthChunks(TMF_START, today).map(([a, b]) => addTask(() => loadFutInst('TMF', a, b)));
-  const optIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadForeignCall(a, b)));
+  const optIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadForeignOpt(a, b)));
+
+  // 法人表缺的過去月份先整年補抓（失敗就留給下面逐月抓）
+  const yearly = [
+    ...[['TXF', pre], ['MXF', pre], ['TMF', TMF_START]].map(([cid, from]) => () => prefetchByYear(
+      'inst2', cid, monthChunks(from, today), (a, b) => fetchFutInst(cid, a, b))),
+    () => prefetchByYear('opt2', 'TXO', monthChunks(pre, today), fetchForeignOpt),
+  ];
+  onProgress?.(0, tasks.length);
+  for (const f of yearly) {
+    try { await f(); } catch (_) { break; } // 失敗（多半是被限流）就不再試其他整年，直接逐月
+  }
 
   let done = 0;
-  onProgress?.(0, tasks.length);
   const settled = await pool(
     tasks.map((t) => () => t().catch((e) => { warnings.push(e.message); return {}; })),
     4,
@@ -224,13 +317,18 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
   );
   const pick = (idx) => mergeAll(idx.map((i) => settled[i]));
   const tx = pick(txIdx), mtx = pick(mtxIdx), tmf = pick(tmfIdx);
-  const mxfInst = pick(mxfInstIdx), tmfInst = pick(tmfInstIdx), call = pick(optIdx);
+  const txfInst = pick(txfInstIdx), mxfInst = pick(mxfInstIdx), tmfInst = pick(tmfInstIdx), opt = pick(optIdx);
+  const call = Object.fromEntries(Object.entries(opt).map(([d, v]) => [d, v.slice(0, 6)]));
 
-  // 加權指數：沿用網站既有來源（富邦 Firestore → Yahoo ^TWII）
+  // 加權指數收盤：沿用網站既有來源（富邦 Firestore → Yahoo ^TWII）；波段回測要盤中高低，另抓 Yahoo
   let index = {};
+  let ohlc = { highMap: {}, lowMap: {}, priceMap: {} };
   try {
-    const { fetchIndexPriceMap } = await import('../StockAnalysis/api/stockApi');
-    index = await fetchIndexPriceMap(addDays(start, -14).replace(/\//g, '-'), today.replace(/\//g, '-'));
+    const { fetchIndexPriceMap, fetchIndexHighLowMaps } = await import('../StockAnalysis/api/stockApi');
+    [index, ohlc] = await Promise.all([
+      fetchIndexPriceMap(addDays(start, -14).replace(/\//g, '-'), today.replace(/\//g, '-')),
+      fetchIndexHighLowMaps(addDays(start, -SWING_WARMUP_DAYS).replace(/\//g, '-'), today.replace(/\//g, '-')),
+    ]);
   } catch (e) {
     warnings.push(`加權指數：${e.message}`);
   }
@@ -309,6 +407,36 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
     return base && call[base] && call[d] ? call[d][1] - call[base][1] : null;
   };
 
+  // 外資期貨淨未平倉：大台，以及「大台＋小台/4＋微台/20」（他把三種換算成大台口數）
+  const fxNetTx = (d) => (txfInst[d] ? txfInst[d][2] - txfInst[d][3] : null);
+  const fxNetAll = (d) => {
+    const tx = fxNetTx(d);
+    if (tx == null || !mxfInst[d]) return null;
+    const tmfNet = tmfInst[d] ? tmfInst[d][2] - tmfInst[d][3] : 0; // 微台上市前沒有
+    return tx + (mxfInst[d][2] - mxfInst[d][3]) / 4 + tmfNet / 20;
+  };
+  const vsSettle = (f, d) => {
+    let base = null;
+    for (const s of settleSorted) if (s <= d) base = s;
+    const v = f(d), b = base ? f(base) : null;
+    return v != null && b != null ? v - b : null;
+  };
+
+  // 波段回測：從更早開始跑（暖機），只用平日；期交所有資料的區間再以期交所開盤日為準
+  // （Yahoo 偶爾在非交易日多一根殘根 K 棒）
+  // 某天缺盤中高低時，以收盤代替（回測會略小，但不會整天空白）
+  const txDaySet = new Set(txDays);
+  const toDash = (d) => d.replace(/\//g, '-');
+  const closeOf = (d) => index[toDash(d)] ?? ohlc.priceMap[toDash(d)];
+  const swingDays = [...new Set([...Object.keys(ohlc.highMap).map((d) => d.replace(/-/g, '/')), ...txDays])].sort()
+    .filter((d) => [1, 2, 3, 4, 5].includes(parseYmd(d).getDay()) && (d < txDays[0] || txDaySet.has(d)));
+  const swing = swingDrawdown(
+    swingDays,
+    (d) => ohlc.highMap[toDash(d)] ?? closeOf(d),
+    (d) => ohlc.lowMap[toDash(d)] ?? closeOf(d),
+    closeOf,
+  );
+
   const indexDays = Object.keys(index).sort();
   const rows = [];
   for (let i = 0; i < txDays.length; i++) {
@@ -345,6 +473,22 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
       bcVsSettle: bcVsSettle(d),
       label5,
       label20: label20 && label20 === label5 ? '同型' : label20,
+      // 外資 BC 未平倉金額（千元）與過熱燈號
+      bcAmt: c ? c[1] : null,
+      heat: c ? (c[1] >= BC_PURPLE ? '紫爆' : c[1] >= BC_HOT ? '過熱' : null) : null,
+      // 外資 PUT：BP（買進賣權）、SP（賣出賣權）未平倉金額，及當日 SP 增加減去 BP 增加（正＝SP 增加較多）
+      bpAmt: opt[d] ? opt[d][7] : null,
+      spAmt: opt[d] ? opt[d][9] : null,
+      putNetChg: opt[d] && prevD && opt[prevD] ? (opt[d][9] - opt[prevD][9]) - (opt[d][7] - opt[prevD][7]) : null,
+      // 外資期貨淨未平倉（大台）、日增減，與較上次月結算日（大台／大小微合計）
+      fxNet: fxNetTx(d),
+      fxNetChg: prevD && fxNetTx(d) != null && fxNetTx(prevD) != null ? fxNetTx(d) - fxNetTx(prevD) : null,
+      fxSettleTx: vsSettle(fxNetTx, d),
+      fxSettleAll: vsSettle(fxNetAll, d),
+      // 加權指數本波最大回測（%）與波段高點
+      swingDd: swing[d]?.drawdown ?? null,
+      swingHigh: swing[d]?.high ?? null,
+      swingHighDate: swing[d]?.highDate ?? null,
     });
   }
   return { rows, warnings };
