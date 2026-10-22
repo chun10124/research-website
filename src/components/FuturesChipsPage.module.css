@@ -9,9 +9,7 @@
   --fc-foreign: 237, 125, 49;   /* 外資布局：橘 */
   --fc-fut: 124, 92, 196;       /* 外資期貨：紫 */
   --fc-put: 13, 148, 136;       /* 外資賣權：青 */
-  --fc-heat-hot: rgba(234, 88, 12, 0.18);
   --fc-heat-hot-ink: #c2410c;
-  --fc-heat-purple: rgba(147, 51, 234, 0.20);
   --fc-heat-purple-ink: #7e22ce;
   --fc-red: rgba(229, 57, 53, 0.62);
   --fc-magenta: rgba(204, 0, 153, 0.58);
@@ -51,9 +49,7 @@
   --fc-pill-conv: rgba(255, 74, 61, 0.20);
   --fc-pill-conv-soft: rgba(255, 74, 61, 0.09);
   --fc-pill-conv-ink: #ff8a80;
-  --fc-heat-hot: rgba(251, 146, 60, 0.22);
   --fc-heat-hot-ink: #fdba74;
-  --fc-heat-purple: rgba(192, 132, 252, 0.24);
   --fc-heat-purple-ink: #d8b4fe;
 }
 
@@ -283,18 +279,9 @@
 .pillConvSoft { background: var(--fc-pill-conv-soft); color: var(--fc-pill-conv-ink); }
 .pillSame { color: var(--app-text-soft); padding: 1px 4px; }
 
-/* ── BC 過熱／紫爆燈號 ── */
-.heat {
-  display: inline-block;
-  margin-right: 6px;
-  padding: 0 6px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 700;
-  line-height: 16px;
-}
-.heatHot { background: var(--fc-heat-hot); color: var(--fc-heat-hot-ink); }
-.heatPurple { background: var(--fc-heat-purple); color: var(--fc-heat-purple-ink); }
+/* ── BC 過熱／紫爆：數字改色加粗 ── */
+.heatHot { color: var(--fc-heat-hot-ink); }
+.heatPurple { color: var(--fc-heat-purple-ink); }
 
 
 /* 只有本頁：全站 .main-wrapper 是 overflow-x:hidden，會變成捲動容器讓 sticky 表頭失效；

@@ -15,7 +15,7 @@ const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 
 // 欄寬（表頭與表身是兩張表，靠同一組 colgroup 對齊；日期、結算兩欄寬度要和 CSS 的 sticky left 一致）
 // 順序：日期、結算｜留倉差、加權、漲跌、波段回測｜散戶 6｜位階 4｜外資期貨 4｜CALL：淨口、淨金、BC 較結算、BC 金額、結構｜PUT 3
-const COL_WIDTHS = [42, 34, 104, 72, 64, 74, 90, 90, 90, 90, 90, 90, 84, 84, 84, 84, 96, 86, 96, 96, 104, 104, 104, 92, 320, 96, 96, 104];
+const COL_WIDTHS = [42, 34, 104, 72, 64, 56, 90, 90, 90, 90, 90, 90, 84, 84, 84, 84, 96, 86, 96, 96, 104, 104, 104, 60, 320, 96, 96, 104];
 const TABLE_WIDTH = COL_WIDTHS.reduce((a, b) => a + b, 0);
 const Cols = () => <colgroup>{COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>;
 
@@ -151,7 +151,6 @@ export default function FuturesChipsPage() {
       fxSettle: p95((r) => [r.fxSettleTx, r.fxSettleAll]),
       put: p95((r) => [r.bpAmt, r.spAmt]),
       putNet: p95((r) => r.putNetChg),
-      dd: Math.max(5, ...state.rows.map((r) => r.swingDd || 0)),
     };
   }, [state.rows]);
 
@@ -271,13 +270,9 @@ export default function FuturesChipsPage() {
                     <td className={`${styles.num} ${styles.bold} ${r.change == null ? '' : r.change >= 0 ? styles.up : styles.down}`}>
                       {fmtSigned(r.change)}
                     </td>
-                    <BarCell
-                      value={r.swingDd}
-                      max={max.dd}
-                      color="barGreen"
-                      text={r.swingDd == null ? '' : `${r.swingDd.toFixed(1)}%`}
-                      title={r.swingHighDate ? `波段高點 ${fmtDate(r.swingHighDate)} ${fmtIdx(r.swingHigh)}` : undefined}
-                    />
+                    <td className={styles.num} title={r.swingHighDate ? `波段高點 ${fmtDate(r.swingHighDate)} ${fmtIdx(r.swingHigh)}` : undefined}>
+                      {r.swingDd == null ? '' : `${r.swingDd.toFixed(1)}%`}
+                    </td>
                     <BarCell gs value={r.mtxRetail?.[0]} min={max.mtxMin} max={max.mtx} color="barAmber" text={fmtInt(r.mtxRetail?.[0])} />
                     <BarCell value={r.mtxRetail?.[1]} min={max.mtxMin} max={max.mtx} color="barBlue" text={fmtInt(r.mtxRetail?.[1])} />
                     <DivergingCell value={r.mtxNetChg} max={max.mtxNet} up="barRed" down="barGreen" text={fmtSigned(r.mtxNetChg)} />
@@ -289,7 +284,7 @@ export default function FuturesChipsPage() {
                     <DivergingCell value={r.shortStr} up="barGreen" down="barRed" />
                     <BarCell value={r.longShare} max={100} color="barAmber" text={r.longShare == null ? '' : `${Math.round(r.longShare)}%`} />
                     <BarCell value={r.shortShare} max={100} color="barBlue" text={r.longShare == null ? '' : `${100 - Math.round(r.longShare)}%`} />
-                    <DivergingCell gs value={r.fxNet} max={max.fxNet} up="barRed" down="barGreen" text={fmtSigned(r.fxNet)} />
+                    <DivergingCell gs value={r.fxNet} max={max.fxNet} up="barAmber" down="barAmber" text={fmtSigned(r.fxNet)} />
                     <DivergingCell value={r.fxNetChg} max={max.fxChg} up="barRed" down="barGreen" text={fmtSigned(r.fxNetChg)} />
                     <DivergingCell value={r.fxSettleTx} max={max.fxSettle} up="barRed" down="barGreen" text={fmtSigned(r.fxSettleTx)} />
                     <DivergingCell value={r.fxSettleAll} max={max.fxSettle} up="barRed" down="barGreen" text={fmtSigned(r.fxSettleAll)} />
@@ -302,15 +297,17 @@ export default function FuturesChipsPage() {
                       text={fmtSigned(r.callNetAmt)}
                     />
                     <BarCell value={r.bcVsSettle} max={max.bc} color="barTeal" text={fmtSigned(r.bcVsSettle)} />
-                    <td className={styles.num}>
-                      {r.heat && <span className={`${styles.heat} ${r.heat === '紫爆' ? styles.heatPurple : styles.heatHot}`}>{r.heat}</span>}
+                    <td
+                      className={`${styles.num} ${r.heat ? styles.bold : ''} ${r.heat === '紫爆' ? styles.heatPurple : r.heat ? styles.heatHot : ''}`}
+                      title={r.heat || undefined}
+                    >
                       {fmtYi(r.bcAmt)}
                     </td>
                     <td className={styles.labels}>
                       {r.label5 && <><Pill label={r.label5} /><span className={styles.sep}>／</span><Pill label={r.label20} /></>}
                     </td>
-                    <BarCell gs value={r.bpAmt} max={max.put} color="barGreen" text={fmtInt(r.bpAmt)} />
-                    <BarCell value={r.spAmt} max={max.put} color="barRed" text={fmtInt(r.spAmt)} />
+                    <BarCell gs value={r.bpAmt} max={max.put} color="barAmber" text={fmtInt(r.bpAmt)} />
+                    <BarCell value={r.spAmt} max={max.put} color="barBlue" text={fmtInt(r.spAmt)} />
                     <DivergingCell value={r.putNetChg} max={max.putNet} up="barRed" down="barGreen" text={fmtSigned(r.putNetChg)} />
                   </tr>
                 ))}
