@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import styles from './FuturesChipsPage.module.css';
 import { loadFuturesChipTable } from '../features/FuturesChips/taifexApi';
-import { readStoredFuturesChips } from '../features/FuturesChips/futuresChipsStore';
+import { readStoredFuturesChips, readHistoryRows, HIST_FIRST } from '../features/FuturesChips/futuresChipsStore';
 import FuturesChipsChart from './FuturesChipsChart';
 
+// 三年、全部要另讀歷史（2018/7 起，FinMind 回補）；months 為 null＝全部
 const RANGES = [
   { key: '6m', label: '半年', months: 6 },
   { key: '1y', label: '一年', months: 12 },
+  { key: '3y', label: '三年', months: 36 },
+  { key: 'all', label: '全部', months: null },
 ];
 const RANGE_KEY = 'rw-futchip-range';
 const VIEW_KEY = 'rw-futchip-view';
@@ -15,7 +18,9 @@ const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 
 // 欄寬（表頭與表身是兩張表，靠同一組 colgroup 對齊；日期、結算兩欄寬度要和 CSS 的 sticky left 一致）
 // 順序：日期、結算｜留倉差、加權、漲跌、波段回測｜散戶 6｜位階 4｜外資期貨 4｜CALL：淨口、淨金、BC 較結算、BC 金額、結構｜PUT 3
-const COL_WIDTHS = [42, 34, 104, 72, 64, 56, 90, 90, 90, 90, 90, 90, 84, 84, 84, 84, 96, 86, 96, 96, 104, 104, 104, 60, 320, 96, 96, 104];
+// 日期一律帶年份（26/10/23）；寬度要和 CSS 的 sticky left 一致（--fc-date-w）
+const DATE_W = 68;
+const COL_WIDTHS = [DATE_W, 34, 104, 72, 64, 56, 90, 90, 90, 90, 90, 90, 84, 84, 84, 84, 96, 86, 96, 96, 104, 104, 104, 60, 320, 96, 96, 104];
 const TABLE_WIDTH = COL_WIDTHS.reduce((a, b) => a + b, 0);
 const Cols = () => <colgroup>{COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>;
 
@@ -23,14 +28,21 @@ const fmtInt = (v) => (v == null ? '' : Math.round(v).toLocaleString('en-US'));
 const fmtSigned = (v) => (v == null ? '' : `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString('en-US')}`);
 const fmtIdx = (v) => (v == null ? '' : Math.round(v).toLocaleString('en-US'));
 const fmtPct = (v) => { if (v == null) return ''; const n = Math.round(v); return `${n > 0 ? '+' : ''}${n}%`; };
-const fmtDate = (d) => { const [, m, dd] = d.split('/'); return `${+m}/${+dd}`; };
+const fmtDateYear = (d) => { const [y, m, dd] = d.split('/'); return `${y.slice(2)}/${m}/${dd}`; }; // 26/10/23
 const fmtYi = (v) => (v == null ? '' : `${(v / 1e5).toFixed(1)}`); // 千元 → 億
 
 function startFor(months) {
+  if (months == null) return HIST_FIRST;
   const d = new Date();
   d.setMonth(d.getMonth() - months);
   return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
+const rangeMonths = (key) => (RANGES.find((r) => r.key === key) || RANGES[0]).months;
+
+// 表身只畫畫面上看得到的列（上下各多畫 ROW_OVERSCAN 列），其餘用等高的空白列撐住捲軸；
+// 全部區間有兩千多列，全畫會有十幾萬個元素、捲動卡頓
+const ROW_OVERSCAN = 15;
+const ROW_H_DEFAULT = 26.8;
 
 const BAR_MAX = 0.8; // 長條最多佔格子 80%（正負長條則是半格的 80%）
 
@@ -84,7 +96,7 @@ function Pill({ label }) {
 export default function FuturesChipsPage() {
   const [range, setRange] = useState(() => {
     // 舊版存過 1m／3m，已拿掉 → 改回半年
-    try { const v = localStorage.getItem(RANGE_KEY); return v === '1y' ? '1y' : '6m'; } catch (_) { return '6m'; }
+    try { const v = localStorage.getItem(RANGE_KEY); return RANGES.some((r) => r.key === v) ? v : '6m'; } catch (_) { return '6m'; }
   });
   // rows＝所選區間（表格用）；allRows＝手上全部資料（圖表用，可往前滑到一年前）
   const [state, setState] = useState({ loading: true, rows: [], allRows: [], warnings: [], progress: [0, 0], error: null });
@@ -102,19 +114,26 @@ export default function FuturesChipsPage() {
   useEffect(() => {
     let alive = true;
     try { localStorage.setItem(RANGE_KEY, range); } catch (_) {}
-    const months = RANGES.find((r) => r.key === range)?.months ?? 6;
+    const months = rangeMonths(range);
+    const long = months == null || months > 12;
     setState((s) => ({ ...s, loading: true, error: null, progress: [0, 0] }));
     const start = startFor(months);
-    // 先讀每日同步預算好的資料（秒開）；沒有、太舊或不夠長才即時向期交所抓
+    // 先讀每日同步預算好的資料（秒開）；沒有、太舊或不夠長才即時向期交所抓（最多一年，更早的一律讀歷史，不向期交所抓）
     readStoredFuturesChips()
-      .then((stored) => {
-        if (stored && stored.from <= start) {
-          const s0 = start.replace(/-/g, '/');
-          return { rows: stored.rows.filter((r) => r.date >= s0), allRows: stored.rows, warnings: [] };
+      .then(async (stored) => {
+        const live = stored && (long || stored.from <= start)
+          ? { rows: stored.rows, warnings: [] }
+          : await loadFuturesChipTable(long ? startFor(12) : start, {
+            onProgress: (done, total) => alive && setState((s) => ({ ...s, progress: [done, total] })),
+          });
+        let all = live.rows;
+        if (long) {
+          const liveFrom = all[0]?.date;
+          const hist = await readHistoryRows(start);
+          all = [...hist.filter((h) => !liveFrom || h.date < liveFrom), ...all];
         }
-        return loadFuturesChipTable(start, {
-          onProgress: (done, total) => alive && setState((s) => ({ ...s, progress: [done, total] })),
-        });
+        const s0 = start.replace(/-/g, '/');
+        return { rows: all.filter((r) => r.date >= s0), allRows: all, warnings: live.warnings };
       })
       .then(({ rows, allRows, warnings }) => alive && setState({
         loading: false, rows, allRows: allRows || rows, warnings, progress: [0, 0], error: null,
@@ -125,6 +144,36 @@ export default function FuturesChipsPage() {
 
   // 新在上、舊在下
   const shown = useMemo(() => [...state.rows].reverse(), [state.rows]);
+
+  // 可見範圍 [起, 迄, 列高]：依表身在視窗中的位置換算（整頁直向捲動）
+  const [win, setWin] = useState([0, 60, ROW_H_DEFAULT]);
+  useEffect(() => {
+    if (view !== 'table') return undefined;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const el = bodyRef.current;
+      if (!el) return;
+      const h = el.querySelector('tbody tr[data-row]')?.getBoundingClientRect().height || ROW_H_DEFAULT;
+      const top = el.getBoundingClientRect().top;
+      const a = Math.max(0, Math.floor(-top / h) - ROW_OVERSCAN);
+      const b = Math.min(shown.length, Math.ceil((window.innerHeight - top) / h) + ROW_OVERSCAN);
+      setWin((w) => (w[0] === a && w[1] === b && w[2] === h ? w : [a, b, h]));
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [view, shown.length, state.loading]);
+  const [winStart, winEnd, rowH] = win;
+  const spacer = (n) => (n > 0
+    ? <tr aria-hidden="true" style={{ height: n * rowH }}><td colSpan={COL_WIDTHS.length} className={styles.spacer} /></tr>
+    : null);
 
   const max = useMemo(() => {
     const vals = (f) => state.rows.flatMap((r) => [].concat(f(r))).filter((v) => v != null);
@@ -196,12 +245,12 @@ export default function FuturesChipsPage() {
         <div className={styles.error}>部分資料缺漏：{warnings.join('；')}</div>
       )}
 
-      {!loading && rows.length > 0 && view === 'chart' && <FuturesChipsChart rows={state.allRows} visibleFrom={startFor(RANGES.find((r) => r.key === range)?.months ?? 6)} />}
+      {!loading && rows.length > 0 && view === 'chart' && <FuturesChipsChart rows={state.allRows} visibleFrom={startFor(rangeMonths(range))} />}
 
       {!loading && rows.length > 0 && view === 'table' && (
         <div className={styles.card}>
           <div className={styles.headWrap} ref={headRef}>
-            <table className={styles.table} style={{ width: TABLE_WIDTH }}>
+            <table className={styles.table} style={{ width: TABLE_WIDTH, '--fc-date-w': `${DATE_W}px` }}>
               <Cols />
               <thead>
                 <tr className={styles.groupRow}>
@@ -247,12 +296,13 @@ export default function FuturesChipsPage() {
             </table>
           </div>
           <div className={styles.bodyWrap} ref={bodyRef} onScroll={syncHead}>
-            <table className={styles.table} style={{ width: TABLE_WIDTH }}>
+            <table className={styles.table} style={{ width: TABLE_WIDTH, '--fc-date-w': `${DATE_W}px` }}>
               <Cols />
               <tbody>
-                {shown.map((r) => (
-                  <tr key={r.date} className={r.settleCode === 999 ? styles.settleRow : ''}>
-                    <td className={`${styles.stickyCol} ${styles.date}`}>{fmtDate(r.date)}</td>
+                {spacer(winStart)}
+                {shown.slice(winStart, winEnd).map((r) => (
+                  <tr key={r.date} data-row className={r.settleCode === 999 ? styles.settleRow : ''}>
+                    <td className={`${styles.stickyCol} ${styles.date}`}>{fmtDateYear(r.date)}</td>
                     <td className={`${styles.stickyCol2} ${styles.center}`}>
                       {r.settleCode === 999
                         ? <span className={styles.settleBadge}>月結</span>
@@ -270,8 +320,8 @@ export default function FuturesChipsPage() {
                     <td className={`${styles.num} ${styles.bold} ${r.change == null ? '' : r.change >= 0 ? styles.up : styles.down}`}>
                       {fmtSigned(r.change)}
                     </td>
-                    <td className={styles.num} title={r.swingHighDate ? `波段高點 ${fmtDate(r.swingHighDate)} ${fmtIdx(r.swingHigh)}` : undefined}>
-                      {r.swingDd == null ? '' : `${r.swingDd.toFixed(1)}%`}
+                    <td className={styles.num} title={r.swingHighDate ? `波段高點 ${fmtDateYear(r.swingHighDate)} ${fmtIdx(r.swingHigh)}` : undefined}>
+                      {r.swingDd == null ? '' : `${Math.max(0, r.swingDd).toFixed(1)}%`}
                     </td>
                     <BarCell gs value={r.mtxRetail?.[0]} min={max.mtxMin} max={max.mtx} color="barAmber" text={fmtInt(r.mtxRetail?.[0])} />
                     <BarCell value={r.mtxRetail?.[1]} min={max.mtxMin} max={max.mtx} color="barBlue" text={fmtInt(r.mtxRetail?.[1])} />
@@ -311,6 +361,7 @@ export default function FuturesChipsPage() {
                     <DivergingCell value={r.putNetChg} max={max.putNet} up="barRed" down="barGreen" text={fmtSigned(r.putNetChg)} />
                   </tr>
                 ))}
+                {spacer(shown.length - Math.min(winEnd, shown.length))}
               </tbody>
             </table>
           </div>

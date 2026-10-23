@@ -25,10 +25,26 @@ const STALE_DAYS = 5; // 最後一列比今天早超過 5 天（含長假）就�
 const taipeiToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
 
+// 歷史（2018/7～2025/10，FinMind 一次性回補，temp_scripts/20261023_chip_history_build_tmp.mjs）存 ibdRsMeta/futuresChipsHist_YYYY，
+// 之後不再更新。每日預算的起點不晚於歷史的下一天，兩份才接得上（2026/11 起每日預算會逐日變長）
+export const HIST_FIRST = '2018-07-02';
+const HIST_NEXT = '2025-11-01';
+const HIST_YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
+
 export function storeStartDate() {
   const d = new Date();
   d.setMonth(d.getMonth() - STORE_MONTHS);
-  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  const s = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  return s < HIST_NEXT ? s : HIST_NEXT;
+}
+
+/** 頁面選三年／全部時才讀：回傳 fromDash 起的歷史列（依日期由舊到新） */
+export async function readHistoryRows(fromDash) {
+  const from = fromDash.replace(/-/g, '/');
+  const years = HIST_YEARS.filter((y) => `${y}/12/31` >= from);
+  const snaps = await Promise.all(years.map((y) => getDoc(doc(db, 'ibdRsMeta', `futuresChipsHist_${y}`))));
+  return snaps.flatMap((snap) => (snap.exists() ? JSON.parse(snap.data().json || '{}').rows || [] : []))
+    .filter((r) => r.date >= from);
 }
 
 /** 已存資料的最後一列是今天、且每個欄位都有值 → 回傳該日；否則 null。

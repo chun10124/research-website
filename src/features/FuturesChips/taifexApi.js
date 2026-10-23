@@ -318,7 +318,6 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
   const pick = (idx) => mergeAll(idx.map((i) => settled[i]));
   const tx = pick(txIdx), mtx = pick(mtxIdx), tmf = pick(tmfIdx);
   const txfInst = pick(txfInstIdx), mxfInst = pick(mxfInstIdx), tmfInst = pick(tmfInstIdx), opt = pick(optIdx);
-  const call = Object.fromEntries(Object.entries(opt).map(([d, v]) => [d, v.slice(0, 6)]));
 
   // 加權指數收盤：沿用網站既有來源（富邦 Firestore → Yahoo ^TWII）；波段回測要盤中高低，另抓 Yahoo
   let index = {};
@@ -333,6 +332,19 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
     warnings.push(`加權指數：${e.message}`);
   }
 
+  return { rows: computeChipRows({ start, tx, mtx, tmf, txfInst, mxfInst, tmfInst, opt, index, ohlc }), warnings };
+}
+
+/**
+ * 由原始資料算出籌碼表各列（期交所即時抓取、FinMind 歷史回補共用，公式只有這一份）。
+ * 輸入日期鍵皆 YYYY/MM/DD（index、ohlc 為 YYYY-MM-DD）：
+ * - tx／mtx／tmf：{ date: { 月份: 未沖銷 } }（一般盤、不含價差）
+ * - txfInst／mxfInst／tmfInst：{ date: [三類法人多方, 空方, 外資多方, 外資空方] }
+ * - opt：{ date: [CALL 6 欄, PUT 6 欄] }；index：{ date: 收盤 }；ohlc：{ priceMap, highMap, lowMap }
+ * start（YYYY/MM/DD）之前的資料只當基準（結算日、20 日變化、前一日比較），不出列
+ */
+export function computeChipRows({ start, tx, mtx, tmf, txfInst, mxfInst, tmfInst, opt, index, ohlc }) {
+  const call = Object.fromEntries(Object.entries(opt).map(([d, v]) => [d, v.slice(0, 6)]));
   const txDays = Object.keys(tx).sort();
   // 月結算日：月契約最後一次出現的交易日（之後還有資料，或已到第三個星期三＝結算日當天就標）
   const lastSeen = {};
@@ -491,5 +503,5 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
       swingHighDate: swing[d]?.highDate ?? null,
     });
   }
-  return { rows, warnings };
+  return rows;
 }
