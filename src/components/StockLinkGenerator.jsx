@@ -1,4 +1,5 @@
 import React, { useState } from 'react'; // 移除 useEffect
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './StockLinkGenerator.module.css'; 
 
 // VVVV 嚴格使用您提供的 linkTemplates 陣列 VVVV
@@ -30,11 +31,6 @@ const linkTemplates = [
   },
   
   { 
-    name: 'TradingView', 
-    url: 'https://tw.tradingview.com/chart/?symbol=',
-    prefix: 'TWSE:', // 必須保留 prefix 邏輯
-  },
-  { 
     name: 'MoneyDJ News', 
     url: 'https://www.google.com/search?q=',
     suffix: '+moneydj news' 
@@ -58,6 +54,10 @@ const linkTemplates = [
     url: 'https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcq/zcq_',
     suffix: '.djhtm'
   },
+  {
+    name: '估值資料',
+    internal: '/valuation?id=', // 站內頁面，前面補 baseUrl
+  },
 
 ];
 // ^^^^ linkTemplates 陣列 ^^^^
@@ -66,6 +66,7 @@ const linkTemplates = [
 function StockLinkGenerator() {
   const [stockCode, setStockCode] = useState('');
   const [links, setLinks] = useState([]);
+  const siteBase = useBaseUrl('/').replace(/\/$/, '');
   // 移除 companyName 和 loading 狀態
 
   // VVVV 連結生成邏輯 (恢復 prefix 處理) VVVV
@@ -87,7 +88,7 @@ function StockLinkGenerator() {
       return {
         name: template.name,
         // 拼接完整的 URL: URL + 前綴 + 代號 + 後綴
-        url: template.url + prefix + finalCode + suffix, 
+        url: (template.internal ? siteBase + template.internal : template.url) + prefix + finalCode + suffix, 
       };
     });
 

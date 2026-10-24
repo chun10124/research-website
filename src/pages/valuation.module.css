@@ -1,0 +1,111 @@
+/* 估值資料頁：英數用 Helvetica（無中文字形），中文落到黑體-簡 */
+.page {
+  padding: 20px 16px;
+  font-family: "Helvetica Neue", Helvetica, Arial, "Heiti SC", "STHeiti", sans-serif;
+}
+
+.page h2 {
+  margin-bottom: 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.note {
+  color: var(--ifm-color-emphasis-600);
+}
+
+.error {
+  color: var(--ifm-color-danger);
+}
+
+.panels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.panel {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.panelHead h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ifm-font-color-base);
+}
+
+.copyButton {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ifm-link-color);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.copyButton:hover {
+  text-decoration: underline;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+/* 覆寫 Infima 預設的表格樣式（斑馬紋、框線、display:block） */
+.table {
+  display: table;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.table thead,
+.table tr {
+  background-color: transparent;
+  border: none;
+}
+
+.table th,
+.table td {
+  padding: 3px 10px;
+  border: none;
+  background-color: transparent;
+}
+
+.table th:first-child {
+  padding-left: 0;
+}
+
+.table thead th {
+  text-align: right;
+  font-weight: 600;
+  color: var(--ifm-font-color-base);
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.table thead th:first-child,
+.table tbody th {
+  text-align: left;
+}
+
+.table tbody th {
+  font-weight: 400;
+}
+
+.table td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
