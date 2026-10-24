@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Layout from '@theme/Layout';
 import { useLocation } from '@docusaurus/router';
 import { fetchValuationTables } from '../components/valuationData';
+import { getTaiwanStockDisplayName } from '../features/StockAnalysis/api/rsStockList';
 import styles from './valuation.module.css';
 
 async function copyTable(table) {
@@ -57,6 +58,7 @@ export default function ValuationPage() {
   const { search } = useLocation();
   const id = (new URLSearchParams(search).get('id') || '').trim();
   const [state, setState] = useState({ loading: true });
+  const [name, setName] = useState('');
 
   useEffect(() => {
     if (!id) { setState({ error: '請在網址加上 ?id=股票代號' }); return; }
@@ -65,13 +67,16 @@ export default function ValuationPage() {
     fetchValuationTables(id)
       .then((tables) => alive && setState({ tables }))
       .catch((e) => alive && setState({ error: e.message }));
+    // 股名取 RS 股票清單（Firestore 公開讀），查不到就只顯示代號
+    setName('');
+    getTaiwanStockDisplayName(id).then((n) => alive && n && setName(n));
     return () => { alive = false; };
   }, [id]);
 
   return (
-    <Layout title={id ? `${id} 估值資料` : '估值資料'}>
+    <Layout title={id ? `${[id, name].filter(Boolean).join(' ')} 估值資料` : '估值資料'}>
       <main className={styles.page}>
-        <h2>{id} 估值資料</h2>
+        <h2>{[id, name].filter(Boolean).join(' ')} 估值資料</h2>
         {state.loading && <p className={styles.note}>抓取中…</p>}
         {state.error && <p className={styles.error}>{state.error}</p>}
         {state.tables && (
