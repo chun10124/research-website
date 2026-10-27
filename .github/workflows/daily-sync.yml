@@ -33,6 +33,10 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # actions: write —— 下方「補派富邦收盤 K 棒」要用 GITHUB_TOKEN 派 fubon-fetch.yml
+    permissions:
+      contents: read
+      actions: write
     steps:
       - name: 取出程式碼
         uses: actions/checkout@v4
@@ -52,6 +56,29 @@ jobs:
             --bundle --platform=node --format=esm --packages=external \
             --alias:@docusaurus/ExecutionEnvironment=./scripts/daily-sync/docusaurus-execenv-stub.mjs \
             --outfile=scripts/daily-sync/_bundle.mjs
+
+      # 富邦收盤 K 棒由 Worker 13:36／13:50 派 closeBars，但 CF cron 偶爾整段漏觸發
+      # （10/27 台灣 13:15–14:00 幾乎停擺，兩場都沒派到）。RS 前再確認一次，缺就補派並等它寫入；
+      # closeBars 平常 30 秒內完成，等 4 分鐘還沒有就放棄，RS 照跑（退回全走 Yahoo，只是較慢）。
+      # 假日補派也無害：富邦快照非今日時腳本自己 exit 0、不寫入。
+      - name: 補派富邦收盤 K 棒（缺才派）
+        if: github.event.inputs.mode == 'rsThenPrice' || github.event.inputs.mode == 'rs'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(TZ=Asia/Taipei date +%u)" -ge 6 ]; then echo "週末，略過"; exit 0; fi
+          D=$(TZ=Asia/Taipei date +%Y%m%d)
+          URL="https://firestore.googleapis.com/v1/projects/my-tools-1228/databases/(default)/documents/ibdRsMeta/fubonCloseBars_${D}?mask.fieldPaths=date"
+          has() { [ "$(curl -s -o /dev/null -w '%{http_code}' "$URL")" = "200" ]; }
+          if has; then echo "富邦收盤 K 棒 ${D} 已存在"; exit 0; fi
+          echo "::warning::富邦收盤 K 棒 ${D} 不存在（13:36／13:50 可能沒派到），補派 closeBars"
+          gh workflow run fubon-fetch.yml --repo "$GITHUB_REPOSITORY" --ref main -f job=closeBars
+          for i in $(seq 1 16); do
+            sleep 15
+            if has; then echo "富邦收盤 K 棒已寫入（約 $((i * 15)) 秒）"; exit 0; fi
+          done
+          echo "::warning::等 4 分鐘仍無富邦收盤 K 棒，RS 改全走 Yahoo"
 
       - name: 執行同步
         run: |
