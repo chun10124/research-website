@@ -20,7 +20,7 @@ const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 // 順序：日期、結算｜留倉差、加權、漲跌、波段回測｜散戶 6｜位階 4｜外資期貨 4｜CALL：淨口、淨金、BC 較結算、BC 金額、結構｜PUT 3
 // 日期一律帶年份（26/10/23）；寬度要和 CSS 的 sticky left 一致（--fc-date-w）
 const DATE_W = 68;
-const COL_WIDTHS = [DATE_W, 34, 104, 72, 64, 56, 90, 90, 90, 90, 90, 90, 84, 84, 84, 84, 96, 86, 96, 96, 104, 104, 104, 60, 320, 96, 96, 104];
+const COL_WIDTHS = [DATE_W, 34, 104, 72, 64, 56, 90, 90, 90, 90, 90, 90, 84, 84, 84, 84, 96, 86, 96, 96, 104, 104, 104, 60, 190, 96, 96, 104];
 const TABLE_WIDTH = COL_WIDTHS.reduce((a, b) => a + b, 0);
 const Cols = () => <colgroup>{COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>;
 
@@ -87,10 +87,15 @@ const LABEL_TONE = {
   SC主動擴張: 'pillSc', 雙向強化型淨SC: 'pillSc', BC撤退型淨SC: 'pillScSoft',
   SC減少主導收斂: 'pillConv', BC增加主導收斂: 'pillConvSoft', 雙向強化型淨BC: 'pillConvSoft',
 };
+/** 表格顯示用簡稱（全名放 title）；全名兩顆並排要 320px 欄寬 */
+const LABEL_SHORT = {
+  SC主動擴張: 'SC擴張', 雙向強化型淨SC: '雙強SC', BC撤退型淨SC: 'BC撤退',
+  SC減少主導收斂: 'SC減收斂', BC增加主導收斂: 'BC增收斂', 雙向強化型淨BC: '雙強BC',
+};
 function Pill({ label }) {
   if (!label) return <span className={styles.soft}>—</span>;
   if (label === '同型') return <span className={styles.pillSame}>同型</span>;
-  return <span className={`${styles.pill} ${styles[LABEL_TONE[label]] || ''}`}>{label}</span>;
+  return <span className={`${styles.pill} ${styles[LABEL_TONE[label]] || ''}`} title={label}>{LABEL_SHORT[label] || label}</span>;
 }
 
 export default function FuturesChipsPage() {
@@ -259,8 +264,7 @@ export default function FuturesChipsPage() {
                   <th className={`${styles.gRetail} ${styles.gs}`} colSpan={6}>散戶多空（口）</th>
                   <th className={`${styles.gLevel} ${styles.gs}`} colSpan={4}>散戶位階（微台）</th>
                   <th className={`${styles.gFut} ${styles.gs}`} colSpan={4}>外資期貨（口）</th>
-                  <th className={`${styles.gForeign} ${styles.gs}`} colSpan={5}>外資選擇權布局</th>
-                  <th className={`${styles.gPut} ${styles.gs}`} colSpan={3}>外資賣權（千元）</th>
+                  <th className={`${styles.gForeign} ${styles.gs}`} colSpan={8}>外資選擇權（買權 CALL ｜ 賣權 PUT）</th>
                 </tr>
                 <tr className={styles.colRow}>
                   <th className={styles.stickyCol}>日期</th>
@@ -287,9 +291,9 @@ export default function FuturesChipsPage() {
                   <th className={styles.tForeign} title="外資臺指選擇權買權（CALL）未平倉淨金額（千元）">CALL 淨<br />未平倉金額</th>
                   <th className={styles.tForeign} title="外資 BC 未平倉金額 − 上次月結算日 BC 金額（千元）">BC 金額<br />較結算日</th>
                   <th className={styles.tForeign} title="外資 BC 未平倉金額（億）。過熱 ≥ 約 10.5 億、紫爆 ≥ 約 20 億，門檻由貼文日期反推">BC 金額<br />（億）</th>
-                  <th className={`${styles.tForeign} ${styles.wide}`}>CALL 淨額結構（5 日 ／ 20 日）</th>
-                  <th className={`${styles.tPut} ${styles.gs}`} title="外資買進賣權（BP）未平倉金額">BP 金額</th>
-                  <th className={styles.tPut} title="外資賣出賣權（SP）未平倉金額">SP 金額</th>
+                  <th className={styles.tForeign} title="CALL 淨額 5 日、20 日變化的結構分類；滑鼠移到標籤上看全名">CALL 淨額結構<br />5 日 ／ 20 日</th>
+                  <th className={`${styles.tPut} ${styles.gs}`} title="外資買進賣權（BP）未平倉金額（千元）">BP 金額<br />（千元）</th>
+                  <th className={styles.tPut} title="外資賣出賣權（SP）未平倉金額（千元）">SP 金額<br />（千元）</th>
                   <th className={styles.tPut} title="當日 SP 金額增加 − BP 金額增加；正＝SP 增加較多">SP−BP<br />增減</th>
                 </tr>
               </thead>
