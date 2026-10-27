@@ -391,6 +391,12 @@ export async function fetchRsPriceData(stockCode, market, existing = null) {
     if (l > 0) result.lowMap = { ...(result.lowMap || {}), [t]: l };
     if (Number.isFinite(lots)) result.volumeMap = { ...(result.volumeMap || {}), [t]: lots * 1000 };
   }
+  // 剔除全市場休市日的假 K 棒（見 rsMarketClosedDays）
+  for (const d of rsMarketClosedDays) {
+    for (const m of [result.priceMap, result.highMap, result.lowMap, result.volumeMap, openMap]) {
+      if (m) delete m[d];
+    }
+  }
   // openMap/highMap/lowMap/volumeMap 只存最近 120 天（K 線 + VCP 夠用）
   // priceMap 維持完整（RS 計算需要 15 個月）
   // 註：寫入用 merge，Firestore 逐鍵合併，舊日期不會被刪 —— 資料庫實際累積的天數比這裡多
@@ -427,19 +433,45 @@ const RS_TRADING_DAY_PROBE_IDS = [
   { id: '2454', market: 'TWSE' },
 ];
 
+/**
+ * 全市場休市日：探測股（權值股）全數成交量 0 的日子。颱風假等臨時停市，Yahoo 仍會給一根
+ * 量 0、OHLC 照抄前日的假 K 棒（10/23 颱風假實例，全市場 1980 檔都被寫入）；
+ * 權值股平常不可能零成交，以此和冷門股單日無成交區分。由 probeTodayHasClose 每輪重算。
+ */
+let rsMarketClosedDays = new Set();
+
+function detectMarketClosedDays(volumeMaps) {
+  if (volumeMaps.length === 0) return new Set();
+  const closed = new Set();
+  for (const d of Object.keys(volumeMaps[0])) {
+    if (volumeMaps.every((m) => m[d] === 0)) closed.add(d);
+  }
+  return closed;
+}
+
 async function probeTodayHasClose(todayStr) {
   const dates = [];
+  const volumeMaps = [];
+  const startDate = new Date();
+  startDate.setMonth(startDate.getMonth() - RS_PRICE_LOOKBACK_MONTHS);
   for (const p of RS_TRADING_DAY_PROBE_IDS) {
     try {
-      const { priceMap } = await fetchRsPriceData(p.id, p.market);
+      // 直接打 Yahoo（不經 fetchRsPriceData）：要完整的成交量序列來判斷休市日
+      const { priceMap, volumeMap } = await fetchYahooHistoricalPriceVolumeMaps(
+        p.id, startDate.toISOString().slice(0, 10), new Date().toISOString().slice(0, 10), { market: p.market },
+      );
+      if (Object.keys(priceMap || {}).length === 0) throw new Error('無資料');
+      volumeMaps.push(volumeMap || {});
       dates.push(getLatestCloseInPriceMap(priceMap, todayStr).dateStr);
     } catch (e) {
       console.warn(`[RS] 交易日探測 ${p.id} 失敗:`, e.message);
     }
   }
+  rsMarketClosedDays = detectMarketClosedDays(volumeMaps);
+  if (rsMarketClosedDays.size) console.log(`[RS] 全市場休市日（Yahoo 假 K 棒，剔除）：${[...rsMarketClosedDays].sort().join('、')}`);
   // 探測全失敗（網路／限流）→ 無法判斷，交給 finalize 階段用全市場結果再判一次
   if (dates.filter(Boolean).length === 0) return { ok: true, unknown: true, dates };
-  return { ...hasTodayCloseMajority(dates, todayStr), dates };
+  return { ...hasTodayCloseMajority(dates.filter((d) => !rsMarketClosedDays.has(d)), todayStr), dates };
 }
 
 /**
