@@ -235,6 +235,36 @@ export function swingDrawdown(days, highOf, lowOf, closeOf) {
   return out;
 }
 
+/**
+ * 圖表標的波段高點（收盤價轉折，與畫出來的加權線一致）：points＝[{ time, value }] 依日期排序，回傳 [{ time, value, drop }]。
+ * 高低點交替確認：自暫定高點回落 ≥ pct 才確認它是高點、改找低點；自暫定低點反彈 ≥ pct 才確認低點、改找高點。
+ * 所以兩個高點之間一定隔著一段 ≥ pct 的下跌與反彈，不會擠在一起；沒創新高的反彈高點（低於前高）也會標。
+ * drop＝從高點到下一個低點（最後一段＝到目前為止最低收盤）的回落 %。第一筆資料不算高點（不知道前面的走勢）。
+ */
+export function swingPeaks(points, pct) {
+  const peaks = []; // 確認的高點索引
+  let dir = 0; // 1＝找高點、-1＝找低點、0＝方向未定
+  let hi = 0, lo = 0; // 暫定高／低點的索引
+  for (let i = 1; i < points.length; i++) {
+    const v = points[i].value;
+    if (dir >= 0 && v > points[hi].value) hi = i;
+    if (dir <= 0 && v < points[lo].value) lo = i;
+    if (dir >= 0 && v <= points[hi].value * (1 - pct)) {
+      if (hi > 0) peaks.push(hi);
+      dir = -1; lo = i;
+    } else if (dir <= 0 && v >= points[lo].value * (1 + pct)) {
+      dir = 1; hi = i;
+    }
+  }
+  // 高點到下一個高點之間（最後一個到資料結尾）的最低收盤，就是該段低點
+  return peaks.map((p, k) => {
+    const end = peaks[k + 1] ?? points.length;
+    let low = points[p].value;
+    for (let i = p + 1; i < end; i++) low = Math.min(low, points[i].value);
+    return { time: points[p].time, value: points[p].value, drop: 100 * (1 - low / points[p].value) };
+  });
+}
+
 /** 有限併發 */
 async function pool(tasks, limit, onDone) {
   const results = new Array(tasks.length);

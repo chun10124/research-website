@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import styles from './FuturesChipsPage.module.css';
 import { readTheme, chartOptions, timeKeyOf, attachWheelHandler } from '../features/StockAnalysis/components/lwcShared';
+import { swingPeaks } from '../features/FuturesChips/taifexApi';
 
 /**
  * 籌碼頁「圖表」分頁：上下兩格。
@@ -39,7 +40,7 @@ const scaleOf = (l) => l.scale || l.key;
 const SCALE_ORDER = [...new Set(LINES.map(scaleOf))];
 const CHIP_PANE = 1;
 const CHIP_PANE_RATIO = 0.42; // 下格佔整張圖高度
-const SWING_MARK_MIN = 2; // 波段高點之後回測 ≥ 2% 才在加權線上標出（他提過最小的例子是 2.3%）
+const SWING_PCT = 0.03; // 加權線波段高點：收盤回落 ≥ 3% 才算高點、反彈 ≥ 3% 才算低點（2018～2025 約每年 2～10 個）
 
 /** 勾選的刻度組 → 'right'／'left'／自己的隱藏刻度 */
 function axisMap(sel) {
@@ -131,20 +132,15 @@ export default function FuturesChipsChart({ rows, visibleFrom }) {
         lastValueVisible: true,
         priceFormat: { type: 'custom', formatter: (v) => Math.round(v).toLocaleString('en-US'), minMove: 1 },
       });
-      idx.setData(rows.filter((r) => r.close != null).map((r) => ({ time: r.date.replace(/\//g, '-'), value: r.close })));
+      const idxData = rows.filter((r) => r.close != null).map((r) => ({ time: r.date.replace(/\//g, '-'), value: r.close }));
+      idx.setData(idxData);
 
-      // 波段高點（表格「波段回測」用的高點）：之後回測達 SWING_MARK_MIN 以上才標，文字＝這一波最大回測
-      const peakDd = {};
-      for (const r of rows) {
-        if (r.swingHighDate) peakDd[r.swingHighDate] = Math.max(peakDd[r.swingHighDate] ?? 0, r.swingDd ?? 0);
-      }
+      // 波段高點：用畫出來的收盤線判定（箭頭落在線的轉折上），文字＝到下一個波段低點的回落
+      // （表格「波段回測」是盤中高低、另一套規則，數字不必相同）
       const markColor = t.dark ? '#fbbf24' : '#b45309';
-      lib.createSeriesMarkers(idx, Object.entries(peakDd)
-        .filter(([d, dd]) => dd >= SWING_MARK_MIN && byDate[d.replace(/\//g, '-')]?.close != null)
-        .sort(([a], [b]) => (a < b ? -1 : 1))
-        .map(([d, dd]) => ({
-          time: d.replace(/\//g, '-'), position: 'aboveBar', shape: 'arrowDown', color: markColor, text: `-${dd.toFixed(1)}%`,
-        })));
+      lib.createSeriesMarkers(idx, swingPeaks(idxData, SWING_PCT).map((p) => ({
+        time: p.time, position: 'aboveBar', shape: 'arrowDown', color: markColor, text: `-${p.drop.toFixed(1)}%`,
+      })));
 
       // 月結算日直條（中性色，與表格結算列同色系）：兩格各一組，放在填滿整格高度的隱藏刻度上
       const settleColor = t.dark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(15, 23, 42, 0.08)';
