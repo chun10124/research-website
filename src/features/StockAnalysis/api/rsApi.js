@@ -330,7 +330,8 @@ const rsPriceSourceCount = { fubon: 0, yahoo: 0 };
  * 幾乎每批都會休息、富邦省下的時間就全吃掉（10/20 實測 1688 富邦／295 Yahoo 仍跑 17 分）。
  */
 function sortFubonFirst(list, existingMap) {
-  if (!fubonCloseBarsCtx) return list;
+  // 必須回新陣列：呼叫端會先清空原陣列再塞回（10/27 回傳同一參照 → 清單被清空、一檔都沒抓）
+  if (!fubonCloseBarsCtx) return [...list];
   const fubon = [];
   const yahoo = [];
   for (const stock of list) {
