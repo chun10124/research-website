@@ -18,15 +18,15 @@
   color: var(--ifm-color-danger);
 }
 
+/* 固定季在上、年在下 */
 .panels {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 32px;
   align-items: flex-start;
 }
 
 .panel {
-  flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
 }
