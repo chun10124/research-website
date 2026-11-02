@@ -44,10 +44,26 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 安裝富邦 SDK（Linux x86_64，官方下載點）
+      # SDK zip 存 GitHub 快取：官方下載點偶爾連不上（11/2 19:45 連線逾時 5 分鐘 → 整場失敗），
+      # 有快取就不碰官網；快取被清（7 天沒用）才重下，並重試。換 SDK 版本時要一起改 key、網址、SHA256。
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25  # v5.1.0（鎖 SHA）
+        with:
+          path: ~/fubon_sdk
+          key: fubon-neo-2.4.0-manylinux-x86_64
+
+      - name: 安裝富邦 SDK（Linux x86_64，快取或官方下載點）
         run: |
-          curl -sSL -o "$RUNNER_TEMP/sdk.zip" https://www.fbs.com.tw/TradeAPI_SDK/fubon_binary/fubon_neo-2.4.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.zip
-          unzip -q "$RUNNER_TEMP/sdk.zip" -d "$RUNNER_TEMP/sdk"
+          SDK_ZIP=~/fubon_sdk/sdk.zip
+          if [ ! -f "$SDK_ZIP" ]; then
+            mkdir -p ~/fubon_sdk
+            curl -sSfL --retry 4 --retry-all-errors --retry-delay 15 --connect-timeout 20 --max-time 120 \
+              -o "$SDK_ZIP" https://www.fbs.com.tw/TradeAPI_SDK/fubon_binary/fubon_neo-2.4.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.zip
+          else
+            echo "使用快取的 SDK"
+          fi
+          # 核對檔案沒被換過（快取或官網皆然）；不符就刪掉，避免壞檔被存進快取
+          echo "516cbf57a822c8cb5809186d84964faa900e43cd1c9704634c60cf0810256b6d  $SDK_ZIP" | sha256sum -c - || { rm -f "$SDK_ZIP"; exit 1; }
+          unzip -q "$SDK_ZIP" -d "$RUNNER_TEMP/sdk"
           pip install -q "$RUNNER_TEMP"/sdk/*.whl requests
 
       # 憑證只在這一步還原、用完即刪
