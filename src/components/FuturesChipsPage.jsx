@@ -191,7 +191,25 @@ export default function FuturesChipsPage() {
     const span = (f) => { const a = vals(f); return a.length ? [Math.min(...a), Math.max(...a)] : [0, 0]; };
     const [mtxMin, mtxMax] = span((r) => r.mtxRetail || []);
     const [tmfMin, tmfMax] = span((r) => r.tmfRetail || []);
+    const amax = (f) => { const a = vals(f).map(Math.abs); return a.length ? Math.max(...a) : 0; };
+    // BP/SP 金額：有趨勢又極端長尾（中位數約 20 萬，2020/03 達 1,300 萬）。p95 會讓近期全部頂滿、真正最大值會把其他天壓扁
+    // → 取區間 p99 與最近 20 個交易日最大值的較大者：只有疫情那種極端日頂滿，最近的資料一定不頂滿
+    const recentMax = (f, n = 20) => {
+      const a = state.rows.slice(-n).flatMap((r) => [].concat(f(r))).filter((v) => v != null).map(Math.abs);
+      return a.length ? Math.max(...a) : 0;
+    };
+    const p99 = (f) => {
+      const a = vals(f).map(Math.abs).sort((x, y) => x - y);
+      return a.length ? a[Math.floor((a.length - 1) * 0.99)] : 0;
+    };
+    const putF = (r) => [r.bpAmt, r.spAmt];
+    // 外資淨未平倉長期同號、水位接近，從 0 畫每天都快滿 → 區間內全同號時改畫 |值| 的 [min, max]；
+    // 有正有負就退回以 0 為軸的正負長條（用真正最大值）
+    const fx = vals((r) => r.fxNet);
+    const fxOneSign = fx.length > 0 && (fx.every((v) => v >= 0) || fx.every((v) => v <= 0));
+    const [fxAbsMin, fxAbsMax] = span((r) => (r.fxNet == null ? [] : Math.abs(r.fxNet)));
     return {
+      fxOneSign, fxAbsMin, fxAbsMax,
       spread: p95((r) => r.spreadChg),
       mtxMin, mtx: mtxMax, tmfMin, tmf: tmfMax,
       mtxNet: p95((r) => r.mtxNetChg),
@@ -200,10 +218,10 @@ export default function FuturesChipsPage() {
       callAmt: p95((r) => r.callNetAmt),
       bc: p95((r) => r.bcVsSettle),
       bcAmt: p95((r) => r.bcAmt),
-      fxNet: p95((r) => r.fxNet),
+      fxNet: amax((r) => r.fxNet),
       fxChg: p95((r) => r.fxNetChg),
       fxSettle: p95((r) => [r.fxSettleTx, r.fxSettleAll]),
-      put: p95((r) => [r.bpAmt, r.spAmt]),
+      put: Math.max(p99(putF), recentMax(putF)),
       putNet: p95((r) => r.putNetChg),
     };
   }, [state.rows]);
@@ -338,7 +356,9 @@ export default function FuturesChipsPage() {
                     <DivergingCell value={r.shortStr} up="barGreen" down="barRed" />
                     <BarCell value={r.longShare} max={100} color="barAmber" text={r.longShare == null ? '' : `${Math.round(r.longShare)}%`} />
                     <BarCell value={r.shortShare} max={100} color="barBlue" text={r.longShare == null ? '' : `${100 - Math.round(r.longShare)}%`} />
-                    <DivergingCell gs value={r.fxNet} max={max.fxNet} up="barAmber" down="barAmber" text={fmtSigned(r.fxNet)} />
+                    {max.fxOneSign
+                      ? <BarCell gs value={r.fxNet == null ? null : Math.abs(r.fxNet)} min={max.fxAbsMin} max={max.fxAbsMax} color="barAmber" text={fmtSigned(r.fxNet)} />
+                      : <DivergingCell gs value={r.fxNet} max={max.fxNet} up="barAmber" down="barAmber" text={fmtSigned(r.fxNet)} />}
                     <DivergingCell value={r.fxNetChg} max={max.fxChg} up="barRed" down="barGreen" text={fmtSigned(r.fxNetChg)} />
                     <DivergingCell value={r.fxSettleTx} max={max.fxSettle} up="barRed" down="barGreen" text={fmtSigned(r.fxSettleTx)} />
                     <DivergingCell value={r.fxSettleAll} max={max.fxSettle} up="barRed" down="barGreen" text={fmtSigned(r.fxSettleAll)} />
@@ -350,7 +370,7 @@ export default function FuturesChipsPage() {
                       down="barTeal"
                       text={fmtSigned(r.callNetAmt)}
                     />
-                    <BarCell value={r.bcVsSettle} max={max.bc} color="barTeal" text={fmtSigned(r.bcVsSettle)} />
+                    <DivergingCell value={r.bcVsSettle} max={max.bc} up="barTeal" down="barTeal" text={fmtSigned(r.bcVsSettle)} />
                     <td
                       className={`${styles.num} ${r.heat ? styles.bold : ''} ${r.heat === '紫爆' ? styles.heatPurple : r.heat ? styles.heatHot : ''}`}
                       title={r.heat || undefined}
