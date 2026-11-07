@@ -98,16 +98,21 @@ async function fetchCsv(page, params) {
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = new TextDecoder('big5').decode(await res.arrayBuffer());
-      if (text.trimStart().startsWith('<')) throw new Error('期交所回傳網頁（日期超出可查範圍）');
+      if (text.trimStart().startsWith('<')) {
+        // 日期超出範圍是確定性的，重試也一樣，直接失敗（省期交所請求）
+        const e = new Error('期交所回傳網頁（日期超出可查範圍）');
+        e.noRetry = true;
+        throw e;
+      }
       return text.split(/\r?\n/).map((l) => l.split(',')).filter((r) => /^\d{4}\//.test(r[0] || ''));
     } catch (e) {
-      if (rateLimited || attempt >= 2) throw new Error(`${page} ${params.queryStartDate}~${params.queryEndDate}: ${e.message}`);
+      if (rateLimited || e.noRetry || attempt >= 2) throw new Error(`${page} ${params.queryStartDate}~${params.queryEndDate}: ${e.message}`);
       await sleep(1200 * 2 ** attempt);
     }
   }
 }
 
-/** 區間抓取＋快取：已過去 3 天以上的區間永久快取，含近期的 30 分鐘 */
+/** 區間抓取＋快取：完整的過去月份（已過 3 天以上）永久快取，其餘 30 分鐘 */
 /** 匯出／匯入已永久快取的區段（每日同步用：存進 Firestore，下次只抓沒存過的月份） */
 export function exportPermanentChunks() {
   const out = {};
@@ -131,8 +136,15 @@ async function cached(kind, id, a, b, loader) {
   const hit = lsGet(key);
   if (hit !== undefined) return hit;
   const value = await loader();
-  lsSet(key, value, b < addDays(taipeiToday(), -3));
+  lsSet(key, value, isPermanentChunk(b));
   return value;
+}
+
+/** 區段結束日是該月最後一天、且已過去 3 天以上 → 完整的過去月份，內容不會再變 */
+function isPermanentChunk(b) {
+  const d = parseYmd(b);
+  const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() === d.getDate();
+  return monthEnd && b < addDays(taipeiToday(), -3);
 }
 
 /** 依日曆月切段（每日行情單次上限約一個月；法人表也照月切，區段才固定） */
@@ -169,7 +181,7 @@ const loadFutOi = (cid, a, b) => cached('oi', cid, a, b, async () => {
  * 之後照月份讀；不然一次補十幾個月 × 4 種商品會被限流（HTTP 429）。只預抓已過去 3 天以上的月份（永久快取）
  */
 async function prefetchByYear(kind, id, chunks, fetchRange) {
-  const missing = chunks.filter(([a, b]) => b < addDays(taipeiToday(), -3)
+  const missing = chunks.filter(([a, b]) => isPermanentChunk(b)
     && lsGet(`${CACHE_PREFIX}${kind}_${id}_${a}_${b}`) === undefined);
   const years = {};
   for (const c of missing) (years[c[0].slice(0, 4)] ||= []).push(c);
@@ -317,22 +329,34 @@ export async function loadFuturesChipTable(startYmdDash, { onProgress } = {}) {
   const pre = addDays(start, -70); // 前推：月結算日基準、20 日變化、前一日比較
   const warnings = [];
 
+  // 法人兩張表的查詢結束日不能晚於期交所最後有資料的交易日：週六查到當天會回網頁（2026/11/07 實測），
+  // 平日收盤後查到當天則正常。每日行情查到今天沒問題，所以先看大台每日行情最新一天（從當月往回找，月初可能還沒開盤），
+  // 法人表就查到那天。這兩段大台區段下面照樣用到，會直接命中快取。抓不到就照舊查到今天
+  const txChunks = monthChunks(pre, today);
+  let instEnd = today;
+  try {
+    for (const [a, b] of txChunks.slice(-2).reverse()) {
+      const days = Object.keys(await loadFutOi('TX', a, b)).sort();
+      if (days.length) { instEnd = days[days.length - 1]; break; }
+    }
+  } catch (_) { /* 照舊查到今天，失敗會在下面逐段回報 */ }
+
   const tasks = [];
   const addTask = (fn) => { tasks.push(fn); return tasks.length - 1; };
-  const txIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadFutOi('TX', a, b)));
+  const txIdx = txChunks.map(([a, b]) => addTask(() => loadFutOi('TX', a, b)));
   const mtxIdx = monthChunks(addDays(start, -10), today).map(([a, b]) => addTask(() => loadFutOi('MTX', a, b)));
   const tmfIdx = monthChunks(TMF_START, today).map(([a, b]) => addTask(() => loadFutOi('TMF', a, b)));
   // 法人期貨從 pre 起抓：外資期貨「較結算日」要上次月結算日的基準
-  const txfInstIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadFutInst('TXF', a, b)));
-  const mxfInstIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadFutInst('MXF', a, b)));
-  const tmfInstIdx = monthChunks(TMF_START, today).map(([a, b]) => addTask(() => loadFutInst('TMF', a, b)));
-  const optIdx = monthChunks(pre, today).map(([a, b]) => addTask(() => loadForeignOpt(a, b)));
+  const txfInstIdx = monthChunks(pre, instEnd).map(([a, b]) => addTask(() => loadFutInst('TXF', a, b)));
+  const mxfInstIdx = monthChunks(pre, instEnd).map(([a, b]) => addTask(() => loadFutInst('MXF', a, b)));
+  const tmfInstIdx = monthChunks(TMF_START, instEnd).map(([a, b]) => addTask(() => loadFutInst('TMF', a, b)));
+  const optIdx = monthChunks(pre, instEnd).map(([a, b]) => addTask(() => loadForeignOpt(a, b)));
 
   // 法人表缺的過去月份先整年補抓（失敗就留給下面逐月抓）
   const yearly = [
     ...[['TXF', pre], ['MXF', pre], ['TMF', TMF_START]].map(([cid, from]) => () => prefetchByYear(
-      'inst2', cid, monthChunks(from, today), (a, b) => fetchFutInst(cid, a, b))),
-    () => prefetchByYear('opt2', 'TXO', monthChunks(pre, today), fetchForeignOpt),
+      'inst2', cid, monthChunks(from, instEnd), (a, b) => fetchFutInst(cid, a, b))),
+    () => prefetchByYear('opt2', 'TXO', monthChunks(pre, instEnd), fetchForeignOpt),
   ];
   onProgress?.(0, tasks.length);
   for (const f of yearly) {
