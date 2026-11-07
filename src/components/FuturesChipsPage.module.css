@@ -11,6 +11,7 @@
   --fc-put: 13, 148, 136;       /* 外資賣權：青 */
   --fc-heat-hot-ink: #c2410c;
   --fc-heat-purple-ink: #7e22ce;
+  --fc-heat-red-ink: #c62828;
   --fc-red: rgba(229, 57, 53, 0.62);
   --fc-magenta: rgba(204, 0, 153, 0.58);
   --fc-green: rgba(46, 160, 67, 0.58);
@@ -51,6 +52,7 @@
   --fc-pill-conv-ink: #ff8a80;
   --fc-heat-hot-ink: #fdba74;
   --fc-heat-purple-ink: #d8b4fe;
+  --fc-heat-red-ink: #ff6b5e;
 }
 
 /* ── 一行標題列 ── */
@@ -284,6 +286,7 @@
 /* ── BC 過熱／紫爆：數字改色加粗 ── */
 .heatHot { color: var(--fc-heat-hot-ink); }
 .heatPurple { color: var(--fc-heat-purple-ink); }
+.heatRed { color: var(--fc-heat-red-ink); }
 
 
 /* 只有本頁：全站 .main-wrapper 是 overflow-x:hidden，會變成捲動容器讓 sticky 表頭失效；

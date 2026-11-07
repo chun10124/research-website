@@ -20,8 +20,8 @@ const fmtNum = (v) => (v == null ? '—' : Math.round(v).toLocaleString('en-US')
 const fmtSigned = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString('en-US')}`);
 // 選擇權金額一律換成億（原始單位千元），與表格一致
 const yi = (v) => (v == null ? null : v / 1e5);
-const fmtYi = (v) => (v == null ? '—' : `${v.toFixed(2)} 億`);
-const fmtYiSigned = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)} 億`);
+const fmtYi = (v) => (v == null ? '—' : `${v.toFixed(1)} 億`);
+const fmtYiSigned = (v) => { if (v == null) return '—'; const x = Math.round(v * 10) / 10; return `${x > 0 ? '+' : ''}${x.toFixed(1)} 億`; };
 
 /** 可疊加的折線；color 亮／暗各一。多紅空綠，小台實線、微台虛線（dash）區分。
     同商品的多空共用刻度（scale），兩條線的高低才能直接比；其餘各用自己的刻度 */

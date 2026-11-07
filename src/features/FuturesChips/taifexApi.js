@@ -543,9 +543,9 @@ export function computeChipRows({ start, tx, mtx, tmf, txfInst, mxfInst, tmfInst
       // 外資 BC 未平倉金額（千元）與過熱燈號
       bcAmt: c ? c[1] : null,
       heat: c ? (c[1] >= BC_PURPLE ? '紫爆' : c[1] >= BC_HOT ? '過熱' : null) : null,
-      // 外資 SC（賣出買權）未平倉金額，及當日 SC 增加減去 BC 增加（與 PUT 的 SP−BP 對稱）
+      // 外資 SC（賣出買權）未平倉金額，及當日 BC 增加減去 SC 增加（＝CALL 淨金額日變化；正＝偏多，與 PUT 的 SP−BP 同向）
       scAmt: c ? c[3] : null,
-      scBcChg: c && prevD && call[prevD] ? (c[3] - call[prevD][3]) - (c[1] - call[prevD][1]) : null,
+      bcScChg: c && prevD && call[prevD] ? (c[1] - call[prevD][1]) - (c[3] - call[prevD][3]) : null,
       // 外資 PUT：BP（買進賣權）、SP（賣出賣權）未平倉金額，及當日 SP 增加減去 BP 增加（正＝SP 增加較多）
       bpAmt: opt[d] ? opt[d][7] : null,
       spAmt: opt[d] ? opt[d][9] : null,
