@@ -443,10 +443,11 @@ export function computeChipRows({ start, tx, mtx, tmf, txfInst, mxfInst, tmfInst
     return classifyCall(call[d][1] - call[p][1], call[d][3] - call[p][3]);
   };
   const settleSorted = [...settleDays].sort();
-  const bcVsSettle = (d) => {
+  // 外資選擇權第 j 欄（opt 12 欄的索引）− 上次月結算日的值：BC 金額 j=1、BP 金額 j=7
+  const optVsSettle = (d, j) => {
     let base = null;
     for (const s of settleSorted) if (s <= d) base = s;
-    return base && call[base] && call[d] ? call[d][1] - call[base][1] : null;
+    return base && opt[base] && opt[d] ? opt[d][j] - opt[base][j] : null;
   };
 
   // 外資期貨淨未平倉：大台，以及「大台＋小台/4＋微台/20」（他把三種換算成大台口數）
@@ -512,16 +513,23 @@ export function computeChipRows({ start, tx, mtx, tmf, txfInst, mxfInst, tmfInst
       shortShare: t?.shortSharePct ?? null,
       callNetOi: c ? c[4] : null,
       callNetAmt: c ? c[5] : null,
-      bcVsSettle: bcVsSettle(d),
+      bcVsSettle: optVsSettle(d, 1),
       label5,
       label20: label20 && label20 === label5 ? '同型' : label20,
       // 外資 BC 未平倉金額（千元）與過熱燈號
       bcAmt: c ? c[1] : null,
       heat: c ? (c[1] >= BC_PURPLE ? '紫爆' : c[1] >= BC_HOT ? '過熱' : null) : null,
+      // 外資 SC（賣出買權）未平倉金額，及當日 SC 增加減去 BC 增加（與 PUT 的 SP−BP 對稱）
+      scAmt: c ? c[3] : null,
+      scBcChg: c && prevD && call[prevD] ? (c[3] - call[prevD][3]) - (c[1] - call[prevD][1]) : null,
       // 外資 PUT：BP（買進賣權）、SP（賣出賣權）未平倉金額，及當日 SP 增加減去 BP 增加（正＝SP 增加較多）
       bpAmt: opt[d] ? opt[d][7] : null,
       spAmt: opt[d] ? opt[d][9] : null,
       putNetChg: opt[d] && prevD && opt[prevD] ? (opt[d][9] - opt[prevD][9]) - (opt[d][7] - opt[prevD][7]) : null,
+      // 外資 PUT 未平倉淨口數／淨金額（BP − SP），BP 金額較上次月結算日（淡定表「(賣)OP」與「BP 與結算比」，2026/10/30～11/06 金額兩欄 6/6 吻合）
+      putNetOi: opt[d] ? opt[d][10] : null,
+      putNetAmt: opt[d] ? opt[d][11] : null,
+      bpVsSettle: optVsSettle(d, 7),
       // 外資期貨淨未平倉（大台）、日增減，與較上次月結算日（大台／大小微合計）
       fxNet: fxNetTx(d),
       fxNetChg: prevD && fxNetTx(d) != null && fxNetTx(prevD) != null ? fxNetTx(d) - fxNetTx(prevD) : null,

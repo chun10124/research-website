@@ -13,7 +13,8 @@ import { db } from '../../utils/firebaseConfig';
 import { loadFuturesChipTable, exportPermanentChunks, importPermanentChunks, getNetFetchCount } from './taifexApi';
 
 // 2：加入外資期貨、外資 PUT、BC 過熱燈號、波段回測欄位
-const SCHEMA = 2;
+// 3：加入外資 PUT 淨口數、淨金額、BP 較結算日
+const SCHEMA = 3;
 // 原始區段另計版本：鍵本身帶種類（oi／inst2／opt2），格式改了換種類名就好，舊的每日行情區段照用，不必整批重抓（會被限流）
 const RAW_SCHEMA = 1;
 const DOC_REF = () => doc(db, 'ibdRsMeta', 'futuresChips');

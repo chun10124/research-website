@@ -18,6 +18,10 @@ const DEFAULT_ON = ['mtxLong', 'mtxShort'];
 
 const fmtNum = (v) => (v == null ? '—' : Math.round(v).toLocaleString('en-US'));
 const fmtSigned = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString('en-US')}`);
+// 選擇權金額一律換成億（原始單位千元），與表格一致
+const yi = (v) => (v == null ? null : v / 1e5);
+const fmtYi = (v) => (v == null ? '—' : `${v.toFixed(2)} 億`);
+const fmtYiSigned = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)} 億`);
 
 /** 可疊加的折線；color 亮／暗各一。多紅空綠，小台實線、微台虛線（dash）區分。
     同商品的多空共用刻度（scale），兩條線的高低才能直接比；其餘各用自己的刻度 */
@@ -26,11 +30,17 @@ export const LINES = [
   { group: '散戶多空', key: 'mtxShort', scale: 'mtx', label: '小台看空', get: (r) => r.mtxRetail?.[1], fmt: fmtNum, color: ['#1a8a30', '#4ade80'] },
   { group: '散戶多空', key: 'tmfLong', scale: 'tmf', label: '微台看多', get: (r) => r.tmfRetail?.[0], fmt: fmtNum, color: ['#e53935', '#ff6b5e'], dash: true },
   { group: '散戶多空', key: 'tmfShort', scale: 'tmf', label: '微台看空', get: (r) => r.tmfRetail?.[1], fmt: fmtNum, color: ['#1a8a30', '#4ade80'], dash: true },
-  { group: '外資選擇權', key: 'callOi', label: 'CALL 淨未平倉口數', get: (r) => r.callNetOi, fmt: fmtSigned, color: ['#d97706', '#fbbf24'] },
-  { group: '外資選擇權', key: 'callAmt', label: 'CALL 淨未平倉金額', get: (r) => r.callNetAmt, fmt: fmtSigned, color: ['#7c3aed', '#a78bfa'] },
-  { group: '外資選擇權', key: 'bcAmt', label: 'BC 金額', get: (r) => r.bcAmt, fmt: fmtNum, color: ['#c2410c', '#fb923c'] },
-  { group: '外資賣權', key: 'bpAmt', scale: 'put', label: 'BP 金額', get: (r) => r.bpAmt, fmt: fmtNum, color: ['#1a8a30', '#4ade80'] },
-  { group: '外資賣權', key: 'spAmt', scale: 'put', label: 'SP 金額', get: (r) => r.spAmt, fmt: fmtNum, color: ['#e53935', '#ff6b5e'] },
+  // 外資選擇權：CALL、PUT 對稱，同位置同顏色（淨口數、淨金額、買方較結算日、買方金額、賣方金額）；金額單位億
+  { group: '外資買權 CALL', key: 'callOi', label: 'CALL 淨未平倉口數', get: (r) => r.callNetOi, fmt: fmtSigned, color: ['#d97706', '#fbbf24'] },
+  { group: '外資買權 CALL', key: 'callAmt', label: 'CALL 淨金額', get: (r) => yi(r.callNetAmt), fmt: fmtYiSigned, color: ['#7c3aed', '#a78bfa'] },
+  { group: '外資買權 CALL', key: 'bcSettle', label: 'BC 較結算日', get: (r) => yi(r.bcVsSettle), fmt: fmtYiSigned, color: ['#7c3aed', '#a78bfa'], dash: true },
+  { group: '外資買權 CALL', key: 'bcAmt', scale: 'call', label: 'BC 金額', get: (r) => yi(r.bcAmt), fmt: fmtYi, color: ['#c2410c', '#fb923c'] },
+  { group: '外資買權 CALL', key: 'scAmt', scale: 'call', label: 'SC 金額', get: (r) => yi(r.scAmt), fmt: fmtYi, color: ['#2563eb', '#60a5fa'] },
+  { group: '外資賣權 PUT', key: 'putOi', label: 'PUT 淨未平倉口數', get: (r) => r.putNetOi, fmt: fmtSigned, color: ['#d97706', '#fbbf24'] },
+  { group: '外資賣權 PUT', key: 'putAmt', label: 'PUT 淨金額', get: (r) => yi(r.putNetAmt), fmt: fmtYiSigned, color: ['#7c3aed', '#a78bfa'] },
+  { group: '外資賣權 PUT', key: 'bpSettle', label: 'BP 較結算日', get: (r) => yi(r.bpVsSettle), fmt: fmtYiSigned, color: ['#7c3aed', '#a78bfa'], dash: true },
+  { group: '外資賣權 PUT', key: 'bpAmt', scale: 'put', label: 'BP 金額', get: (r) => yi(r.bpAmt), fmt: fmtYi, color: ['#c2410c', '#fb923c'] },
+  { group: '外資賣權 PUT', key: 'spAmt', scale: 'put', label: 'SP 金額', get: (r) => yi(r.spAmt), fmt: fmtYi, color: ['#2563eb', '#60a5fa'] },
   { group: '外資期貨', key: 'fxNet', label: '淨未平倉（大台）', get: (r) => r.fxNet, fmt: fmtSigned, color: ['#0f766e', '#2dd4bf'] },
   { group: '外資期貨', key: 'fxSettleTx', scale: 'fxs', label: '較結算日（大台）', get: (r) => r.fxSettleTx, fmt: fmtSigned, color: ['#7c3aed', '#a78bfa'] },
   { group: '外資期貨', key: 'fxSettleAll', scale: 'fxs', label: '較結算日（大小微）', get: (r) => r.fxSettleAll, fmt: fmtSigned, color: ['#7c3aed', '#a78bfa'], dash: true },
@@ -61,7 +71,8 @@ const fmtAxis = (v) => {
   const a = Math.abs(v);
   if (a >= 10000) return `${Math.round(v / 1000)}k`;
   if (a >= 1000) return `${(v / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  return `${Math.round(v)}`;
+  if (a >= 100) return `${Math.round(v)}`;
+  return a >= 10 ? v.toFixed(1) : v.toFixed(2); // 選擇權金額（億）多在個位數到幾十
 };
 
 function loadSel() {
