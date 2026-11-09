@@ -7,7 +7,7 @@ import { useStockData } from '../features/StockAnalysis/hooks/useStockData';
 import { updateAnalysisField } from '../features/StockAnalysis/api/watchlist';
 import IndustryAnalysisTable from '../features/StockAnalysis/components/IndustryAnalysisTable';
 import BigColumnDragBoard from '../features/StockAnalysis/components/BigColumnDragBoard';
-import { syncStockSnapshots } from '../features/StockAnalysis/api/stockApi';
+import { syncStockSnapshots, fetchYahooHistoricalPriceMap } from '../features/StockAnalysis/api/stockApi';
 import { calculateFlowSignal } from '../features/StockAnalysis/utils/analysisUtils';
 import { ANALYSIS_LAYOUT_DOC_REF, SYNC_STATUS_DOC_REF, RS_RATINGS_COLLECTION } from '../utils/firebaseConfig';
 import { useIbdRsWatchlist } from '../features/StockAnalysis/hooks/useIbdRsWatchlist';
@@ -26,11 +26,13 @@ const NUM_BIG_COLUMNS = 8;
  * 只讀追蹤表裡這些股票的 RS 資料（圖表視窗與上一檔／下一檔切換用）。
  * 以前用 useIbdRsData 讀整個 ibdRsRatings（約 2000 檔、近 100 MB、十幾秒），還會跟追蹤表
  * 本身搶連線；改成按代號分批 in 查詢（Firestore 一批上限 30 個），約 200 檔、10 MB、1 秒左右。
- * 回傳 { [代號]: RS 文件 }。新加的股票只補讀缺的；RS 背景同步跑完時整批重讀。
+ * 回傳 { byId: { [代號]: RS 文件 }, checked: Set<代號> }；checked＝已查過（不論有沒有 RS 文件），
+ * 用來分辨「還沒讀到」與「確定沒有 RS（興櫃）」。新加的股票只補讀缺的；RS 背景同步跑完時整批重讀。
  */
 const RS_IN_CHUNK = 30;
 function useTrackedRsRatings(stocks) {
     const [byId, setById] = useState({});
+    const [checked, setChecked] = useState(() => new Set());
     const ids = useMemo(
         () => [...new Set((stocks || []).map((s) => String(s.code ?? s.id ?? '').trim()).filter(Boolean))].sort(),
         [stocks]
@@ -44,11 +46,14 @@ function useTrackedRsRatings(stocks) {
         for (let i = 0; i < list.length; i += RS_IN_CHUNK) chunks.push(list.slice(i, i + RS_IN_CHUNK));
         const results = await Promise.all(chunks.map((c) =>
             getDocs(query(RS_RATINGS_COLLECTION, where(documentId(), 'in', c)))
-                .then((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-                .catch((e) => { console.warn('[追蹤表] RS 資料讀取失敗:', e?.message); return []; })
+                .then((snap) => ({ ids: c, docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })) }))
+                .catch((e) => { console.warn('[追蹤表] RS 資料讀取失敗:', e?.message); return { ids: [], docs: [] }; })
         ));
-        const got = Object.fromEntries(results.flat().map((r) => [r.id, r]));
+        const got = Object.fromEntries(results.flatMap((r) => r.docs).map((r) => [r.id, r]));
         setById((prev) => ({ ...prev, ...got }));
+        // 讀取失敗的那批不算「查過」，免得被當成興櫃整批改打 Yahoo
+        const ok = results.flatMap((r) => r.ids);
+        setChecked((prev) => (ok.every((id) => prev.has(id)) ? prev : new Set([...prev, ...ok])));
     }, []);
 
     const idsKey = ids.join(',');
@@ -67,7 +72,7 @@ function useTrackedRsRatings(stocks) {
         });
     }, [load]);
 
-    return byId;
+    return { byId, checked };
 }
 
 const formatLastSync = (ts) => {
@@ -202,7 +207,7 @@ const AnalysisPage = () => {
         return () => unsub();
     }, []);
 
-    const rsById = useTrackedRsRatings(stocks);
+    const { byId: rsById, checked: rsChecked } = useTrackedRsRatings(stocks);
     // 個股視窗用的 stock：有 RS 文件就用 RS 文件；沒有就用追蹤表的代號＋名稱組最小物件，視窗照樣能開（只有 K 線，沒有 RS）。
     // RS 母體＝證交所＋櫃買上市櫃清單全部 4 碼股票，追蹤表裡不在母體的實際上就是興櫃股 → market 標 ESB，
     // 基本面分頁才會去觀測站查興櫃（rotc）的營收／財報。替代物件以 ref 快取：stocks 每 5 秒隨即時價重算，
@@ -262,8 +267,8 @@ const AnalysisPage = () => {
     }, [stocks, modalStockFor, bigColumnConfig]);
 
     // 「基準」欄：基準日（非交易日取之前最近一個交易日）收盤 → 現價的漲跌幅；
-    // 日期收盤取 RS 文件的 priceMap（約 15 個月），沒有 RS 文件或基準日早於資料起點就不顯示
-    const freshBaseCloses = useMemo(() => {
+    // 日期收盤取 RS 文件的 priceMap（約 15 個月）；沒有 RS 文件的（興櫃）改抓 Yahoo（見下）；基準日早於資料起點就不顯示
+    const rsBaseCloses = useMemo(() => {
         if (!baseDate) return {};
         const out = {};
         for (const s of stocks || []) {
@@ -278,6 +283,38 @@ const AnalysisPage = () => {
         }
         return out;
     }, [baseDate, stocks, rsById]);
+    // 沒有 RS 文件的股票（興櫃）：基準日收盤改從 Yahoo 日線拿（先試 .TWO）。只在 RS 確定查過、確定沒有時才抓，
+    // 每檔一個請求；抓完前不寫回 Firestore，免得先寫一份少了興櫃的、抓完又寫一次
+    const noRsKey = useMemo(() => {
+        const ids = [...new Set((stocks || []).map((s) => String(s.code ?? s.id ?? '').trim()).filter(Boolean))];
+        if (!ids.length || !ids.every((id) => rsChecked.has(id))) return null; // RS 還沒讀完
+        return ids.filter((id) => !rsById[id]).sort().join(',');
+    }, [stocks, rsChecked, rsById]);
+    const [yahooBase, setYahooBase] = useState({ baseDate: '', key: null, closes: {} });
+    useEffect(() => {
+        if (!baseDate || noRsKey == null) return;
+        if (yahooBase.baseDate === baseDate && yahooBase.key === noRsKey) return;
+        const codes = noRsKey ? noRsKey.split(',') : [];
+        let cancelled = false;
+        const start = new Date(new Date(`${baseDate}T00:00:00Z`).getTime() - 14 * 86400000).toISOString().slice(0, 10);
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+        Promise.all(codes.map((code) =>
+            fetchYahooHistoricalPriceMap(code, start, today, { market: 'TPEX', yahooMaxRetries: 2 })
+                .then((pm) => {
+                    const d = Object.keys(pm || {}).filter((x) => x <= baseDate && Number(pm[x]) > 0).sort().pop();
+                    return d ? [code, Number(pm[d])] : null;
+                })
+                .catch(() => null)
+        )).then((rows) => {
+            if (!cancelled) setYahooBase({ baseDate, key: noRsKey, closes: Object.fromEntries(rows.filter(Boolean)) });
+        });
+        return () => { cancelled = true; };
+    }, [baseDate, noRsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    const yahooReady = !!baseDate && noRsKey != null && yahooBase.baseDate === baseDate && yahooBase.key === noRsKey;
+    const freshBaseCloses = useMemo(
+        () => (yahooReady ? { ...rsBaseCloses, ...yahooBase.closes } : rsBaseCloses),
+        [yahooReady, rsBaseCloses, yahooBase]
+    );
     // RS 文件要等追蹤表讀完才開始讀（約慢 2 秒）：先用版面設定文件裡存的基準日收盤（跟追蹤表同時到）顯示，
     // RS 到了再覆蓋；有差異（改基準日、新加股票、除權息調整）才寫回，平常不寫。存 Firestore 而非瀏覽器，無痕視窗也有效
     const storedCloses = storedBaseCloses?.baseDate === baseDate && storedBaseCloses.closes && typeof storedBaseCloses.closes === 'object'
@@ -298,7 +335,7 @@ const AnalysisPage = () => {
     const baseClosesWrittenRef = useRef(null);
     useEffect(() => {
         const keys = Object.keys(freshBaseCloses);
-        if (!baseDate || !keys.length || baseClosesWrittenRef.current === freshBaseCloses) return;
+        if (!baseDate || !yahooReady || !keys.length || baseClosesWrittenRef.current === freshBaseCloses) return;
         const same = storedCloses
             && Object.keys(storedCloses).length === keys.length
             && keys.every((k) => storedCloses[k] === freshBaseCloses[k]);
@@ -307,7 +344,7 @@ const AnalysisPage = () => {
         // updateDoc 整個欄位替換（setDoc merge 會深層合併，已移除的股票會殘留、永遠比對不同而反覆寫）
         updateDoc(ANALYSIS_LAYOUT_DOC_REF, { baseCloses: { baseDate, closes: freshBaseCloses } })
             .catch((e) => console.warn('寫入基準收盤失敗（未登入時屬正常）:', e?.message));
-    }, [baseDate, freshBaseCloses, storedCloses]);
+    }, [baseDate, yahooReady, freshBaseCloses, storedCloses]);
 
     const selectedStock = useMemo(() => {
         if (!selectedRsId) return null;
