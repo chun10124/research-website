@@ -1708,6 +1708,8 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const [vcpSnapshot, setVcpSnapshot] = useState(null);
   /** Yahoo 日 K OHLC，與 VCP 同一請求 */
   const [ohlcSeriesRaw, setOhlcSeries] = useState([]);
+  /** Yahoo 日 K 還在抓（Firestore 沒有可用日 K 時才走 Yahoo，例如興櫃）：期間圖表區顯示載入中，而不是「尚無 RS 歷史」 */
+  const [ohlcPending, setOhlcPending] = useState(false);
   // 盤中即時價（富邦，僅白名單登入者）併入今日 K 棒；盤外／無權限時就是原本的日 K
   // 加權（IX0001）跟個股同一次請求取得，盤中加權線與圖例才是當下的值
   const live = useRealtimeQuotes(stock?.id ? [stock.id, LIVE_INDEX_CODE] : []);
@@ -1831,6 +1833,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       && Object.keys(storedHM).length >= 20
       && _storedPMLatest >= _storedExpectedDay;
 
+    setOhlcPending(!hasStoredMaps);
     if (hasStoredMaps) {
       const dates = Object.keys(storedPM).filter((d) => d >= quoteBufStart && d <= quoteEnd).sort();
       setOhlcSeries(dates.map((d) => {
@@ -1857,6 +1860,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
       void (getYahooKlineFromCache(stock.id, quoteBufStart, quoteEnd) ?? fetchYahooHistoricalPriceVolumeMaps(stock.id, quoteBufStart, quoteEnd, { market: stock.market }))
         .then(({ priceMap, highMap, lowMap, volumeMap, ohlcSeries: ohlc }) => {
           if (cancelled) return;
+          setOhlcPending(false);
           setOhlcSeries(Array.isArray(ohlc) ? ohlc : []);
           if (priceMap && typeof priceMap === 'object') {
             const dates = Object.keys(priceMap).sort();
@@ -1880,6 +1884,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
         })
         .catch(() => {
           if (!cancelled) {
+            setOhlcPending(false);
             setCloseQuote(null);
             setVcpSnapshot({ error: true });
             setOhlcSeries([]);
@@ -2255,7 +2260,9 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   const indexEmpty = indexMap != null && Object.keys(indexMap).length === 0;
   // 週線模式但該檔週 K 還沒抓回來（換股時會短暫如此）→ 顯示載入態，而非閃日線或「無資料」
   const weeklyPending = activeView === 'rs' && chartTf === 'W' && weeklyOhlc === null;
-  const isEmpty = !loading && !error && !weeklyPending && chartData.length === 0;
+  // 日 K 還在從 Yahoo 抓、圖上又沒有別的可畫（興櫃沒有 RS 歷史）→ 顯示載入中
+  const dailyPending = chartTf !== 'W' && ohlcPending && chartData.length === 0;
+  const isEmpty = !loading && !error && !weeklyPending && !dailyPending && chartData.length === 0;
   const marketBadge = formatIbdMarketLabel(stock?.market);
   const moneyDjSearchUrl = stock ? getMoneyDjSearchUrl(stock) : null;
 
@@ -2700,7 +2707,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
           </button>
         </div>
 
-        {loading || weeklyPending ? (
+        {loading || weeklyPending || dailyPending ? (
           <div
             style={{
               flex: '1 1 0px',

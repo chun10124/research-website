@@ -507,7 +507,7 @@ function parseChartToOhlcSeries(json, startStr, endStr) {
 
 /**
  * 從 Yahoo Finance 抓歷史收盤價（透過 proxy），回傳 { [dateStr]: price }。
- * 先試 .TW（上市/上櫃），無資料再試 .TWO（興櫃）。績效頁每日淨值用。
+ * 先試 .TW 再試 .TWO；market 為 TPEX（上櫃）或 ESB（興櫃）時先試 .TWO。績效頁每日淨值用。
  */
 export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr, opts = {}) => {
   const bare = toYahooBare(stockCode);
@@ -526,7 +526,7 @@ export const fetchYahooHistoricalPriceMap = async (stockCode, startStr, endStr, 
     baseDelayMs: opts.yahooBaseDelayMs ?? 900,
   };
 
-  const suffixes = opts.market === 'TPEX' ? ['.TWO', '.TW']
+  const suffixes = opts.market === 'TPEX' || opts.market === 'ESB' ? ['.TWO', '.TW']
     : opts.market === 'TWSE' ? ['.TW', '.TWO']
     : ['.TW', '.TWO'];
   for (let si = 0; si < suffixes.length; si++) {
@@ -595,7 +595,7 @@ export const fetchYahooHistoricalPriceVolumeMaps = async (stockCode, startStr, e
     baseDelayMs: opts.yahooBaseDelayMs ?? 900,
   };
   const suffixes =
-    opts.market === 'TPEX' ? ['.TWO', '.TW'] : opts.market === 'TWSE' ? ['.TW', '.TWO'] : ['.TW', '.TWO'];
+    opts.market === 'TPEX' || opts.market === 'ESB' ? ['.TWO', '.TW'] : opts.market === 'TWSE' ? ['.TW', '.TWO'] : ['.TW', '.TWO'];
   for (let si = 0; si < suffixes.length; si++) {
     if (si > 0) await sleep(400 + Math.floor(Math.random() * 200));
     const suffix = suffixes[si];

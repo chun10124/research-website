@@ -241,8 +241,12 @@ export function mergeLiveIndexClose(indexMap, price) {
   return { ...indexMap, [today]: price };
 }
 
+/**
+ * 把即時價併成今日 K 棒。日 K 還沒載入（空陣列）時不併：興櫃日 K 走 Yahoo、比富邦即時價慢到，
+ * 先併的話圖上只有今天一根，時間軸以那一根放滿整個畫面（一條超大 K 棒）。
+ */
 export function mergeLiveDailyBar(ohlc, q) {
-  if (!Array.isArray(ohlc) || !q || !(q.price > 0)) return ohlc;
+  if (!Array.isArray(ohlc) || !ohlc.length || !q || !(q.price > 0)) return ohlc;
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
   const last = ohlc[ohlc.length - 1];
   if (last && last.dateStr > today) return ohlc;
