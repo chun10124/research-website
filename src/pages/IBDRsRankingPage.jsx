@@ -2893,12 +2893,14 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                     axisWidth={chartAxisWidth} onAxisWidth={handleChartAxisWidth}
                     active={activeView === 'rs'}
                     syncHub={chartSyncHubRef.current} syncEnabled={chartTf === 'D'}
+                    resetKey={`${stock?.id ?? ''}|${chartTf}`}
                   />
                 </div>
                 <div style={chartLayerStyle(activeView === 'foreign')}>
                   <IbdChipLwcChart
                     data={foreignChartData} axisWidth={chartAxisWidth} onAxisWidth={handleChartAxisWidth}
                     active={activeView === 'foreign'} syncHub={chartSyncHubRef.current}
+                    resetKey={stock?.id ?? ''}
                   />
                 </div>
                 {activeView === 'fund' && (

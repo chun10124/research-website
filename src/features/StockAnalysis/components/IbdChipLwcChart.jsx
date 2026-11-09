@@ -35,7 +35,7 @@ const fmtLots = (v) => (Number.isFinite(v) ? `${v > 0 ? '+' : ''}${Math.round(v)
 const md = (ymd) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
 
 export default function IbdChipLwcChart({
-  data, axisWidth = 48, onAxisWidth, active = true, syncHub = null, syncEnabled = true,
+  data, axisWidth = 48, onAxisWidth, active = true, syncHub = null, syncEnabled = true, resetKey = '',
 }) {
   const hostRef = useRef(null);
   const apiRef = useRef(null);
@@ -188,7 +188,7 @@ export default function IbdChipLwcChart({
     return () => { cancelAnimationFrame(raf); clearTimeout(late); };
   }, [ready, data]);
 
-  useVisibleRangeSync({ apiRef, ready, data, active, hub: syncHub, syncKey: 'chip', syncEnabled, useRef, useEffect });
+  useVisibleRangeSync({ apiRef, ready, data, active, hub: syncHub, syncKey: 'chip', syncEnabled, resetKey, useRef, useEffect });
 
   // 右側刻度軸寬度與另一張圖同步（取兩者較大值），切分頁時繪圖區左右才不會位移
   const onAxisWidthRef = useRef(onAxisWidth);

@@ -298,13 +298,16 @@ export function createRangeSyncHub() {
 const sameRange = (a, b) => a && b && Math.abs(a.from - b.from) < 0.01 && Math.abs(a.to - b.to) < 0.01;
 
 /**
- * 時間視窗：資料換了（換股、日／週切換）才回到「最近 INITIAL_BARS 根」；
+ * 時間視窗：資料換了（換股、日／週切換、補上今天那根）才回到「最近 INITIAL_BARS 根」；
  * 同一檔只是補資料（例如法人資料晚到）就保留使用者目前拖到的位置。
+ * resetKey 要帶股票代號：各檔起訖交易日幾乎都一樣，只看首尾日期會把換股誤判成「同一份資料」，
+ * 沿用上一檔的邏輯位置——上一檔若拖過、或 K 棒數較少（冷門股缺無成交日），新那檔最新幾根就落在畫面右側外。
+ * 根數也納入：同一檔首尾不變、根數卻變了，代表中間資料換過，索引已對不上。
  * 非作用中的圖透過 hub 跟著作用中的圖同步（兩張圖日期一致，邏輯索引可直接套用），切分頁時位置不跳。
  * syncEnabled=false（例如股價圖切到週線，K 棒數不同）時不回報也不接收。
  */
 export function useVisibleRangeSync({
-  apiRef, ready, data, active, hub, syncKey, syncEnabled = true, useRef, useEffect,
+  apiRef, ready, data, active, hub, syncKey, syncEnabled = true, resetKey = '', useRef, useEffect,
 }) {
   const keyRef = useRef(null);
   const activeRef = useRef(active);
@@ -316,14 +319,14 @@ export function useVisibleRangeSync({
   useEffect(() => {
     const api = apiRef.current;
     if (!ready || !api || !data.length) return;
-    const key = `${data[0]?.dateKey}|${data.at(-1)?.dateKey}`;
+    const key = `${resetKey}|${data[0]?.dateKey}|${data.at(-1)?.dateKey}|${data.length}`;
     if (keyRef.current === key) return;
     keyRef.current = key;
     const n = data.length;
     const range = { from: Math.max(0, n - INITIAL_BARS), to: n - 1 + 1.5 };
     api.chart.timeScale().setVisibleLogicalRange(range);
     if (activeRef.current && enabledRef.current) hub?.report(syncKey, range);
-  }, [ready, data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, data, resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 作用中的圖：使用者拖曳／縮放時回報；登記 applier 讓 hub 在自己非作用中時設定範圍
   useEffect(() => {

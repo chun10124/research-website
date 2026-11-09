@@ -41,7 +41,7 @@ function fmtVol(v) {
 }
 
 export default function IbdRsLwcChart({
-  data, showMA = true, showRs = true, axisWidth = 48, onAxisWidth, active = true, syncHub = null, syncEnabled = true,
+  data, showMA = true, showRs = true, axisWidth = 48, onAxisWidth, active = true, syncHub = null, syncEnabled = true, resetKey = '',
 }) {
   const hostRef = useRef(null);
   const apiRef = useRef(null); // { lib, chart, candle, vol, ma10, ma20, rs, idx }
@@ -209,7 +209,7 @@ export default function IbdRsLwcChart({
     return () => { cancelAnimationFrame(raf); clearTimeout(late); };
   }, [ready, data]);
 
-  useVisibleRangeSync({ apiRef, ready, data, active, hub: syncHub, syncKey: 'rs', syncEnabled, useRef, useEffect });
+  useVisibleRangeSync({ apiRef, ready, data, active, hub: syncHub, syncKey: 'rs', syncEnabled, resetKey, useRef, useEffect });
 
   // 右側刻度軸寬度與另一張圖同步（取兩者較大值），切分頁時繪圖區左右才不會位移
   const onAxisWidthRef = useRef(onAxisWidth);
