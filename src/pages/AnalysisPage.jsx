@@ -203,6 +203,21 @@ const AnalysisPage = () => {
     }, []);
 
     const rsById = useTrackedRsRatings(stocks);
+    // 個股視窗用的 stock：有 RS 文件就用 RS 文件；沒有（例：興櫃股不在 RS 母體）就用追蹤表的代號＋名稱
+    // 組最小物件，視窗照樣能開（只有 K 線，沒有 RS）。替代物件以 ref 快取：stocks 每 5 秒隨即時價重算，
+    // 若每次都產生新物件，視窗裡依賴 stock 的 effect（週線抓取等）會被反覆取消重跑
+    const fallbackStockRef = useRef(new Map());
+    const modalStockFor = useCallback((s) => {
+        const key = String(s?.code ?? s?.id ?? '').trim();
+        if (!key) return null;
+        if (rsById[key]) return rsById[key];
+        const name = s?.name || key;
+        const cached = fallbackStockRef.current.get(key);
+        if (cached && cached.name === name) return cached;
+        const fb = { id: key, name, market: null };
+        fallbackStockRef.current.set(key, fb);
+        return fb;
+    }, [rsById]);
     const navigationList = useMemo(() => {
         if (!Array.isArray(stocks) || stocks.length === 0) return [];
 
@@ -234,17 +249,16 @@ const AnalysisPage = () => {
             byCol[c].sort((a, b) => a.order - b.order);
             for (const { stocks: catStocks } of byCol[c]) {
                 for (const a of catStocks) {
-                    const key = a.code ?? a.id;
-                    const rs = rsById[key];
-                    if (rs && !seen.has(rs.id)) {
-                        out.push(rs);
-                        seen.add(rs.id);
+                    const st = modalStockFor(a);
+                    if (st && !seen.has(st.id)) {
+                        out.push(st);
+                        seen.add(st.id);
                     }
                 }
             }
         }
         return out;
-    }, [stocks, rsById, bigColumnConfig]);
+    }, [stocks, modalStockFor, bigColumnConfig]);
 
     // 「基準」欄：基準日（非交易日取之前最近一個交易日）收盤 → 現價的漲跌幅；
     // 日期收盤取 RS 文件的 priceMap（約 15 個月），沒有 RS 文件或基準日早於資料起點就不顯示
@@ -294,7 +308,11 @@ const AnalysisPage = () => {
             .catch((e) => console.warn('寫入基準收盤失敗（未登入時屬正常）:', e?.message));
     }, [baseDate, freshBaseCloses, storedCloses]);
 
-    const selectedStock = selectedRsId ? rsById[selectedRsId] : null;
+    const selectedStock = useMemo(() => {
+        if (!selectedRsId) return null;
+        const s = (stocks || []).find((x) => String(x.code ?? x.id ?? '').trim() === selectedRsId);
+        return s ? modalStockFor(s) : (rsById[selectedRsId] ?? null);
+    }, [selectedRsId, stocks, modalStockFor, rsById]);
 
     const openStockModal = (st) => {
         const key = st?.code ?? st?.id;
