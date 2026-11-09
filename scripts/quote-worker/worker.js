@@ -87,7 +87,25 @@ async function fetchSnapshots(env) {
       return null;
     }
   };
-  const [tse, otc, ix] = await Promise.all([get('TSE'), get('OTC'), getIndex()]);
+  // 興櫃（ESB）快照：富邦是否支援、type 參數是否適用都未驗證 → 先帶 type、被拒（400／422）再不帶；
+  // 任何失敗都不影響上市櫃報價，結果狀態放進回應的 esb 欄位供診斷（不含任何憑證）
+  const getEsb = async () => {
+    const urls = [`${tok.base}/snapshot/quotes/ESB?type=ALLBUT0999`, `${tok.base}/snapshot/quotes/ESB`];
+    let status = 'error';
+    for (const u of urls) {
+      try {
+        const r = await fetch(u, { headers: { 'X-SDK-TOKEN': tok.token } });
+        if (r.ok) return { json: await r.json(), status: `ok${u.includes('type=') ? '' : '-notype'}` };
+        status = `http-${r.status}`;
+        if (r.status !== 400 && r.status !== 422) break;
+      } catch (e) {
+        status = `fetch-error`;
+        break;
+      }
+    }
+    return { json: null, status };
+  };
+  const [tse, otc, ix, esb] = await Promise.all([get('TSE'), get('OTC'), getIndex(), getEsb()]);
   const map = {};
   for (const d of [tse, otc]) {
     for (const x of d.data || []) {
@@ -117,7 +135,28 @@ async function fetchSnapshots(env) {
       trial: !!ix.isTrial,
     };
   }
-  return { data: { date: tse.date, time: tse.time, tokenAt: tok.at, map } };
+  // 興櫃：只收與上市快照同一天的資料，且不覆蓋上市櫃代號
+  let esbCount = 0;
+  if (esb.json && esb.json.date === tse.date) {
+    for (const x of esb.json.data || []) {
+      if (!x?.symbol || map[x.symbol]) continue;
+      const price = x.lastPrice ?? x.closePrice ?? null;
+      if (!(price > 0)) continue;
+      map[x.symbol] = {
+        price,
+        open: x.openPrice ?? null,
+        high: x.highPrice ?? null,
+        low: x.lowPrice ?? null,
+        change: x.change ?? null,
+        changePct: x.changePercent ?? null,
+        volumeLots: x.tradeVolume ?? null,
+        trial: !!x.isTrial,
+      };
+      esbCount++;
+    }
+  }
+  const esbInfo = { status: esb.json && esb.json.date !== tse.date ? `${esb.status}-date-${esb.json.date}` : esb.status, count: esbCount };
+  return { data: { date: tse.date, time: tse.time, tokenAt: tok.at, map, esb: esbInfo } };
 }
 
 async function cachedSnapshots(env) {
@@ -162,7 +201,7 @@ export default {
       if (!res.data) return json({ error: res.error }, 503, cors);
       const quotes = {};
       for (const id of ids) if (res.data.map[id]) quotes[id] = res.data.map[id];
-      return json({ date: res.data.date, time: res.data.time, tokenAt: res.data.tokenAt, quotes }, 200, cors);
+      return json({ date: res.data.date, time: res.data.time, tokenAt: res.data.tokenAt, esb: res.data.esb, quotes }, 200, cors);
     }
 
     return json({ error: 'not-found' }, 404, cors);
