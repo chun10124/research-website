@@ -251,12 +251,11 @@ export default function IbdRsLwcChart({
     ? ((d.close - prev.close) / prev.close) * 100
     : null;
   const t = theme;
-  // 當天 RS 尚未同步（例如收盤後、sync 前）→ 顯示最後一筆並標日期，與右軸最新值標籤一致
+  // 當天 RS 尚未同步（例如盤中、sync 前）→ 顯示最後一筆，與右軸最新值標籤一致（不另標日期）
   let rsShown = d && Number.isFinite(d.rs) ? d.rs : null;
-  let rsFromDate = null;
   if (d && rsShown == null) {
     for (let k = li - 1; k >= 0; k--) {
-      if (Number.isFinite(data[k].rs)) { rsShown = data[k].rs; rsFromDate = data[k].dateKey; break; }
+      if (Number.isFinite(data[k].rs)) { rsShown = data[k].rs; break; }
     }
   }
   const chgColor = chg == null || !t ? 'var(--app-text-soft)' : chg > 0 ? t.up : chg < 0 ? t.down : 'var(--app-text-soft)';
@@ -290,11 +289,6 @@ export default function IbdRsLwcChart({
           {showRs && (
             <span style={{ color: t?.rs }}>
               RS <b>{rsShown ?? '—'}</b>
-              {rsFromDate && (
-                <span style={{ color: 'var(--app-text-soft)', fontWeight: 400 }}>
-                  {' '}（{Number(rsFromDate.slice(5, 7))}/{Number(rsFromDate.slice(8, 10))}，當日尚未同步）
-                </span>
-              )}
             </span>
           )}
           <span style={{ color: t?.idx }}>
