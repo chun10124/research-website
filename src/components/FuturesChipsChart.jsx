@@ -30,15 +30,18 @@ export const LINES = [
   { group: '散戶多空', key: 'mtxShort', scale: 'mtx', label: '小台看空', get: (r) => r.mtxRetail?.[1], fmt: fmtNum, color: ['#1a8a30', '#4ade80'] },
   { group: '散戶多空', key: 'tmfLong', scale: 'tmf', label: '微台看多', get: (r) => r.tmfRetail?.[0], fmt: fmtNum, color: ['#e53935', '#ff6b5e'], dash: true },
   { group: '散戶多空', key: 'tmfShort', scale: 'tmf', label: '微台看空', get: (r) => r.tmfRetail?.[1], fmt: fmtNum, color: ['#1a8a30', '#4ade80'], dash: true },
-  // 外資選擇權：CALL、PUT 對稱，同位置同顏色（淨口數、淨金額、買方較結算日、買方金額、賣方金額）；金額單位億
+  // 外資選擇權：CALL、PUT 對稱，同位置同顏色（淨口數、淨金額、買方較結算日、買方口數、買方金額、賣方金額）；金額單位億
+  // 買方口數與金額同色、口數用虛線；口數各用自己的刻度（金額會隨權利金漲跌放大縮小，口數才是外資實際進出）
   { group: '外資買權 CALL', key: 'callOi', label: 'CALL 淨未平倉口數', get: (r) => r.callNetOi, fmt: fmtSigned, color: ['#d97706', '#fbbf24'] },
   { group: '外資買權 CALL', key: 'callAmt', label: 'CALL 淨金額', get: (r) => yi(r.callNetAmt), fmt: fmtYiSigned, color: ['#7c3aed', '#a78bfa'] },
   { group: '外資買權 CALL', key: 'bcSettle', label: 'BC 較結算日', get: (r) => yi(r.bcVsSettle), fmt: fmtYiSigned, color: ['#7c3aed', '#a78bfa'], dash: true },
+  { group: '外資買權 CALL', key: 'bcOi', label: 'BC 口數', get: (r) => r.bcOi, fmt: fmtNum, color: ['#c2410c', '#fb923c'], dash: true },
   { group: '外資買權 CALL', key: 'bcAmt', scale: 'call', label: 'BC 金額', get: (r) => yi(r.bcAmt), fmt: fmtYi, color: ['#c2410c', '#fb923c'] },
   { group: '外資買權 CALL', key: 'scAmt', scale: 'call', label: 'SC 金額', get: (r) => yi(r.scAmt), fmt: fmtYi, color: ['#2563eb', '#60a5fa'] },
   { group: '外資賣權 PUT', key: 'putOi', label: 'PUT 淨未平倉口數', get: (r) => r.putNetOi, fmt: fmtSigned, color: ['#d97706', '#fbbf24'] },
   { group: '外資賣權 PUT', key: 'putAmt', label: 'PUT 淨金額', get: (r) => yi(r.putNetAmt), fmt: fmtYiSigned, color: ['#7c3aed', '#a78bfa'] },
   { group: '外資賣權 PUT', key: 'bpSettle', label: 'BP 較結算日', get: (r) => yi(r.bpVsSettle), fmt: fmtYiSigned, color: ['#7c3aed', '#a78bfa'], dash: true },
+  { group: '外資賣權 PUT', key: 'bpOi', label: 'BP 口數', get: (r) => r.bpOi, fmt: fmtNum, color: ['#c2410c', '#fb923c'], dash: true },
   { group: '外資賣權 PUT', key: 'bpAmt', scale: 'put', label: 'BP 金額', get: (r) => yi(r.bpAmt), fmt: fmtYi, color: ['#c2410c', '#fb923c'] },
   { group: '外資賣權 PUT', key: 'spAmt', scale: 'put', label: 'SP 金額', get: (r) => yi(r.spAmt), fmt: fmtYi, color: ['#2563eb', '#60a5fa'] },
   { group: '外資期貨', key: 'fxNet', label: '淨未平倉（大台）', get: (r) => r.fxNet, fmt: fmtSigned, color: ['#0f766e', '#2dd4bf'] },
