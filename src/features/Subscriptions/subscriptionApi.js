@@ -135,8 +135,10 @@ async function getBulk(key, ids, { fetcher, volatile, force }) {
   return data;
 }
 
-/* 市場代碼：TWSE→sii、TPEX→otc；未知就兩邊都查 */
-const marketsOf = (market) => (market === 'TWSE' ? ['sii'] : market === 'TPEX' ? ['otc'] : ['sii', 'otc']);
+/* 市場代碼：TWSE→sii、TPEX→otc、ESB（興櫃）→rotc；未知就查上市櫃兩邊（不含興櫃，免得每檔多抓一整套檔） */
+const marketsOf = (market) => (
+  market === 'TWSE' ? ['sii'] : market === 'TPEX' ? ['otc'] : market === 'ESB' ? ['rotc'] : ['sii', 'otc']
+);
 /* 月營收彙總表把外國企業（-KY）放在另一個檔 _1 */
 const revVariantOf = (name) => (/KY/i.test(name || '') ? 1 : 0);
 
@@ -183,7 +185,8 @@ export async function loadRevenueBatch(stocks, { force = false } = {}) {
       const data = await getBulk(`rev_${g}_${ym}`, ids, {
         volatile, force: force && volatile,
         fetcher: async () => parseMonthlyRevenueHtml(
-          await fetchBig5(`https://mopsov.twse.com.tw/nas/t21/${g.slice(0, 3)}/t21sc03_${mo.y - 1911}_${mo.m}_${g.slice(3)}.html`),
+          // g＝市場代碼＋一碼變體（sii0、otc1、rotc0）；rotc 是 4 個字，不能用固定長度切
+          await fetchBig5(`https://mopsov.twse.com.tw/nas/t21/${g.slice(0, -1)}/t21sc03_${mo.y - 1911}_${mo.m}_${g.slice(-1)}.html`),
         ),
       });
       got.set(`${g}|${ym}`, data);
@@ -661,7 +664,8 @@ export function computeAlerts(item, d, today) {
     const L = fin[fin.length - 1];
     const P = fin[fin.length - 2];
     const k = (name) => `fin:${name}:${L.q}`;
-    const qn = `${L.q.slice(2, 4)}Q${L.q.slice(-1)}`;
+    // 半年期（興櫃只報半年報）標 H1／H2，見 cumulativeToQuarterly
+    const qn = `${L.q.slice(2, 4)}${L.half ? (L.q.endsWith('Q2') ? 'H1' : 'H2') : `Q${L.q.slice(-1)}`}`;
     const sameQLastYear = (r) => r && fin.find((x) => x.q === `${Number(r.q.slice(0, 4)) - 1}-Q${r.q.slice(-1)}`);
     if (on('finNew')) out.push({ key: k('new'), src: 'fin', label: `${qn} 財報：EPS ${fmt(L.eps, 2)}${L.gm != null ? `，毛利率 ${fmt(L.gm)}%` : ''}` });
     const ga = thresholdOf(t.gmAbove);

@@ -22,7 +22,8 @@ export const fmtPct = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixe
 export const fmtPrice = (v) => (v == null ? '—' : v.toLocaleString('zh-TW', { maximumFractionDigits: 2 }));
 export const signCls = (v) => (v == null ? styles.muted : v > 0 ? styles.up : v < 0 ? styles.down : '');
 const ymLabel = (ym) => (ym ? `${ym.slice(2, 4)}/${ym.slice(5)}` : '—');
-const qLabel = (q) => (q ? `${q.slice(2, 4)}${q.slice(5)}` : ''); // 2026-Q2 → 26Q2
+// 2026-Q2 → 26Q2；半年期（興櫃只報半年報，鍵仍是 Q2／Q4，標 half）→ 26H1／26H2
+const qLabel = (q, half = false) => (q ? `${q.slice(2, 4)}${half ? (q.endsWith('Q2') ? 'H1' : 'H2') : q.slice(5)}` : '');
 const addMonths = (ymd, n) => {
   const d = new Date(`${ymd}T00:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() + n);
@@ -129,7 +130,7 @@ export default function StockFundamentals({
   const revRows = (s?.rows || []).slice(-18).map((r) => ({ x: ymLabel(r.ym), rev: r.revenue / 1e8, yoy: r.yoy, mom: r.mom }));
   // 季度圖（EPS、毛利率）只畫最近 6 季；較前季、去年同季的比較仍用完整資料
   const SHOW_QS = 6;
-  const finAll = (d?.fin || []).map((r) => ({ x: qLabel(r.q), gm: r.gm, eps: r.eps }));
+  const finAll = (d?.fin || []).map((r) => ({ x: qLabel(r.q, r.half), q: r.q, half: !!r.half, gm: r.gm, eps: r.eps }));
   const finRows = finAll.slice(-SHOW_QS);
   const hasGm = finRows.some((r) => r.gm != null);
   // EPS＋股價：共用時間軸（毫秒）。EPS 長條放在該季中間（2、5、8、11 月 15 日），股價是週收盤，
@@ -187,22 +188,23 @@ export default function StockFundamentals({
   const ppDiff = (j) => (gmRow?.gm != null && finAll[j]?.gm != null ? gmRow.gm - finAll[j].gm : null);
   const fmtPp = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}pp`);
   const gmQoq = ppDiff(gmAt - 1);
-  const gmYoy = ppDiff(gmAt - 4);
+  // 去年同期用期別鍵找（不用固定往前 4 筆）：半年報一年只有 2 筆，往前 4 筆會變成兩年前
+  const gmYoy = gmRow ? ppDiff(finAll.findIndex((r) => r.q === `${Number(gmRow.q.slice(0, 4)) - 1}${gmRow.q.slice(4)}`)) : null;
   const gmInfo = gmRow && (
     <>
       {gmRow.x}　毛利率 <b>{gmRow.gm == null ? '—' : `${gmRow.gm.toFixed(1)}%`}</b>
-      　QoQ <b className={signCls(gmQoq)}>{fmtPp(gmQoq)}</b>
+      　{gmRow.half ? 'HoH' : 'QoQ'} <b className={signCls(gmQoq)}>{fmtPp(gmQoq)}</b>
       　YoY <b className={signCls(gmYoy)}>{fmtPp(gmYoy)}</b>
     </>
   );
   const epsInfo = selEpsRow && (
     <>
-      {qLabel(selEpsRow.q)}　EPS <b>{selEpsRow.eps == null ? '—' : selEpsRow.eps.toFixed(2)}</b>
+      {qLabel(selEpsRow.q, selEpsRow.half)}　EPS <b>{selEpsRow.eps == null ? '—' : selEpsRow.eps.toFixed(2)}</b>
     </>
   );
   const tLabel = (t) => {
     const hit = epsQs.find((r) => qMid(r.q) === t);
-    return hit ? qLabel(hit.q) : new Date(t).toISOString().slice(0, 10);
+    return hit ? qLabel(hit.q, hit.half) : new Date(t).toISOString().slice(0, 10);
   };
 
   const confItem = (c) => (
@@ -237,7 +239,7 @@ export default function StockFundamentals({
         <div><span>YoY</span><b className={signCls(s.latest.yoy)}>{fmtPct(s.latest.yoy)}</b></div>
         <div><span>{revYtd.year} 累計營收</span><b>{fmtYi(revYtd.sum)} 億</b></div>
         <div><span>{epsYtd ? `${epsYtd.year} 累計 EPS` : '累計 EPS'}</span><b>{epsYtd ? epsYtd.sum.toFixed(2) : '—'}</b></div>
-        <div><span>{epsLast ? `${qLabel(epsLast.q)} EPS / 年化` : '最近一季 EPS / 年化'}</span><b>{epsLast ? `${epsLast.eps.toFixed(2)} / ${(epsLast.eps * 4).toFixed(2)}` : '—'}</b></div>
+        <div><span>{epsLast ? `${qLabel(epsLast.q, epsLast.half)} EPS / 年化` : '最近一季 EPS / 年化'}</span><b>{epsLast ? `${epsLast.eps.toFixed(2)} / ${(epsLast.eps * (epsLast.half ? 2 : 4)).toFixed(2)}` : '—'}</b></div>
       </div>
     )}
 

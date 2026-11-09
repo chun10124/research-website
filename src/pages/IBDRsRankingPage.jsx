@@ -203,6 +203,9 @@ function formatIbdMarketLabel(market) {
   if (market === 'TPEX') {
     return { text: '上櫃', color: '#6a1b9a', bg: 'rgba(106, 27, 154, 0.1)' };
   }
+  if (market === 'ESB') {
+    return { text: '興櫃', color: '#888', bg: 'rgba(0, 0, 0, 0.06)' };
+  }
   return {
     text: market ? String(market) : '—',
     color: '#888',
@@ -2543,7 +2546,9 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
                   ? '臺灣證券交易所'
                   : stock.market === 'TPEX'
                     ? '櫃買中心（上櫃）'
-                    : undefined
+                    : stock.market === 'ESB'
+                      ? '櫃買中心（興櫃）'
+                      : undefined
               }
               style={{
                 fontSize: 11,

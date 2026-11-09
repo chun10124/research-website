@@ -70,13 +70,18 @@ export function cumulativeToQuarterly(cumByQ) {
     const [y, qs] = k.split('-Q');
     const q = Number(qs);
     const cur = cumByQ[k];
-    const prev = q > 1 ? cumByQ[`${y}-Q${q - 1}`] : [0, 0, 0];
+    let prev = q > 1 ? cumByQ[`${y}-Q${q - 1}`] : [0, 0, 0];
+    // 興櫃公司多半只申報半年報、年報（沒有 Q1、Q3）：前一季缺時，Q2 改算上半年（＝累計）、
+    // Q4 改算下半年（＝年累計 − 半年累計）。鍵仍是 YYYY-Q2／YYYY-Q4（排序、去年同期比對照舊），標 half 供顯示
+    let half = false;
+    if (!prev && q === 2) { prev = [0, 0, 0]; half = true; }
+    if (!prev && q === 4 && cumByQ[`${y}-Q2`]) { prev = cumByQ[`${y}-Q2`]; half = true; }
     if (!cur || !prev) return;
     const sub = (a, b) => (a == null || b == null ? null : a - b);
     const rev = sub(cur[0], prev[0]);
     const gp = sub(cur[1], prev[1]);
     const eps = cur[2] == null || prev[2] == null ? null : Math.round((cur[2] - prev[2]) * 100) / 100;
-    out.push({ q: k, rev, gp, eps, gm: rev > 0 && gp != null ? (gp / rev) * 100 : null });
+    out.push({ q: k, rev, gp, eps, gm: rev > 0 && gp != null ? (gp / rev) * 100 : null, ...(half ? { half: true } : {}) });
   });
   return out;
 }

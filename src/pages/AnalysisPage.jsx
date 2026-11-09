@@ -203,8 +203,9 @@ const AnalysisPage = () => {
     }, []);
 
     const rsById = useTrackedRsRatings(stocks);
-    // 個股視窗用的 stock：有 RS 文件就用 RS 文件；沒有（例：興櫃股不在 RS 母體）就用追蹤表的代號＋名稱
-    // 組最小物件，視窗照樣能開（只有 K 線，沒有 RS）。替代物件以 ref 快取：stocks 每 5 秒隨即時價重算，
+    // 個股視窗用的 stock：有 RS 文件就用 RS 文件；沒有就用追蹤表的代號＋名稱組最小物件，視窗照樣能開（只有 K 線，沒有 RS）。
+    // RS 母體＝證交所＋櫃買上市櫃清單全部 4 碼股票，追蹤表裡不在母體的實際上就是興櫃股 → market 標 ESB，
+    // 基本面分頁才會去觀測站查興櫃（rotc）的營收／財報。替代物件以 ref 快取：stocks 每 5 秒隨即時價重算，
     // 若每次都產生新物件，視窗裡依賴 stock 的 effect（週線抓取等）會被反覆取消重跑
     const fallbackStockRef = useRef(new Map());
     const modalStockFor = useCallback((s) => {
@@ -214,7 +215,7 @@ const AnalysisPage = () => {
         const name = s?.name || key;
         const cached = fallbackStockRef.current.get(key);
         if (cached && cached.name === name) return cached;
-        const fb = { id: key, name, market: null };
+        const fb = { id: key, name, market: 'ESB' };
         fallbackStockRef.current.set(key, fb);
         return fb;
     }, [rsById]);
