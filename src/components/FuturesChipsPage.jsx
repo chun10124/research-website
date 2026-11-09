@@ -17,11 +17,11 @@ const VIEWS = [{ key: 'table', label: '表格' }, { key: 'chart', label: '圖表
 const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 
 // 欄寬（表頭與表身是兩張表，靠同一組 colgroup 對齊；日期、結算兩欄寬度要和 CSS 的 sticky left 一致）
-// 順序：日期、結算｜留倉差、加權、漲跌、波段回測｜散戶 6｜位階 4｜外資期貨 4｜CALL、PUT 對稱各 6：淨口、淨金、買方較結算、買方金額、賣方金額、增減（CALL：BC−SC、PUT：SP−BP，正值都偏多）
+// 順序：日期、結算｜留倉差、加權、漲跌、波段回測｜散戶 6｜位階 4｜外資期貨 4｜CALL、PUT 對稱各 7：淨口、淨金、買方較結算、買方口數、買方金額、賣方金額、增減（CALL：BC−SC、PUT：SP−BP，正值都偏多）
 // 日期一律帶年份（26/10/23）；寬度要和 CSS 的 sticky left 一致（--fc-date-w）
 const DATE_W = 60;
-// 外資選擇權 CALL、PUT 各 6 欄（金額一律億）
-const OPT_W = [62, 56, 60, 54, 54, 54];
+// 外資選擇權 CALL、PUT 各 7 欄（金額一律億）
+const OPT_W = [62, 56, 60, 56, 54, 54, 54];
 // 寬度＝2018 年起歷史上最長的數字（或表頭較長的一行）＋左右內距，再加 COL_SLACK 留白（剛好塞滿看起來太擠）
 const COL_SLACK = 10;
 // 散戶多空 6 欄、散戶位階 4 欄再加寬約 10%（使用者要求）
@@ -278,7 +278,7 @@ export default function FuturesChipsPage() {
                   <th className={`${styles.gRetail} ${styles.gs}`} colSpan={6}>散戶多空（口）</th>
                   <th className={`${styles.gLevel} ${styles.gs}`} colSpan={4}>散戶位階（微台）</th>
                   <th className={`${styles.gFut} ${styles.gs}`} colSpan={4}>外資期貨（口）</th>
-                  <th className={`${styles.gForeign} ${styles.gs}`} colSpan={12}>外資選擇權（買權 CALL ｜ 賣權 PUT）</th>
+                  <th className={`${styles.gForeign} ${styles.gs}`} colSpan={14}>外資選擇權（買權 CALL ｜ 賣權 PUT）</th>
                 </tr>
                 <tr className={styles.colRow}>
                   <th className={styles.stickyCol}>日期</th>
@@ -304,12 +304,14 @@ export default function FuturesChipsPage() {
                   <th className={`${styles.tForeign} ${styles.gs}`} title="外資臺指選擇權買權（CALL）未平倉淨口數（BC − SC）">CALL<br />淨口數</th>
                   <th className={styles.tForeign} title="外資 CALL 未平倉淨金額（BC − SC，億）">CALL<br />淨金額</th>
                   <th className={styles.tForeign} title="外資 BC 未平倉金額 − 上次月結算日 BC 金額（億）">BC<br />較結算</th>
+                  <th className={styles.tForeign} title="外資買進買權（BC）未平倉口數；不受權利金漲跌影響，看外資實際加減碼">BC<br />口數</th>
                   <th className={styles.tForeign} title="外資買進買權（BC）未平倉金額（億）。過熱 ≥ 約 10.5 億、紫爆 ≥ 約 20 億，門檻由貼文日期反推">BC<br />金額</th>
                   <th className={styles.tForeign} title="外資賣出買權（SC）未平倉金額（億）">SC<br />金額</th>
                   <th className={styles.tForeign} title="當日 BC 金額增加 − SC 金額增加（億）；正＝BC 增加較多（偏多），即 CALL 淨金額的日變化">BC−SC<br />增減</th>
                   <th className={`${styles.tPut} ${styles.gs}`} title="外資臺指選擇權賣權（PUT）未平倉淨口數（BP − SP）">PUT<br />淨口數</th>
                   <th className={styles.tPut} title="外資 PUT 未平倉淨金額（BP − SP，億）">PUT<br />淨金額</th>
                   <th className={styles.tPut} title="外資 BP 未平倉金額 − 上次月結算日 BP 金額（億）">BP<br />較結算</th>
+                  <th className={styles.tPut} title="外資買進賣權（BP）未平倉口數；不受權利金漲跌影響，看外資實際加減碼">BP<br />口數</th>
                   <th className={styles.tPut} title="外資買進賣權（BP）未平倉金額（億）">BP<br />金額</th>
                   <th className={styles.tPut} title="外資賣出賣權（SP）未平倉金額（億）">SP<br />金額</th>
                   <th className={styles.tPut} title="當日 SP 金額增加 − BP 金額增加（億）；正＝SP 增加較多">SP−BP<br />增減</th>
@@ -365,7 +367,8 @@ export default function FuturesChipsPage() {
                     <Opt gs value={r.callNetOi} max={max.callOi} text={fmtSigned(r.callNetOi)} />
                     <Opt value={r.callNetAmt} max={max.callAmt} text={fmtYiSigned(r.callNetAmt)} />
                     <Opt value={r.bcVsSettle} max={max.bc} up="barRed" down="barGreen" text={fmtYiSigned(r.bcVsSettle)} />
-                    {/* BC、SC、BP、SP 金額只放數字、不畫長條；BC 過熱／紫爆照舊上色 */}
+                    {/* BC、SC、BP、SP 口數與金額只放數字、不畫長條；BC 過熱／紫爆照舊上色 */}
+                    <td className={styles.num}>{fmtInt(r.bcOi)}</td>
                     <td
                       className={`${styles.num} ${r.heat ? `${styles.bold} ${r.heat === '紫爆' ? styles.heatPurple : styles.heatHot}` : ''}`}
                       title={r.heat || undefined}
@@ -379,6 +382,7 @@ export default function FuturesChipsPage() {
                     <Opt value={r.putNetAmt} max={max.putAmt} text={fmtYiSigned(r.putNetAmt)} />
                     {/* BP 增加＝外資買進賣權（避險／偏空） → 綠；減少 → 紅（紅多綠空看方向，不是看正負號） */}
                     <Opt value={r.bpVsSettle} max={max.bp} up="barGreen" down="barRed" text={fmtYiSigned(r.bpVsSettle)} />
+                    <td className={styles.num}>{fmtInt(r.bpOi)}</td>
                     {/* BP 金額 ≥ 10 億紅字、≥ 20 億紫字（加粗） */}
                     <td
                       className={`${styles.num} ${r.bpAmt >= BP_PURPLE ? `${styles.bold} ${styles.heatPurple}` : r.bpAmt >= BP_RED ? `${styles.bold} ${styles.heatRed}` : ''}`}
