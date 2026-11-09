@@ -497,6 +497,14 @@ table tr:nth-child(2n) {
   margin: 0 !important;
 }
 
+/* Infima 把全站 table 設成 display:block（讓文章寬表格可橫捲）。lightweight-charts 的內部 table 被改成 block 後，
+   瀏覽器不照套件指定的格寬排：繪圖格被擠窄、右側價格軸往左壓進繪圖區十幾 px，最新一根 K 棒被蓋住（看起來像昨天是最新）。
+   用套件自己的根 class，所有 lightweight-charts 圖表一併還原成 table 排版 */
+.tv-lightweight-charts table {
+  display: table !important;
+  overflow: visible !important;
+}
+
 .navbar__brand img {
   /* 設置圓角半徑為 50%，將正方形變成圓形 */
   border-radius: 50%; 
