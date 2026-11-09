@@ -347,7 +347,7 @@ export async function fetchQuote(stockId, market, { force = false } = {}) {
     const hit = lsGetEntry(key);
     if (hit?.value && quoteFresh(hit.at)) return hit.value;
   }
-  const suffixes = market === 'TWSE' ? ['.TW'] : market === 'TPEX' ? ['.TWO'] : ['.TW', '.TWO'];
+  const suffixes = market === 'TWSE' ? ['.TW'] : market === 'TPEX' || market === 'ESB' ? ['.TWO'] : ['.TW', '.TWO'];
   for (const sfx of suffixes) {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${stockId}${sfx}?interval=1d&range=5y`;
     const res = await fetchRetry(url, YAHOO_RETRY);
