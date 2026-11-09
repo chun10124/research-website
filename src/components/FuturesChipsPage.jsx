@@ -204,6 +204,9 @@ export default function FuturesChipsPage() {
     const tail = (f) => Math.max(p99(f), recentMax(f));
     return {
       spread: p95((r) => r.spreadChg),
+      // BC、BP 口數：從 0 畫，滿格基準同 BP 金額（p99 與近 20 日最大值取大）
+      bcOi: tail((r) => r.bcOi),
+      bpOi: tail((r) => r.bpOi),
       mtxMin, mtx: mtxMax, tmfMin, tmf: tmfMax,
       mtxNet: p95((r) => r.mtxNetChg),
       tmfNet: p95((r) => r.tmfNetChg),
@@ -367,8 +370,8 @@ export default function FuturesChipsPage() {
                     <Opt gs value={r.callNetOi} max={max.callOi} text={fmtSigned(r.callNetOi)} />
                     <Opt value={r.callNetAmt} max={max.callAmt} text={fmtYiSigned(r.callNetAmt)} />
                     <Opt value={r.bcVsSettle} max={max.bc} up="barRed" down="barGreen" text={fmtYiSigned(r.bcVsSettle)} />
-                    {/* BC、SC、BP、SP 口數與金額只放數字、不畫長條；BC 過熱／紫爆照舊上色 */}
-                    <td className={styles.num}>{fmtInt(r.bcOi)}</td>
+                    {/* BC、BP 口數畫長條；BC、SC、BP、SP 金額只放數字，BC 過熱／紫爆照舊上色 */}
+                    <BarCell value={r.bcOi} max={max.bcOi} color="barAmber" text={fmtInt(r.bcOi)} />
                     <td
                       className={`${styles.num} ${r.heat ? `${styles.bold} ${r.heat === '紫爆' ? styles.heatPurple : styles.heatHot}` : ''}`}
                       title={r.heat || undefined}
@@ -382,7 +385,7 @@ export default function FuturesChipsPage() {
                     <Opt value={r.putNetAmt} max={max.putAmt} text={fmtYiSigned(r.putNetAmt)} />
                     {/* BP 增加＝外資買進賣權（避險／偏空） → 綠；減少 → 紅（紅多綠空看方向，不是看正負號） */}
                     <Opt value={r.bpVsSettle} max={max.bp} up="barGreen" down="barRed" text={fmtYiSigned(r.bpVsSettle)} />
-                    <td className={styles.num}>{fmtInt(r.bpOi)}</td>
+                    <BarCell value={r.bpOi} max={max.bpOi} color="barAmber" text={fmtInt(r.bpOi)} />
                     {/* BP 金額 ≥ 10 億紅字、≥ 20 億紫字（加粗） */}
                     <td
                       className={`${styles.num} ${r.bpAmt >= BP_PURPLE ? `${styles.bold} ${styles.heatPurple}` : r.bpAmt >= BP_RED ? `${styles.bold} ${styles.heatRed}` : ''}`}
