@@ -6,7 +6,7 @@ import { db } from '../utils/firebaseConfig';
 import Layout from '@theme/Layout';
 import { fetchIndexPriceMap, fetchYahooHistoricalPriceVolumeMaps, prefetchYahooKlineIfAbsent, getYahooKlineFromCache, fetchInstitutionalInvestorsSeries, fetchForeignHoldingSeries, instArraysToDateMap, instFreshnessBound, holdingsFreshnessBound } from '../features/StockAnalysis/api/stockApi';
 import { syncSingleStock, syncTestBatch } from '../features/StockAnalysis/api/rsApi';
-import { useRealtimeQuotes, mergeLiveDailyBar } from '../features/StockAnalysis/api/realtimeQuotes';
+import { useRealtimeQuotes, mergeLiveDailyBar, mergeLiveIndexClose, LIVE_INDEX_CODE } from '../features/StockAnalysis/api/realtimeQuotes';
 import { useIbdRsData } from '../features/StockAnalysis/hooks/useIbdRsData';
 import {
   IBDRS_LAST_SYNC_DATE_KEY,
@@ -1695,7 +1695,8 @@ const MODAL_VIEWS = ['rs', 'foreign', 'fund'];
 export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWatchlist, onToggleWatchlist, watchlistPriority, onSetPriority, signalNote, initialView }) {
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   const [priorityBusy, setPriorityBusy] = useState(false);
-  const [indexMap, setIndexMap] = useState(null);
+  /** 加權日收盤（富邦 fubonIndexDaily／Yahoo ^TWII），收盤後才有當日；盤中當日值由下方 indexMap 併入即時加權 */
+  const [indexMapBase, setIndexMap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   /** Yahoo 日 K 最近一筆：交易日 + 收盤價 */
@@ -1705,9 +1706,12 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
   /** Yahoo 日 K OHLC，與 VCP 同一請求 */
   const [ohlcSeriesRaw, setOhlcSeries] = useState([]);
   // 盤中即時價（富邦，僅白名單登入者）併入今日 K 棒；盤外／無權限時就是原本的日 K
-  const live = useRealtimeQuotes(stock?.id ? [stock.id] : []);
+  // 加權（IX0001）跟個股同一次請求取得，盤中加權線與圖例才是當下的值
+  const live = useRealtimeQuotes(stock?.id ? [stock.id, LIVE_INDEX_CODE] : []);
   const liveQuote = stock?.id ? live.quotes[stock.id] : null;
   const ohlcSeries = useMemo(() => mergeLiveDailyBar(ohlcSeriesRaw, liveQuote), [ohlcSeriesRaw, liveQuote]);
+  const liveIndexPrice = live.quotes[LIVE_INDEX_CODE]?.price;
+  const indexMap = useMemo(() => mergeLiveIndexClose(indexMapBase, liveIndexPrice), [indexMapBase, liveIndexPrice]);
   /** 視窗切換：'rs' = 預設，'foreign' = 外資籌碼視窗（A 鍵切換） */
   const [activeView, setActiveView] = useState(initialView ?? 'rs');
   /** 基本面分頁的提醒設定小視窗是否開著（開著時停用 Esc／方向鍵等快捷鍵） */

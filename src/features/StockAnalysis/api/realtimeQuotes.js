@@ -60,9 +60,11 @@ function writeCache(res, closed) {
   try {
     const prev = readCache();
     const keepPrev = prev && !!prev.closed === closed;
+    // 試撮報價不寫入：處置股兩次撮合之間是試撮，蓋掉會讓快取失去上一筆成交價
+    const real = Object.fromEntries(Object.entries(res.quotes || {}).filter(([, q]) => q && q.price > 0 && !q.trial));
     localStorage.setItem(CACHE_KEY, JSON.stringify({
       date: taipeiToday(), at: Date.now(), time: res.time || null, closed,
-      quotes: { ...(keepPrev ? prev.quotes : {}), ...res.quotes },
+      quotes: { ...(keepPrev ? prev.quotes : {}), ...real },
     }));
   } catch (_) {}
 }
@@ -84,7 +86,10 @@ function seedFromCache(ids) {
   const n = Object.keys(prices).length;
   if (!n) return null;
   // complete：快取涵蓋本頁九成以上代碼才算「已有即時價」（例：績效頁只記了 3 檔持股，追蹤表 200 多檔不能算有）
-  return { prices, quotes, time: c.time, closed: !!c.closed, complete: n >= ids.length * 0.9 };
+  // 加權（IX0001）只是附帶的，不算進分母，否則個股視窗（個股＋加權兩碼）缺加權就得等第一次請求
+  const stockIds = ids.filter((id) => id !== LIVE_INDEX_CODE);
+  const nStocks = stockIds.filter((id) => prices[id] != null).length;
+  return { prices, quotes, time: c.time, closed: !!c.closed, complete: nStocks >= stockIds.length * 0.9 };
 }
 
 /** 台北時間週一～五：'session' 09:00–13:35（含收盤後 5 分鐘拿最終價）、'afterClose' 13:36–23:59；其餘 null */
@@ -173,14 +178,8 @@ export function useRealtimeQuotes(codes) {
       }
       gotLive = true;
       writeCache(res, phase === 'afterClose');
-      const prices = {};
-      const quotes = {};
-      for (const [id, q] of Object.entries(res.quotes)) {
-        if (q && q.price > 0 && !q.trial) {
-          prices[id] = q.price;
-          quotes[id] = q;
-        }
-      }
+      // 快取已略過試撮，留著的是各檔今天最後一筆成交報價
+      const { prices, quotes } = pickLiveQuotes(res.quotes, readCache()?.quotes);
       setState({ prices, quotes, time: res.time || null, closed: phase === 'afterClose' });
       setReady(true);
     };
@@ -206,6 +205,42 @@ export function useRealtimeQuotes(codes) {
  * 最後一根是今天就以即時開高低收量取代，否則補上今天一根。無有效報價時原樣回傳。
  * 量：富邦快照為「張」，日 K 序列（Yahoo）為「股」→ ×1000。
  */
+/**
+ * 從一次快照挑出可顯示的報價。處置股（約每 2 分鐘撮合一次）兩次撮合之間富邦回的是試撮（trial），
+ * 以前直接丟掉 → 該檔沒報價、退回資料庫的前一交易日收盤，畫面在即時價與昨收之間跳。
+ * 現在試撮時改沿用 fallback（本機快取裡今天最後一筆成交報價）；今天還沒成交過才沒有。
+ */
+export function pickLiveQuotes(resQuotes, fallback) {
+  const prices = {};
+  const quotes = {};
+  for (const [id, q] of Object.entries(resQuotes || {})) {
+    let use = q && q.price > 0 && !q.trial ? q : null;
+    if (!use && q?.trial) {
+      const f = fallback?.[id];
+      if (f && f.price > 0 && !f.trial) use = f;
+    }
+    if (use) {
+      prices[id] = use.price;
+      quotes[id] = use;
+    }
+  }
+  return { prices, quotes };
+}
+
+/** 即時加權指數在報價 Worker 裡的代碼（富邦 IX0001） */
+export const LIVE_INDEX_CODE = 'IX0001';
+
+/**
+ * 把盤中（或收盤後、每日同步前）的即時加權併入加權日收盤 map { 'YYYY-MM-DD': close }。
+ * 只寫今天這格（hook 只收今天的快照）；map 還沒載入（null）時維持 null。
+ */
+export function mergeLiveIndexClose(indexMap, price) {
+  if (!indexMap || !(price > 0)) return indexMap;
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+  if (indexMap[today] === price) return indexMap;
+  return { ...indexMap, [today]: price };
+}
+
 export function mergeLiveDailyBar(ohlc, q) {
   if (!Array.isArray(ohlc) || !q || !(q.price > 0)) return ohlc;
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });

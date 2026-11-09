@@ -78,7 +78,16 @@ async function fetchSnapshots(env) {
     if (!r.ok) throw Object.assign(new Error(`fubon ${mkt} ${r.status}`), { status: r.status });
     return r.json();
   };
-  const [tse, otc] = await Promise.all([get('TSE'), get('OTC')]);
+  // 加權指數（IX0001）不在個股快照裡，另打 intraday quote；失敗不影響個股報價
+  const getIndex = async () => {
+    try {
+      const r = await fetch(`${tok.base}/intraday/quote/IX0001`, { headers: { 'X-SDK-TOKEN': tok.token } });
+      return r.ok ? await r.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  const [tse, otc, ix] = await Promise.all([get('TSE'), get('OTC'), getIndex()]);
   const map = {};
   for (const d of [tse, otc]) {
     for (const x of d.data || []) {
@@ -93,6 +102,20 @@ async function fetchSnapshots(env) {
         trial: !!x.isTrial,
       };
     }
+  }
+  // 只收與個股快照同一天的指數（盤前或假日富邦可能回前一交易日）
+  const ixPrice = ix ? (ix.lastPrice ?? ix.closePrice ?? null) : null;
+  if (ixPrice > 0 && ix.date === tse.date) {
+    map.IX0001 = {
+      price: ixPrice,
+      open: ix.openPrice ?? null,
+      high: ix.highPrice ?? null,
+      low: ix.lowPrice ?? null,
+      change: ix.change ?? null,
+      changePct: ix.changePercent ?? null,
+      volumeLots: null,
+      trial: !!ix.isTrial,
+    };
   }
   return { data: { date: tse.date, time: tse.time, tokenAt: tok.at, map } };
 }
