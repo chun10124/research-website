@@ -149,7 +149,8 @@ async function fetchSnapshots(env) {
         low: x.lowPrice ?? null,
         change: x.change ?? null,
         changePct: x.changePercent ?? null,
-        volumeLots: x.tradeVolume ?? null,
+        // 興櫃快照的 tradeVolume 單位是「股」（上市櫃是「張」）：11/9 和淞回 ≈80,000，Yahoo 當日 79,655 股＝80 張
+        volumeLots: x.tradeVolume != null ? x.tradeVolume / 1000 : null,
         trial: !!x.isTrial,
       };
       esbCount++;
