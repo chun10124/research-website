@@ -47,14 +47,24 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - name: 中文字型（缺這個 PDF 內中文會變空白方框）
-        # Ubuntu 套件伺服器偶爾連不上（2026-11-11 23:00 整份籌碼報告因此沒產出）→ 最多試 3 次
+        # 2026-11-11 連續失敗：apt-get update 只要有一個套件來源壞掉就整個回非零，連帶裝不了字型。
+        # 改成 update 失敗也照樣嘗試安裝；apt 仍裝不起來就直接從 Google 官方 noto-cjk repo 下載同一套
+        # 繁中字型（家族名同為 Noto Sans CJK TC，report_price.py 的 FONT 照樣找得到）。最後用 fc-list 驗證。
         run: |
-          for i in 1 2 3; do
-            if sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk; then exit 0; fi
-            echo "::warning::安裝中文字型第 $i 次失敗，30 秒後重試"
-            sleep 30
-          done
-          exit 1
+          sudo apt-get update -qq || echo "::warning::apt-get update 有錯誤，仍嘗試安裝字型"
+          if ! sudo apt-get install -y -qq fonts-noto-cjk; then
+            echo "::warning::apt 安裝 fonts-noto-cjk 失敗，改從 GitHub 下載 Noto Sans CJK TC"
+            mkdir -p ~/.local/share/fonts
+            for w in Regular Bold; do
+              curl -sSfL --retry 3 --retry-delay 10 -o ~/.local/share/fonts/NotoSansCJKtc-$w.otf \
+                "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/TraditionalChinese/NotoSansCJKtc-$w.otf"
+            done
+            fc-cache -f ~/.local/share/fonts
+          fi
+          # 不用 fc-list | grep -q：Actions 預設 pipefail，grep 提早結束會讓 fc-list 收到 SIGPIPE 而誤判失敗
+          N=$(fc-list | grep -c "Noto Sans CJK TC" || true)
+          if [ "${N:-0}" -eq 0 ]; then echo "::error::找不到 Noto Sans CJK TC 字型"; exit 1; fi
+          echo "中文字型就緒：$N 個字型檔"
       - run: pip install -r scripts/daily-report/requirements.txt
 
       # 法說會快照：判定「今日新增」要跟先前的清單比對，觀測站本身沒有申報日期。
