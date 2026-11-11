@@ -47,7 +47,14 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - name: 中文字型（缺這個 PDF 內中文會變空白方框）
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
+        # Ubuntu 套件伺服器偶爾連不上（2026-11-11 23:00 整份籌碼報告因此沒產出）→ 最多試 3 次
+        run: |
+          for i in 1 2 3; do
+            if sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk; then exit 0; fi
+            echo "::warning::安裝中文字型第 $i 次失敗，30 秒後重試"
+            sleep 30
+          done
+          exit 1
       - run: pip install -r scripts/daily-report/requirements.txt
 
       # 法說會快照：判定「今日新增」要跟先前的清單比對，觀測站本身沒有申報日期。
