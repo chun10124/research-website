@@ -3,6 +3,7 @@
 
    環境變數：
      SYNC_MODE  = DRY | priceVolume | holdingsRevenue   （預設 DRY）
+     FINMIND_TOKEN = repo secret（DRY 會檢查它是否有效）
      SYNC_LIMIT = N                                       （>0 時只同步前 N 檔，測試用）
 
    DRY            ：只抓一檔 Yahoo 價量驗證 Node 抓取能力，不寫入任何資料。
@@ -24,6 +25,21 @@ const MODE = process.env.SYNC_MODE || 'DRY';
 const LIMIT = Number(process.env.SYNC_LIMIT) || 0;
 
 if (MODE === 'DRY') {
+  // FinMind token（repo secret FINMIND_TOKEN）檢查：只印有沒有、長度，不印內容；無效就讓 job 標紅
+  const fmToken = process.env.FINMIND_TOKEN || '';
+  if (!fmToken) {
+    console.log('[DRY] ❌ 環境變數 FINMIND_TOKEN 沒有值（GitHub repo secret 未設定或名稱不符）');
+    process.exit(1);
+  }
+  const fmStart = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
+  const fmUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=2330&start_date=${fmStart}&token=${encodeURIComponent(fmToken)}`;
+  const fm = await fetch(fmUrl).then((r) => r.json()).catch((e) => ({ msg: e.message }));
+  if (fm?.msg !== 'success') {
+    console.log(`[DRY] ❌ FinMind token（長度 ${fmToken.length}）呼叫失敗：${fm?.msg}`);
+    process.exit(1);
+  }
+  console.log(`[DRY] ✅ FinMind token 有效（長度 ${fmToken.length}），取得 ${fm.data?.length ?? 0} 筆 2330 股價`);
+
   const { fetchYahooHistoricalPriceVolumeMaps } = await import('../../src/features/StockAnalysis/api/stockApi.js');
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
   const start = new Date(Date.now() - 30 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
