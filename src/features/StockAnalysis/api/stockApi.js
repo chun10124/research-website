@@ -33,52 +33,6 @@ const getFinmindPriceUrl = (stockCode, startDate, endDate = null) => {
   return `${FINMIND_BASE}?${params.toString()}`;
 };
 
-/** 加權報酬指數區間報酬率 %，供績效頁對標用。startStr/endStr YYYY-MM-DD。失敗回傳 null */
-export const fetchBenchmarkReturn = async (startStr, endStr) => {
-  const start = (startStr || '').slice(0, 10);
-  const end = (endStr || '').slice(0, 10);
-  if (!start || !end) return null;
-  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-  const cacheKey = `rw-benchmark_${start}_${end}`;
-  try {
-    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-    if (cached?.date === todayStr && cached.value != null) return cached.value;
-  } catch (_) {}
-  const INDEX_ID = 'IR0001';
-  try {
-    const url = getFinmindPriceUrl(INDEX_ID, start);
-    const fullUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
-    const res = await fetch(fullUrl);
-    if (!res.ok) return null;
-    const json = await res.json();
-    const data = json?.data;
-    if (!Array.isArray(data) || data.length === 0) return null;
-    const byDate = {};
-    (data || []).forEach((row) => {
-      const d = (row.date || row.Date || '').toString().slice(0, 10);
-      if (row.close != null) byDate[d] = Number(row.close);
-    });
-    const dates = Object.keys(byDate).sort();
-    let startPrice = null;
-    let endPrice = null;
-    for (let i = dates.length - 1; i >= 0; i--) {
-      if (dates[i] <= start) { startPrice = byDate[dates[i]]; break; }
-    }
-    if (startPrice == null && dates.length) startPrice = byDate[dates[0]];
-    for (let i = dates.length - 1; i >= 0; i--) {
-      if (dates[i] <= end) { endPrice = byDate[dates[i]]; break; }
-    }
-    if (endPrice == null && dates.length) endPrice = byDate[dates[dates.length - 1]];
-    if (startPrice == null || endPrice == null || startPrice <= 0) return null;
-    const result = ((endPrice - startPrice) / startPrice) * 100;
-    try { localStorage.setItem(cacheKey, JSON.stringify({ date: todayStr, value: result })); } catch (_) {}
-    return result;
-  } catch (e) {
-    console.warn('fetchBenchmarkReturn failed:', e?.message);
-    return null;
-  }
-};
-
 /** Finmind 台股 data_id 用純數字，例如 2330；若傳入 2330.TW 會查不到 */
 function toFinmindStockId(stockCode) {
   const s = String(stockCode || '').trim();

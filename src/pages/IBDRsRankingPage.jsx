@@ -1792,7 +1792,7 @@ export function RsChartModal({ stock, onClose, navigationList, onNavigate, inWat
     setInstitutionalData(null);
     setFetchedHoldings(null);
 
-    const endStr = new Date().toISOString().slice(0, 10);
+    const endStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     // startStr：取 RS history 最早日期 與 K 棒起始日（quoteStart）兩者較早者，
     // 確保大盤資料能覆蓋整段 K 棒顯示範圍（例如 7822 RS history 較短時不會只顯示局部大盤線）
     const startDate = new Date();

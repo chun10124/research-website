@@ -329,7 +329,7 @@ export function getDefaultPeriods() {
  */
 export function getMonthlyReturnsMatrix(navCurve, todayStr) {
   if (!navCurve || navCurve.length === 0) return [];
-  const today = (todayStr || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const today = (todayStr || getTaipeiToday()).slice(0, 10);
   const firstDate = (navCurve[0].date || '').slice(0, 10);
   const lastDate = (navCurve[navCurve.length - 1].date || '').slice(0, 10);
 

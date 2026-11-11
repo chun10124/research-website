@@ -19,3 +19,9 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# 本機研究產物：含個人交易／券商對帳資料，絕不可推上公開 repo（npm run publish 是 git add .）
+/output/
+/log/
+# Claude Code 工作樹（巢狀 git，會讓 Actions checkout 失敗）
+/.claude/worktrees/

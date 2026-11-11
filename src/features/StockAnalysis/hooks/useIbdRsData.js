@@ -13,6 +13,29 @@ import {
   startIbdRsBackgroundSync,
 } from '../services/ibdRsSyncService';
 
+/** 超過此天數沒更新、也沒有新收盤的文件視為已下市／合併（如 2867 三商壽 9/1 後就停在 RS 88） */
+const STALE_DOC_DAYS = 14;
+
+/**
+ * 排除已下市的殘留文件。ibdRsRatings 不會刪檔，下市股的 RS 會一直停在最後一天，
+ * 混在排行裡看起來像有效的高 RS。以全庫最新更新日為基準往回 STALE_DOC_DAYS 天，
+ * 「RS 更新日」與「最後收盤日」都早於基準才排除（新上市尚無 RS、但每天有收盤的檔不受影響）。
+ */
+export function dropDelistedDocs(docs) {
+  let latest = '';
+  for (const d of docs) {
+    const u = String(d.ibdRsUpdatedDate || '').slice(0, 10);
+    if (u > latest) latest = u;
+  }
+  if (!latest) return docs;
+  const cutoff = new Date(Date.parse(`${latest}T00:00:00Z`) - STALE_DOC_DAYS * 86400000).toISOString().slice(0, 10);
+  return docs.filter((d) => {
+    const upd = String(d.ibdRsUpdatedDate || '').slice(0, 10);
+    const close = String(d.ibdRsLastCloseDate || '').slice(0, 10);
+    return upd >= cutoff || close >= cutoff;
+  });
+}
+
 export function useIbdRsData() {
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +49,7 @@ export function useIbdRsData() {
     setLoading(true);
     try {
       const data = await loadAllRsRatings({ full: opts?.full === true });
-      setStocks(data);
+      setStocks(dropDelistedDocs(data));
     } catch (e) {
       console.error('[useIbdRsData] loadAllRsRatings 失敗:', e);
     } finally {

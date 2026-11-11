@@ -51,7 +51,8 @@ function PerformancePage() {
   const [historicalPricesLoading, setHistoricalPricesLoading] = useState(false);
   const [priceFailure, setPriceFailure] = useState({ count: 0, quota: false });
 
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  // 台北日期（toISOString 是 UTC，台北 00:00–08:00 會得到前一天）
+  const todayStr = useMemo(() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }), []);
 
   // ── Firestore 監聽（只需要 entries） ───────────────────────
   useEffect(() => {

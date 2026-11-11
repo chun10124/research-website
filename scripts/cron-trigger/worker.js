@@ -11,14 +11,13 @@
  *    設 1-5 實際觸發的是週日～週四，週五完全不會跑（7 週零次）。詳見 wrangler.toml。
  *
  * cron(UTC) → 要 dispatch 的 mode：
- *   37 7  * * *    (台灣 15:37)  rsThenPrice        一次 dispatch；workflow 端在同一個 run 內
+ *   0  6  * * *    (台灣 14:00)  rsThenPrice        一次 dispatch（原 15:37，10/20 富邦收盤 K 棒上線後提早）；workflow 端在同一個 run 內
  *                                先跑 RS 全市場、再跑追蹤表價量，與原 schedule 完全相同。
  *                                ※ 刻意不拆成兩次 dispatch：GitHub 的 concurrency 在新 run 進 pending 時
  *                                  會取消「前一個還在 pending 的 run」，可能誤殺還沒排到 runner 的 RS。
  *   37 12 * * *    (台灣 20:37)  holdingsRevenue    抓三大法人
  *   37 13 * * *    (台灣 21:37)  holdingsRevenue    抓外資持股／營收
- *   30 8  * * *    (台灣 16:30)  daily-report price 價格報告。15:37 那場實測 22~26 分，
- *                                約 16:05 完成，留 25 分餘裕。
+ *   30 8  * * *    (台灣 16:30)  daily-report price 價格報告（14:00 同步完成後約 2 小時）。
  *   0  15 * * *    (台灣 23:00)  daily-report chip  籌碼報告。原為 22:00，2026-09-30 撞 FinMind
  *                                每小時配額（21:37 同步耗用，約 21:40 結束）→ 402；延到 23:00
  *                                離同步結束約 80 分，避開配額時窗。

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { setDoc, onSnapshot } from 'firebase/firestore'; // 只需要 setDoc 和 onSnapshot
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -33,9 +33,19 @@ const PIE_STOCK_COLORS = ['#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#10b981',
 /** 融資一批的實際借款：買進成本 × 六成，千元以下捨去（借款於買進時固定，不隨現價變動） */
 const marginLotLoan = (lot) => Math.floor((lot.price * lot.qty * MARGIN_LONG_LOAN_RATIO) / 1000) * 1000;
 
+/** 台北時區今日 YYYY-MM-DD（toISOString 是 UTC，台北 00:00–08:00 會得到前一天） */
+const taipeiToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+
 // ========== III. 主組件 (TradeJournal) ==========
 function TradeJournal() {
   const [journalEntries, setJournalEntries] = useState([]);
+  /**
+   * 雲端資料是否已載入。未載入前清單是空陣列，此時若存檔會用「新的一筆＋空清單」
+   * 覆寫整份 entries（所有歷史交易消失），所以載入完成前一律禁止寫入。
+   */
+  const [journalLoaded, setJournalLoaded] = useState(false);
+  const [journalLoadError, setJournalLoadError] = useState(null);
+  const journalLoadedRef = useRef(false);
   const [formData, setFormData] = useState({
     id: '',
     code: '',
@@ -44,7 +54,7 @@ function TradeJournal() {
     tradeType: 'STOCK',
     quantity: '',
     price: '',
-    date: new Date().toISOString().substring(0, 10),
+    date: taipeiToday(),
     reason: '',
   });
   const [editingId, setEditingId] = useState(null); 
@@ -95,8 +105,15 @@ function TradeJournal() {
             console.log("Firestore 文件不存在，從空日誌開始。");
             setJournalEntries([]);
         }
+        // 只採用伺服器確認過的快照：離線快取的「文件不存在」不能當成真的空日誌
+        if (!docSnapshot.metadata.fromCache || docSnapshot.exists()) {
+            journalLoadedRef.current = true;
+            setJournalLoaded(true);
+            setJournalLoadError(null);
+        }
     }, (error) => {
         console.error("Firestore 監聽失敗:", error);
+        setJournalLoadError(error?.message || String(error));
     });
 
     return () => unsubscribe();
@@ -105,6 +122,10 @@ function TradeJournal() {
 
   // 2. 數據儲存 (saveJournalToCloud 函數)
   const saveJournalToCloud = useCallback(async (entries) => {
+    if (!journalLoadedRef.current) {
+        alert("交易紀錄尚未從雲端載入完成，為避免覆蓋既有資料，這次不存檔。請稍候再試。");
+        return false;
+    }
     try {
         // 1. 先在本地更新 UI (確保響應快速)，複製再排序避免 mutate 傳入的陣列
         const sorted = [...entries].sort((a, b) => {
@@ -123,10 +144,12 @@ function TradeJournal() {
         await setDoc(JOURNAL_DOC_REF, { entries: sorted }, { merge: true });
         
         console.log("數據已成功寫入 Firestore。");
+        return true;
         
     } catch (error) {
         console.error("寫入 Firestore 失敗:", error);
         alert("警告：數據寫入雲端失敗，請檢查網路連線。");
+        return false;
     }
   }, []);
 
@@ -330,7 +353,7 @@ function TradeJournal() {
     }, 0);
   }, [pnlSummary.byStock, positionPrices]);
 
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayStr = useMemo(() => taipeiToday(), []);
   const autoCashFlows = useMemo(
     () => autoDetectCashFlows(journalEntries, { dividends }),
     [journalEntries, dividends]
@@ -480,13 +503,17 @@ function TradeJournal() {
     tradeType: 'STOCK',
     quantity: '',
     price: '',
-    date: new Date().toISOString().substring(0, 10),
+    date: taipeiToday(),
     reason: '',
   });
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
-    
+    if (!journalLoaded) {
+        alert("交易紀錄尚未從雲端載入完成，請稍候再存檔。");
+        return;
+    }
+
     const quantity = Number(formData.quantity);
     const price = Number(formData.price);
     const codeNorm = normalizeTaiwanStockCode(formData.code);
@@ -528,9 +555,9 @@ function TradeJournal() {
       updatedEntries = [newEntry, ...journalEntries];
     }
 
-    saveJournalToCloud(updatedEntries);
-
-    setFormData(emptyForm());
+    const ok = await saveJournalToCloud(updatedEntries);
+    // 存檔失敗就保留表單內容，不讓使用者輸入的資料消失
+    if (ok) setFormData(emptyForm());
   };
   
   // 6. 刪除與編輯功能 (保持不變)
@@ -1392,17 +1419,20 @@ function TradeJournal() {
         <div style={{ marginTop: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button 
                 type="submit" 
+                disabled={!journalLoaded}
+                title={journalLoaded ? undefined : (journalLoadError ? `雲端載入失敗：${journalLoadError}` : '交易紀錄載入中…')}
                 style={{ 
                     padding: '10px 20px', 
                     backgroundColor: 'var(--ifm-color-primary)', 
                     color: 'white', 
                     border: '1px solid var(--ifm-color-primary)', 
-                    cursor: 'pointer', 
+                    cursor: journalLoaded ? 'pointer' : 'not-allowed',
+                    opacity: journalLoaded ? 1 : 0.5, 
                     borderRadius: '3px',
                     width: '120px' ,fontWeight: 'bold', fontSize: '13px'
                 }}
             >
-              {editingId ? '更新記錄' : '儲存交易記錄'}
+              {!journalLoaded ? (journalLoadError ? '載入失敗' : '載入中…') : editingId ? '更新記錄' : '儲存交易記錄'}
             </button>
             {editingId && (
                 <button type="button" 

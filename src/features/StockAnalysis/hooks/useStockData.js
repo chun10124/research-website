@@ -38,9 +38,10 @@ export const useStockData = () => {
         try {
             // 直接使用 api 裡的 updateAnalysisField 比較乾淨
             await updateAnalysisField(stockId, { [field]: value });
-            
-            // 🟢 自動同步：寫入成功後立刻重新抓取，不需要手動按更新
-            await refresh(); 
+
+            // 只改本地這一檔：原本存檔後整表重讀（217 檔含完整歷史陣列，單檔 2330 就約 450 KB），
+            // 改一個分類要等好幾秒。寫入已成功，本地狀態與資料庫一致。
+            setStocks((prev) => prev.map((s) => (s.id === stockId ? { ...s, [field]: value } : s)));
             
             console.log(`✅ [${stockId}] 畫面已自動刷新`);
         } catch (error) {

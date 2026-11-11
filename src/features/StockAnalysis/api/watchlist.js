@@ -26,8 +26,9 @@ export const fetchWatchlist = async () => {
     console.log(`[讀取] 成功從雲端獲取 ${data.length} 筆資料。`);
     return data;
   } catch (error) {
+    // 不可吞錯回傳 []：每日同步會把它當成「清單為空」正常結束，Actions 顯示成功但其實什麼都沒更新
     console.error("❌ Firebase 讀取失敗:", error);
-    return [];
+    throw error;
   }
 };
 

@@ -391,6 +391,18 @@ export async function fetchRsPriceData(stockCode, market, existing = null) {
     if (l > 0) result.lowMap = { ...(result.lowMap || {}), [t]: l };
     if (Number.isFinite(lots)) result.volumeMap = { ...(result.volumeMap || {}), [t]: lots * 1000 };
   }
+  // 轉板股（上櫃→上市）：Yahoo 新代碼的歷史只從轉板日開始，湊不滿 12 個月 → RS 算不出來，
+  // 每逢輪值日就掉 RS（7711 永擎：Yahoo .TW 只到 2025-11-20）。只在 Yahoo 歷史起點晚於所需起點時，
+  // 用資料庫既有、早於 Yahoo 起點的收盤價補在前面；正常股不受影響（不混入未經 Yahoo 調整的舊價）。
+  const yahooDates = Object.keys(result.priceMap || {}).sort();
+  const needFrom = startDate.toISOString().slice(0, 10);
+  if (yahooDates.length > 0 && existing?.priceMap && yahooDates[0] > taipeiYmdAddDays(needFrom, 10)) {
+    const older = {};
+    for (const [d, v] of Object.entries(existing.priceMap)) {
+      if (d < yahooDates[0] && d >= needFrom && v > 0) older[d] = v;
+    }
+    if (Object.keys(older).length > 0) result.priceMap = { ...older, ...result.priceMap };
+  }
   // 剔除全市場休市日的假 K 棒（見 rsMarketClosedDays）
   for (const d of rsMarketClosedDays) {
     for (const m of [result.priceMap, result.highMap, result.lowMap, result.volumeMap, openMap]) {
@@ -458,7 +470,7 @@ async function probeTodayHasClose(todayStr) {
     try {
       // 直接打 Yahoo（不經 fetchRsPriceData）：要完整的成交量序列來判斷休市日
       const { priceMap, volumeMap } = await fetchYahooHistoricalPriceVolumeMaps(
-        p.id, startDate.toISOString().slice(0, 10), new Date().toISOString().slice(0, 10), { market: p.market },
+        p.id, startDate.toISOString().slice(0, 10), new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }), { market: p.market },
       );
       if (Object.keys(priceMap || {}).length === 0) throw new Error('無資料');
       volumeMaps.push(volumeMap || {});
@@ -1554,6 +1566,7 @@ export async function syncSingleStock(stockId, market, onProgress = () => {}) {
       ibdRsLastClose,
       ibdRsLastCloseDate,
       priceMap,
+      volumeMap,
       openMap,
       highMap,
       lowMap,
@@ -1641,6 +1654,7 @@ export async function syncTestBatch({ count = 10, onProgress = () => {}, signal 
         ibdRsUpdatedDate: todayStr,
         ibdRsSnapshotDate: todayStr,
         priceMap,
+        volumeMap: volumeMap2,
         openMap: openMap2,
         highMap: highMap2,
         lowMap: lowMap2,
@@ -1684,10 +1698,15 @@ export async function quickPatchMissingRsDays({
   checkAbort();
 
   const existingMap = await readExistingRsData();
+  // 只用目前上市櫃清單：ibdRsRatings 不刪檔，已下市股的 priceMap 停在下市日，
+  // 若一起排名會替它們每天生出假歷史點，且永遠「有缺口」使本函式每次都跑完整排名與寫入。
+  const listedIds = new Set((await fetchTaiwanStockList()).map((s) => s.id));
+  if (listedIds.size === 0) throw new Error('無法取得台股清單，略過補點');
 
   // 從 Firestore 現有欄位建 priceMapByStock，完全跳過 Yahoo
   const priceMapByStock = {};
   for (const [id, data] of Object.entries(existingMap)) {
+    if (!listedIds.has(id)) continue;
     if (data.priceMap && typeof data.priceMap === 'object' && Object.keys(data.priceMap).length > 0) {
       priceMapByStock[id] = data.priceMap;
     }
