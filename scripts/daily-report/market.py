@@ -5,7 +5,7 @@
      上市漲跌家數  TWSE rwd      MI_INDEX?type=MS  的「漲跌證券數合計」（取『股票』欄，排除權證/ETF）
      櫃買指數+家數 TPEX OpenAPI  /openapi/v1/tpex_mainborad_highlight（端點名稱官方拼錯，非筆誤）
 """
-import json, ssl, urllib.request, re
+import json, os, ssl, urllib.request, re
 from pathlib import Path
 try:
     import certifi; CTX = ssl.create_default_context(cafile=certifi.where())
@@ -364,12 +364,13 @@ def roc_to_ymd_ad(s):
 # 且證交所網站使用條款第 6 條禁止以程式下載（BFI82U / MI_MARGN 已移除）。期貨那張 FinMind 需付費等級，
 # 改走期交所的區間 CSV（同樣一次請求）。
 FINMIND = 'https://api.finmindtrade.com/api/v4/data'
-FINMIND_TOKEN = ('eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNCAxNzowNzo1MyIsInVzZXJf'
-                 'aWQiOiJjaHVuMTAxMjQiLCJpcCI6IjYxLjIyOC43Ni4yMDYifQ.mSi9H6Lrus7e_wkaNxlYd6OoFmh79NQoQ7pZajx166s')
+# token 來自環境變數（GitHub secret FINMIND_TOKEN），不寫在程式裡；沒設就用 FinMind 匿名額度
+FINMIND_TOKEN = os.environ.get('FINMIND_TOKEN', '')
 
 def _finmind(dataset, start, end, data_id=None):
     import urllib.parse
-    p = {'dataset': dataset, 'start_date': start, 'end_date': end, 'token': FINMIND_TOKEN}
+    p = {'dataset': dataset, 'start_date': start, 'end_date': end}
+    if FINMIND_TOKEN: p['token'] = FINMIND_TOKEN
     if data_id: p['data_id'] = data_id
     q = urllib.parse.urlencode(p)
     r = get(f'{FINMIND}?{q}')

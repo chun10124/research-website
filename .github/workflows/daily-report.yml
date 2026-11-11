@@ -64,6 +64,7 @@ jobs:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
         run: |
           # 用 if 而非 `[ ... ] && ...`：GitHub 的 run: 預設帶 -e，
           # AND-list 在條件為 false 時整句回非零，位置一變就會讓步驟莫名失敗。

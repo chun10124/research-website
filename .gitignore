@@ -25,3 +25,7 @@ yarn-error.log*
 /log/
 # Claude Code 工作樹（巢狀 git，會讓 Actions checkout 失敗）
 /.claude/worktrees/
+
+# wrangler 本機產物與本機 secret
+.wrangler/
+.dev.vars

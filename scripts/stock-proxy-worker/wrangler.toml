@@ -1,0 +1,6 @@
+# stock-proxy：網站與每日同步共用的資料代理（原本只存在 Cloudflare 後台，2026-11-11 起納入版控）
+# 部署：cd scripts/stock-proxy-worker && npx wrangler deploy
+# secret：npx wrangler secret put FINMIND_TOKEN
+name = "stock-proxy"
+main = "worker.js"
+compatibility_date = "2025-12-19"

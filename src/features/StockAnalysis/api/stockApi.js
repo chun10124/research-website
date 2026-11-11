@@ -20,15 +20,22 @@ function getLatestTradingYmd() {
 }
 const PROXY_BASE = "https://stock-proxy.tzuchun11232004.workers.dev/?url=";
 const FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data";
-const TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMi0xNCAxNzowNzo1MyIsInVzZXJfaWQiOiJjaHVuMTAxMjQiLCJpcCI6IjYxLjIyOC43Ni4yMDYifQ.mSi9H6Lrus7e_wkaNxlYd6OoFmh79NQoQ7pZajx166s";
+/**
+ * FinMind token 不寫在程式裡（網站是公開的，寫進來等於公開）：
+ *   - 瀏覽器：不帶 token，由 stock-proxy Worker 依 Origin 補上（secret FINMIND_TOKEN）
+ *   - 每日同步（GitHub Actions，Node）：從環境變數 FINMIND_TOKEN（repo secret）帶入
+ * 用 globalThis.process 避免打包工具把 process.env 靜態替換。
+ */
+const TOKEN = globalThis.process?.env?.FINMIND_TOKEN || '';
+/** 有 token 才加 token 參數（空字串會讓 Worker 誤以為已帶 token） */
+const withToken = (params) => (TOKEN ? { ...params, token: TOKEN } : params);
 
 const getFinmindPriceUrl = (stockCode, startDate, endDate = null) => {
-  const params = new URLSearchParams({
+  const params = new URLSearchParams(withToken({
     dataset: 'TaiwanStockPrice',
     data_id: String(stockCode).trim(),
     start_date: startDate,
-    token: TOKEN,
-  });
+  }));
   if (endDate) params.set('end_date', endDate);
   return `${FINMIND_BASE}?${params.toString()}`;
 };
@@ -853,12 +860,11 @@ export const fetchForeignHoldingSeries = async (stockId) => {
     const threeYearsAgo = new Date();
     threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
     const startDate = threeYearsAgo.toISOString().split('T')[0];
-    const params = new URLSearchParams({
+    const params = new URLSearchParams(withToken({
       dataset: 'TaiwanStockShareholding',
       data_id: stockId,
       start_date: startDate,
-      token: TOKEN,
-    });
+    }));
     const targetUrl = `${FINMIND_BASE}?${params.toString()}`;
     const fullUrl = `${PROXY_BASE}${encodeURIComponent(targetUrl)}`;
     const res = await fetch(fullUrl);
@@ -987,12 +993,11 @@ export const fetchInstitutionalInvestorsSeries = async (stockId, startDate) => {
       if (!failed && Object.keys(twseMap).length > 0) return twseMap;
     }
     // FinMind 備用（大範圍歷史 or 上櫃股）
-    const params = new URLSearchParams({
+    const params = new URLSearchParams(withToken({
       dataset: 'TaiwanStockInstitutionalInvestorsBuySell',
       data_id: stockId,
       start_date: startDate,
-      token: TOKEN,
-    });
+    }));
     const targetUrl = `${FINMIND_BASE}?${params.toString()}`;
     const fullUrl = `${PROXY_BASE}${encodeURIComponent(targetUrl)}`;
     const res = await fetch(fullUrl);
@@ -1034,7 +1039,7 @@ export const fetchCompleteStockData = async (stockCode, onProgress = () => {}, o
   const REVENUE_START_DATE = "2024-01-01";
 
   const getFinmindUrl = (dataset, start) => {
-    const params = new URLSearchParams({ dataset, data_id: sCode, start_date: start, token: TOKEN });
+    const params = new URLSearchParams(withToken({ dataset, data_id: sCode, start_date: start }));
     return `${FINMIND_BASE}?${params.toString()}`;
   };
 

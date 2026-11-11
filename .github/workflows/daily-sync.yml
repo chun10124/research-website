@@ -81,6 +81,9 @@ jobs:
           echo "::warning::等 4 分鐘仍無富邦收盤 K 棒，RS 改全走 Yahoo"
 
       - name: 執行同步
+        env:
+          # FinMind token 存 repo secret，不寫在程式裡（stockApi.js 讀 process.env.FINMIND_TOKEN）
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
         run: |
           B=scripts/daily-sync/_bundle.mjs
           MODE="${{ github.event.inputs.mode }}"
