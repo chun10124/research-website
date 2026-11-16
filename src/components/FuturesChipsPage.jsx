@@ -362,13 +362,13 @@ export default function FuturesChipsPage() {
                     <BarCell value={r.longShare} max={100} color="barAmber" text={r.longShare == null ? '' : `${Math.round(r.longShare)}%`} />
                     <BarCell value={r.shortShare} max={100} color="barBlue" text={r.longShare == null ? '' : `${100 - Math.round(r.longShare)}%`} />
                     {/* 外資淨未平倉（大台）：一律從中線畫，淨多往右橘、淨空往左藍，滿格＝區間最大絕對值 */}
-                    <DivergingCell gs value={r.fxNet} max={max.fxNet} up="barAmber" down="barBlue" text={fmtSigned(r.fxNet)} />
+                    <DivergingCell gs value={r.fxNet} max={max.fxNet} up="barAmber" down="barBlue" text={fmtInt(r.fxNet)} />
                     <DivergingCell value={r.fxNetChg} max={max.fxChg} up="barRed" down="barGreen" text={fmtSigned(r.fxNetChg)} />
                     <DivergingCell value={r.fxSettleTx} max={max.fxSettle} up="barRed" down="barGreen" text={fmtSigned(r.fxSettleTx)} />
                     <DivergingCell value={r.fxSettleAll} max={max.fxSettle} up="barRed" down="barGreen" text={fmtSigned(r.fxSettleAll)} />
-                    {/* 外資選擇權：CALL、PUT 對稱 */}
-                    <Opt gs value={r.callNetOi} max={max.callOi} text={fmtSigned(r.callNetOi)} />
-                    <Opt value={r.callNetAmt} max={max.callAmt} text={fmtYiSigned(r.callNetAmt)} />
+                    {/* 外資選擇權：CALL、PUT 對稱。淨口數、淨金額是當天部位水位，不加正號（帶正號的一律是增減欄） */}
+                    <Opt gs value={r.callNetOi} max={max.callOi} text={fmtInt(r.callNetOi)} />
+                    <Opt value={r.callNetAmt} max={max.callAmt} text={fmtYi(r.callNetAmt)} />
                     <Opt value={r.bcVsSettle} max={max.bc} up="barRed" down="barGreen" text={fmtYiSigned(r.bcVsSettle)} />
                     {/* BC、BP 口數畫長條；BC、SC、BP、SP 金額只放數字，BC 過熱／紫爆照舊上色 */}
                     <BarCell value={r.bcOi} max={max.bcOi} color="barAmber" text={fmtInt(r.bcOi)} />
@@ -381,8 +381,8 @@ export default function FuturesChipsPage() {
                     <td className={styles.num}>{fmtYi(r.scAmt)}</td>
                     {/* 兩個增減欄正值都偏多 → 紅多綠空，與散戶、外資期貨增減欄同色 */}
                     <Opt value={r.bcScChg} max={max.callChg} up="barRed" down="barGreen" text={fmtYiSigned(r.bcScChg)} />
-                    <Opt gs value={r.putNetOi} max={max.putOi} text={fmtSigned(r.putNetOi)} />
-                    <Opt value={r.putNetAmt} max={max.putAmt} text={fmtYiSigned(r.putNetAmt)} />
+                    <Opt gs value={r.putNetOi} max={max.putOi} text={fmtInt(r.putNetOi)} />
+                    <Opt value={r.putNetAmt} max={max.putAmt} text={fmtYi(r.putNetAmt)} />
                     {/* BP 增加＝外資買進賣權（避險／偏空） → 綠；減少 → 紅（紅多綠空看方向，不是看正負號） */}
                     <Opt value={r.bpVsSettle} max={max.bp} up="barGreen" down="barRed" text={fmtYiSigned(r.bpVsSettle)} />
                     <BarCell value={r.bpOi} max={max.bpOi} color="barAmber" text={fmtInt(r.bpOi)} />
