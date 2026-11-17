@@ -58,12 +58,47 @@ def fetch_intraday(data_date):
     except Exception:
         return []
 
+_TAIEX_CACHE = {}   # {抓取年數: 日線清單}；同一次執行只打一次 Yahoo
+
+
+def _yahoo_get(url, waits=(10, 30, 60)):
+    """Yahoo 遇 429（限流）或 5xx 時退讓重試。2026-11-17 籌碼報告因 ^TWII 回 429 整份中斷、未寄信；
+       Actions runner 的 IP 是共用的，Yahoo 偶發限流。其他錯誤（或重試用完）照常拋出。"""
+    import time
+    for i, w in enumerate((0,) + tuple(waits)):
+        if w:
+            print(f'[market] ⚠️ Yahoo 回 {code}，{w} 秒後第 {i} 次重試', flush=True)
+            time.sleep(w)
+        try:
+            return get(url)
+        except urllib.error.HTTPError as e:
+            code = e.code
+            if code != 429 and code < 500: raise
+            if i == len(waits): raise
+
+
 def fetch_taiex_daily(years=2):
-    """加權指數日線 OHLCV。close 供個股卡片的 RS 面板疊圖，OHLC 供封面大盤 K 線。"""
+    """加權指數日線 OHLCV。close 供個股卡片的 RS 面板疊圖，OHLC 供封面大盤 K 線。
+       一次執行內快取：交易日判定（years=1）與 run.py（years=2）共用同一份，
+       一律抓 max(years, 2) 年再依需要截短，Yahoo 只打一次。失敗不快取，下一次呼叫會再試。"""
     import datetime, zoneinfo
     tz = zoneinfo.ZoneInfo('Asia/Taipei')
-    r = get(f'https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII'
-            f'?range={years}y&interval=1d')['chart']['result'][0]
+    span = max(years, 2)
+    got = next((k for k in sorted(_TAIEX_CACHE) if k >= span), None)
+    if got is None:
+        got = span
+        _TAIEX_CACHE[span] = _fetch_taiex_daily(span, tz)
+    hit = _TAIEX_CACHE[got]
+    if years >= got:
+        return list(hit)
+    cut = (datetime.datetime.now(tz).date() - datetime.timedelta(days=round(365.25 * years))).isoformat()
+    return [r for r in hit if r['date'] >= cut]
+
+
+def _fetch_taiex_daily(years, tz):
+    import datetime
+    r = _yahoo_get(f'https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII'
+                   f'?range={years}y&interval=1d')['chart']['result'][0]
     q = r['indicators']['quote'][0]
     out = []
     for i, t in enumerate(r['timestamp']):
