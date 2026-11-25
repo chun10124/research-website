@@ -393,19 +393,97 @@ export function normalizeTaiwanStockCode(stockCode) {
 }
 
 /**
- * 依 Firestore 上市櫃清單查中文簡稱（僅 DB，與 fetchTaiwanStockList 分離）
+ * 交易紀錄可查名稱的代號：一般股票 4 碼，或 ETF（00 開頭 4–6 碼，可帶英文字尾，如 0050、00878、009816、00981A）
+ */
+export function isJournalLookupCode(code) {
+  const c = String(code || '').trim().toUpperCase();
+  return /^\d{4}$/.test(c) || /^00\d{2,4}[A-Z]?$/.test(c);
+}
+
+function isEtfCode(code) {
+  return /^00\d{2,4}[A-Z]?$/.test(String(code || '').trim().toUpperCase());
+}
+
+/** ETF 名稱來源：上市／上櫃每日收盤行情（含 ETF；公司基本資料清單不含 ETF） */
+const TWSE_DAILY_ALL_URL = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
+const TPEX_DAILY_CLOSE_URL = 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes';
+const LS_ETF_NAME_KEY = 'research-website-etfNameMap';
+
+let _etfNameMapMemo = null;
+let _etfNameMapInflight = null;
+
+/** @returns {Promise<Map<string,string>>} ETF 代號 → 中文簡稱（當日 localStorage 快取） */
+async function fetchEtfNameMap() {
+  if (_etfNameMapMemo) return _etfNameMapMemo;
+  if (_etfNameMapInflight) return _etfNameMapInflight;
+  _etfNameMapInflight = (async () => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem(LS_ETF_NAME_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (parsed?.date === getTaiwanYmd() && parsed.map && Object.keys(parsed.map).length > 0) {
+          _etfNameMapMemo = new Map(Object.entries(parsed.map));
+          return _etfNameMapMemo;
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    const map = new Map();
+    const results = await Promise.allSettled([
+      fetchArrayWithFallback(TWSE_DAILY_ALL_URL),
+      fetchArrayWithFallback(TPEX_DAILY_CLOSE_URL),
+    ]);
+    for (const r of results) {
+      if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
+      for (const item of r.value) {
+        const { code, name } = extractFields(item);
+        const c = code.toUpperCase();
+        if (isEtfCode(c) && name && !map.has(c)) map.set(c, name);
+      }
+    }
+    if (map.size > 0) {
+      _etfNameMapMemo = map;
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(
+            LS_ETF_NAME_KEY,
+            JSON.stringify({ date: getTaiwanYmd(), map: Object.fromEntries(map) })
+          );
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    return map;
+  })().finally(() => {
+    _etfNameMapInflight = null;
+  });
+  return _etfNameMapInflight;
+}
+
+/**
+ * 依 Firestore 上市櫃清單查中文簡稱；查無且為 ETF 代號時，改查上市／上櫃每日行情的 ETF 名稱
  * @returns {Promise<string|null>}
  */
 export async function getTaiwanStockDisplayName(stockCode) {
-  const code = normalizeTaiwanStockCode(stockCode);
-  if (!isRegularCode(code)) return null;
+  const code = normalizeTaiwanStockCode(stockCode).toUpperCase();
+  if (!isJournalLookupCode(code)) return null;
+  if (isRegularCode(code)) {
+    try {
+      const list = await fetchTaiwanStockListFromDb();
+      const hit = list?.find((s) => s.id === code);
+      if (hit?.name) return String(hit.name).trim();
+    } catch (e) {
+      console.warn('[RS StockList] getTaiwanStockDisplayName failed:', e?.message);
+    }
+  }
+  if (!isEtfCode(code)) return null;
   try {
-    const list = await fetchTaiwanStockListFromDb();
-    if (!list) return null;
-    const hit = list.find((s) => s.id === code);
-    return hit?.name ? String(hit.name).trim() : null;
+    const etfMap = await fetchEtfNameMap();
+    return etfMap.get(code) || null;
   } catch (e) {
-    console.warn('[RS StockList] getTaiwanStockDisplayName failed:', e?.message);
+    console.warn('[RS StockList] ETF 名稱查詢失敗:', e?.message);
     return null;
   }
 }

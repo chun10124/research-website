@@ -11,7 +11,7 @@ import { PNL_COLOR, GOLDEN_BORDER_COLOR, formatQuantity, formatAvgCost, formatPn
 
 // 3. 引入核心計算邏輯
 import { calculatePnlSummary, calcUnrealizedPnl, getStartDate, MARGIN_LONG_LOAN_RATIO, MARGIN_LONG_ANNUAL_RATE, MARGIN_SHORT_DEPOSIT_RATIO } from '../utils/pnlCalculator';
-import { autoDetectCashFlows, getCumulativeCFUpTo } from '../utils/periodReturns';
+import { computeCashLedger, getCumulativeCFUpTo } from '../utils/periodReturns';
 import { fetchCurrentPrice } from '../features/StockAnalysis/api/stockApi';
 import useJournalDividends from './useJournalDividends';
 import {
@@ -19,6 +19,7 @@ import {
   fetchTaiwanStockListFromDb,
   getTaiwanStockDisplayName,
   invalidateTaiwanStockListFromDbCache,
+  isJournalLookupCode,
   normalizeTaiwanStockCode,
 } from '../features/StockAnalysis/api/rsStockList';
 
@@ -39,6 +40,10 @@ const taipeiToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'As
 // ========== III. 主組件 (TradeJournal) ==========
 function TradeJournal() {
   const [journalEntries, setJournalEntries] = useState([]);
+  /** 現金對帳校正點 [{ id, date, balance }]（存於同一份 journal 文件） */
+  const [cashAdjustments, setCashAdjustments] = useState([]);
+  const [cashAdjOpen, setCashAdjOpen] = useState(false);
+  const [cashAdjForm, setCashAdjForm] = useState(() => ({ date: taipeiToday(), balance: '' }));
   /**
    * 雲端資料是否已載入。未載入前清單是空陣列，此時若存檔會用「新的一筆＋空清單」
    * 覆寫整份 entries（所有歷史交易消失），所以載入完成前一律禁止寫入。
@@ -99,11 +104,13 @@ function TradeJournal() {
             const entries = cloudData.entries || []; 
             
             setJournalEntries(entries.sort((a, b) => (b.timeId || 0) - (a.timeId || 0)));
+            setCashAdjustments(Array.isArray(cloudData.cashAdjustments) ? cloudData.cashAdjustments : []);
             console.log("數據已從 Firestore 加載並即時同步。");
             
         } else {
             console.log("Firestore 文件不存在，從空日誌開始。");
             setJournalEntries([]);
+            setCashAdjustments([]);
         }
         // 只採用伺服器確認過的快照：離線快取的「文件不存在」不能當成真的空日誌
         if (!docSnapshot.metadata.fromCache || docSnapshot.exists()) {
@@ -246,7 +253,7 @@ function TradeJournal() {
       return;
     }
     const code = normalizeTaiwanStockCode(formData.code);
-    if (!/^\d{4}$/.test(code)) {
+    if (!isJournalLookupCode(code)) {
       setStockNameLoading(false);
       setAllowManualName(true);
       return;
@@ -354,10 +361,11 @@ function TradeJournal() {
   }, [pnlSummary.byStock, positionPrices]);
 
   const todayStr = useMemo(() => taipeiToday(), []);
-  const autoCashFlows = useMemo(
-    () => autoDetectCashFlows(journalEntries, { dividends }),
-    [journalEntries, dividends]
+  const cashLedger = useMemo(
+    () => computeCashLedger(journalEntries, { dividends, cashAdjustments }),
+    [journalEntries, dividends, cashAdjustments]
   );
+  const autoCashFlows = cashLedger.flows;
   /** 交易明細自動識別之累計入金 */
   const totalDeposits = useMemo(
     () => getCumulativeCFUpTo(autoCashFlows, todayStr),
@@ -463,10 +471,48 @@ function TradeJournal() {
       })
       .filter(d => d.value > 0)
       .sort((a, b) => b.value - a.value);
-    const cashValue = Math.round(totalTradingAssets - totalHoldingMarketValue + totalMarginLoan);
+    // 現金：交易明細推算（含對帳校正），與券商交割戶餘額同一口徑
+    const cashValue = Math.round(cashLedger.cashBalance);
     if (cashValue > 0) items.push({ name: '現金', value: cashValue, isCash: true });
     return items;
-  }, [pnlSummary.byStock, positionPrices, totalTradingAssets, totalHoldingMarketValue, totalMarginLoan]);
+  }, [pnlSummary.byStock, positionPrices, cashLedger.cashBalance]);
+
+  /** 儲存對帳校正點（只寫 cashAdjustments 欄位，不動 entries） */
+  const saveCashAdjustments = useCallback(async (next) => {
+    if (!journalLoadedRef.current) {
+      alert('交易紀錄尚未從雲端載入完成，請稍候再試。');
+      return false;
+    }
+    try {
+      setCashAdjustments(next);
+      await setDoc(JOURNAL_DOC_REF, { cashAdjustments: next }, { merge: true });
+      return true;
+    } catch (error) {
+      console.error('儲存現金對帳失敗:', error);
+      alert(`儲存失敗：${error?.message || error}`);
+      return false;
+    }
+  }, []);
+
+  const handleAddCashAdjustment = async () => {
+    const date = String(cashAdjForm.date || '').slice(0, 10);
+    const balance = Number(String(cashAdjForm.balance).replace(/,/g, ''));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(balance) || balance < 0) {
+      alert('請填日期與券商現金餘額（≥ 0）');
+      return;
+    }
+    // 同一天只留一筆：新的覆蓋舊的
+    const next = [
+      ...cashAdjustments.filter((a) => String(a.date).slice(0, 10) !== date),
+      { id: uuidv4(), date, balance: Math.round(balance) },
+    ].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    if (await saveCashAdjustments(next)) setCashAdjForm((f) => ({ ...f, balance: '' }));
+  };
+
+  const handleDeleteCashAdjustment = async (date) => {
+    if (!window.confirm(`刪除 ${date} 的現金對帳？`)) return;
+    await saveCashAdjustments(cashAdjustments.filter((a) => String(a.date).slice(0, 10) !== date));
+  };
 
   const sortedByStock = useMemo(() => {
     const { byStock } = pnlSummary;
@@ -516,7 +562,7 @@ function TradeJournal() {
 
     const quantity = Number(formData.quantity);
     const price = Number(formData.price);
-    const codeNorm = normalizeTaiwanStockCode(formData.code);
+    const codeNorm = normalizeTaiwanStockCode(formData.code).toUpperCase();
     let nameToSave = (formData.name || '').trim();
 
     if (!codeNorm || quantity < 1 || price < 0.1) {
@@ -524,11 +570,11 @@ function TradeJournal() {
         return;
     }
 
-    if (!nameToSave && /^\d{4}$/.test(codeNorm)) {
+    if (!nameToSave && isJournalLookupCode(codeNorm)) {
       nameToSave = (await getTaiwanStockDisplayName(codeNorm)) || '';
     }
     if (!nameToSave) {
-        alert("請填寫股票名稱，或確認四位數代號於上市櫃清單內可查得簡稱！");
+        alert("請填寫股票名稱，或確認代號（股票／ETF）於上市櫃清單內可查得簡稱！");
         return;
     }
 
@@ -732,7 +778,7 @@ function TradeJournal() {
                 >
                   <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>分母 · 總可投資資產</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 12px', alignItems: 'baseline' }}>
-                    <span>累計入金（自動識別）</span>
+                    <span>累計淨入金（自動識別＋對帳）</span>
                     <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                       {Math.round(totalDeposits).toLocaleString()}
                     </span>
@@ -815,7 +861,8 @@ function TradeJournal() {
         {portfolioPieData.length > 0 && (
           <div style={{ marginTop: '20px', marginBottom: '10px' }}>
             <h4 style={{ marginBottom: '4px' }}>持倉分佈</h4>
-            <div style={{ overflowX: 'auto' }}>
+            {/* 勿設 overflow：overflowX:auto 會連帶讓 overflowY 變 auto，提示框超出底部時冒出捲軸、把圓餅往左推 */}
+            <div>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <div style={isMobile ? { width: '100%', height: 200 } : { flex: '0 0 440px', height: 230 }}>
                   <ResponsiveContainer width="100%" height="100%">
@@ -966,6 +1013,92 @@ function TradeJournal() {
     </div>
   );
 
+  /** 現金對帳：填券商現金餘額，差額記為入金／出金 */
+  const renderCashAdjCard = () => (
+    <div
+      style={{
+        marginTop: '15px',
+        marginBottom: '15px',
+        border: `1px solid ${GOLDEN_BORDER_COLOR}`,
+        borderRadius: '5px',
+        padding: '12px 15px',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setCashAdjOpen((o) => !o)}
+        aria-expanded={cashAdjOpen}
+        style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: 0, border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', textAlign: 'left' }}
+      >
+        <span style={{ fontSize: '0.7rem', color: 'var(--app-text-soft)', width: '1em', flexShrink: 0 }}>
+          {cashAdjOpen ? '▼' : '▶'}
+        </span>
+        <h3 style={{ margin: 0, fontSize: '1.1rem' }}>現金對帳</h3>
+        <span style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--app-text-soft)', marginRight: '6px' }}>現金</span>
+          {Math.round(cashLedger.cashBalance).toLocaleString()}
+        </span>
+      </button>
+
+      {cashAdjOpen && (
+        <div style={{ marginTop: '10px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="date"
+              value={cashAdjForm.date}
+              max={todayStr}
+              onChange={(e) => setCashAdjForm((f) => ({ ...f, date: e.target.value }))}
+              style={{ flex: '1 1 140px', minWidth: 0, padding: '6px 8px', border: '1px solid var(--app-border)' }}
+            />
+            <input
+              type="text"
+              inputMode="numeric"
+              value={cashAdjForm.balance}
+              onChange={(e) => setCashAdjForm((f) => ({ ...f, balance: e.target.value }))}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddCashAdjustment(); }}
+              placeholder="券商現金餘額"
+              style={{ flex: '1 1 140px', minWidth: 0, padding: '6px 8px', border: '1px solid var(--app-border)' }}
+            />
+            <button type="button" className="button button--primary button--sm" onClick={handleAddCashAdjustment}>
+              校正
+            </button>
+          </div>
+          <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: 'var(--app-text-soft)' }}>
+            該日收盤、含當天所有交易後的現金。
+          </p>
+
+          {cashLedger.calibrations.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto', gap: '4px 12px', marginTop: '10px', fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums', alignItems: 'center' }}>
+              <span style={{ color: 'var(--app-text-soft)' }}>日期</span>
+              <span style={{ color: 'var(--app-text-soft)', textAlign: 'right' }}>餘額</span>
+              <span style={{ color: 'var(--app-text-soft)', textAlign: 'right' }}>差額</span>
+              <span />
+              {[...cashLedger.calibrations].reverse().map((c) => (
+                <React.Fragment key={c.date}>
+                  <span>{c.date}</span>
+                  <span style={{ textAlign: 'right' }}>{Math.round(c.balance).toLocaleString()}</span>
+                  <span style={{ textAlign: 'right' }}>
+                    {Math.abs(c.diff) <= 0.5
+                      ? '—'
+                      : `${c.diff > 0 ? '入金' : '出金'} ${Math.round(Math.abs(c.diff)).toLocaleString()}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCashAdjustment(c.date)}
+                    aria-label={`刪除 ${c.date} 對帳`}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--app-text-soft)', padding: '0 4px' }}
+                  >
+                    ×
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   const renderStockTableCard = () => (
     <div
       style={{
@@ -989,7 +1122,7 @@ function TradeJournal() {
         <span style={{ fontSize: '0.7rem', color: '#64748b', width: '1em', flexShrink: 0 }}>
           {stockTableOpen ? '▼' : '▶'}
         </span>
-        <h3 style={{ margin: 0, fontSize: '1.1rem' }}>個股損益與持倉 (按持倉金額排序)</h3>
+        <h3 style={{ margin: 0, fontSize: '1.1rem' }}>個股損益與持倉</h3>
       </button>
       {stockTableOpen && (
         <div style={{ overflowX: 'auto', marginTop: '12px' }}>
@@ -997,6 +1130,7 @@ function TradeJournal() {
             <thead>
               <tr style={{ borderBottom: '1px solid #333' }}>
                 <th style={{ padding: '8px' }}>股票名稱/代號</th>
+                <th style={{ padding: '8px' }}>持倉股數</th>
                 <th style={{ padding: '8px' }}>平均成本</th>
                 <th style={{ padding: '8px' }}>持倉金額</th>
                 <th style={{ padding: '8px' }}>已實現損益</th>
@@ -1004,7 +1138,7 @@ function TradeJournal() {
             </thead>
             <tbody>
               {sortedByStock.length === 0 ? (
-                <tr><td colSpan="4" style={{ padding: '10px', textAlign: 'center' }}>無匹配數據</td></tr>
+                <tr><td colSpan="5" style={{ padding: '10px', textAlign: 'center' }}>無匹配數據</td></tr>
               ) : (
                 sortedByStock.map(data => {
                   const avgCostDisplay = data.netQuantity !== 0 ? data.avgCost : 0;
@@ -1017,6 +1151,9 @@ function TradeJournal() {
                         {data.name} ({data.code})
                         {hasMl && <span style={{ marginLeft: '6px', padding: '1px 5px', fontSize: '0.72rem', borderRadius: '3px', background: '#dbeafe', color: '#1d4ed8', fontWeight: 'bold' }}>融資{data.mlQty}</span>}
                         {hasMs && <span style={{ marginLeft: '4px', padding: '1px 5px', fontSize: '0.72rem', borderRadius: '3px', background: '#fce7f3', color: '#9d174d', fontWeight: 'bold' }}>融券{data.msQty}</span>}
+                      </td>
+                      <td style={{ padding: '8px', fontVariantNumeric: 'tabular-nums' }}>
+                        {data.netQuantity !== 0 ? formatQuantity(data.netQuantity) : '--'}
                       </td>
                       <td style={{ padding: '8px' }}>{formatAvgCost(avgCostDisplay)}</td>
                       <td className={styles.pnlAmountCell} style={{ padding: '8px', fontWeight: 'bold' }}>
@@ -1233,13 +1370,13 @@ function TradeJournal() {
               stockNameLoading
                 ? '名稱載入中…'
                 : allowManualName &&
-                    /^\d{4}$/.test(normalizeTaiwanStockCode(formData.code))
+                    isJournalLookupCode(normalizeTaiwanStockCode(formData.code))
                   ? '名稱（請手動輸入）'
                   : '名稱'
             }
             readOnly={
               !allowManualName &&
-              /^\d{4}$/.test(normalizeTaiwanStockCode(formData.code)) &&
+              isJournalLookupCode(normalizeTaiwanStockCode(formData.code)) &&
               !!formData.name.trim()
             }
             required
@@ -1250,7 +1387,7 @@ function TradeJournal() {
               border: '1px solid #a4a4a4ff',
               backgroundColor:
                 !allowManualName &&
-                /^\d{4}$/.test(normalizeTaiwanStockCode(formData.code)) &&
+                isJournalLookupCode(normalizeTaiwanStockCode(formData.code)) &&
                 !!formData.name.trim()
                   ? 'rgba(0,0,0,0.04)'
                   : undefined,
@@ -1452,6 +1589,8 @@ function TradeJournal() {
 
       {/* II. 追蹤表/摘要區塊 */}
       {renderPnlSummary()}
+
+      {renderCashAdjCard()}
 
       {renderStockTableCard()}
 

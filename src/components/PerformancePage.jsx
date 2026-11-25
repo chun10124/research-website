@@ -42,6 +42,7 @@ const GOLDEN_BORDER = '#deb887';
 
 function PerformancePage() {
   const [entries, setEntries] = useState([]);
+  const [cashAdjustments, setCashAdjustments] = useState([]);
   const [entriesReady, setEntriesReady] = useState(false);
   const [prices, setPrices] = useState({});
   const [pricesLoading, setPricesLoading] = useState(false);
@@ -60,6 +61,8 @@ function PerformancePage() {
       JOURNAL_DOC_REF,
       (snap) => {
         setEntries(snap.exists() ? snap.data().entries || [] : []);
+        const adj = snap.exists() ? snap.data().cashAdjustments : null;
+        setCashAdjustments(Array.isArray(adj) ? adj : []);
         setEntriesReady(true);
       },
       (err) => console.error('Firestore 監聽失敗:', err)
@@ -73,12 +76,13 @@ function PerformancePage() {
   const QUOTA_NOTE = '（FinMind 額度用盡）';
 
   const autoCashFlows = useMemo(
-    () => autoDetectCashFlows(entries, { dividends }),
-    [entries, dividends]
+    () => autoDetectCashFlows(entries, { dividends, cashAdjustments }),
+    [entries, dividends, cashAdjustments]
   );
 
+  // 淨入金：入金 − 出金（出金來自現金對帳）
   const totalAutoDeposit = useMemo(
-    () => autoCashFlows.reduce((s, c) => s + c.amount, 0),
+    () => autoCashFlows.reduce((s, c) => s + (c.type === 'withdrawal' ? -c.amount : c.amount), 0),
     [autoCashFlows]
   );
 
@@ -243,8 +247,8 @@ function PerformancePage() {
   }, [historicalPricesByCode, prices, realtime.prices, holdingCodes, todayStr]);
 
   const dailyNavCurve = useMemo(
-    () => buildDailyNAVCurve(entries, todayStr, priceMapWithToday, { dividends }),
-    [entries, todayStr, priceMapWithToday, dividends]
+    () => buildDailyNAVCurve(entries, todayStr, priceMapWithToday, { dividends, cashAdjustments }),
+    [entries, todayStr, priceMapWithToday, dividends, cashAdjustments]
   );
 
   // NAV 歷史一律以即時計算的 dailyNavCurve 為準（盯市價來自 FinMind 原始收盤，
@@ -729,10 +733,10 @@ function PerformancePage() {
           onClick={() => setShowDeposits((v) => !v)}
         >
           <div>
-            <h4 style={{ margin: 0 }}>自動識別入金</h4>
+            <h4 style={{ margin: 0 }}>入金／出金</h4>
             <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#888' }}>
-              系統從交易明細推導：買入時現金不足的缺口視為外部入金。
-              共 {autoCashFlows.length} 筆，合計 {fmtNum(totalAutoDeposit)} 元。
+              買入時現金不足的缺口視為入金；交易頁「現金對帳」的差額記為入金或出金。
+              共 {autoCashFlows.length} 筆，淨入金 {fmtNum(totalAutoDeposit)} 元。
             </p>
           </div>
           <span style={{ fontSize: '1.2rem', color: '#999' }}>{showDeposits ? '▲' : '▼'}</span>
@@ -748,7 +752,7 @@ function PerformancePage() {
                   <tr style={{ borderBottom: '2px solid #eee' }}>
                     <th style={{ padding: '6px 10px', textAlign: 'left' }}>#</th>
                     <th style={{ padding: '6px 10px', textAlign: 'left' }}>日期</th>
-                    <th style={{ padding: '6px 10px', textAlign: 'right' }}>入金金額</th>
+                    <th style={{ padding: '6px 10px', textAlign: 'right' }}>金額</th>
                     <th style={{ padding: '6px 10px', textAlign: 'left', color: '#999' }}>說明</th>
                   </tr>
                 </thead>
@@ -758,10 +762,12 @@ function PerformancePage() {
                       <td style={{ padding: '5px 10px', color: '#aaa' }}>{i + 1}</td>
                       <td style={{ padding: '5px 10px' }}>{cf.date}</td>
                       <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 600 }}>
-                        {fmtNum(cf.amount)}
+                        {fmtNum(cf.type === 'withdrawal' ? -cf.amount : cf.amount)}
                       </td>
                       <td style={{ padding: '5px 10px', fontSize: '0.8rem', color: '#888' }}>
-                        買入時現金缺口
+                        {cf.source === 'calibration'
+                          ? `現金對帳（${cf.type === 'withdrawal' ? '出金' : '入金'}）`
+                          : '買入時現金缺口'}
                       </td>
                     </tr>
                   ))}

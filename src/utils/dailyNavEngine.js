@@ -4,13 +4,14 @@
  * 1. 每日時間軸：從「第一次交易」到「今天」，每一天都有索引。
  * 2. 每日狀態：Cash + Holdings；有交易則更新，無交易則承襲前一日。
  * 3. 按日盯市：每日總資產 = Cash + Sum(持股數量 × 當日收盤價)；非交易日用最後一個交易日收盤價（forward-fill）。
- * 4. 單位化：起始 NAV=100, Total_Units=0。入金或資金不足買入時 New_Units = Deposit / Current_NAV，Total_Units += New_Units（不改變當下 NAV）。每日結算 NAV = 當日總資產 / Total_Units。
+ * 4. 單位化：起始 NAV=100, Total_Units=0。入金或資金不足買入時 New_Units = Deposit / 前一日盯市 NAV，Total_Units += New_Units（不改變當下 NAV）。每日結算 NAV = 當日總資產 / Total_Units。
  * 5. 槓桿：融資只出自付 40%（借款 60% 不計入入金），盯市時市值需扣除未償還借款本金；
  *    融券只出保證金 90%，盯市時權益 = 保證金 + 方向損益。⇒ 總資產 = 真實權益，NAV 正確反映槓桿放大。
  * 6. 交易成本：每筆交易當下從現金扣除手續費、證交稅、融資利息、借券費（與 pnlCalculator 同一套規則）。
  *    盯市時再扣「若今日平倉」的預估手續費、證交稅與融資應計利息 ⇒ 總資產 = 可實際拿回的淨值。
  * 7. 除權息：除息日現金股利入帳（空單為補償支出），配股併入現股。盯市價為未還原收盤，除息日價跌由股利補回。
  * 8. 融資借款依先進先出逐批償還（同 pnlCalculator 與券商）。
+ * 9. 對帳校正（options.cashAdjustments）：該日所有交易後現金＝券商餘額，差額為入金（發單位）或出金（贖回單位）。
  */
 
 import {
@@ -22,6 +23,7 @@ import {
   calcBrokerFee,
   calcSellTax,
 } from './pnlCalculator';
+import { normalizeCashAdjustments } from './periodReturns';
 
 const EPSILON = 1e-10;
 const TRADE_EPSILON = 1e-6;
@@ -97,7 +99,7 @@ function getTradesByDate(entries) {
  * 每日 NAV 曲線（純狀態模擬，不依賴外部價格）
  * 回傳每日 { date, nav, totalAssets, totalUnits, cash, holdings }；需再搭配歷史價做 mark-to-market。
  */
-function runDailySimulation(entries, timeline, options = {}) {
+function runDailySimulation(entries, timeline, options = {}, priceMapByCode = {}) {
   const tradesByDate = getTradesByDate(entries);
   const { tradeCost, dividendEffects } = createLedgerContext(entries, options);
   const dividendsByDate = new Map();
@@ -112,6 +114,10 @@ function runDailySimulation(entries, timeline, options = {}) {
   const short = {}; // code -> { qty, cost, deposit }    融券空頭（qty >= 0）
   let totalUnits = 0;
   let nav = INITIAL_NAV;
+  /** 前一日盯市後的 NAV：入金／出金按此價格發行或贖回單位（用成本 NAV 會在持股有未實現損益時扭曲報酬） */
+  let lastMtmNav = INITIAL_NAV;
+
+  const currentUnitNAV = () => (totalUnits > EPSILON && lastMtmNav > EPSILON ? lastMtmNav : INITIAL_NAV);
 
   // ── 現金進出：出金且現金不足 → 缺口視為外部入金，按當下 NAV 發行單位 ──
   const applyCash = (cashDelta) => {
@@ -119,12 +125,25 @@ function runDailySimulation(entries, timeline, options = {}) {
       const need = -cashDelta;
       if (cash < need - TRADE_EPSILON) {
         const deposit = need - cash;
-        const currentNAV = totalUnits > EPSILON ? (result.length > 0 ? result[result.length - 1].nav : nav) : INITIAL_NAV;
+        const currentNAV = currentUnitNAV();
         cash += deposit;
         totalUnits += deposit / currentNAV;
       }
     }
     cash += cashDelta;
+  };
+
+  // ── 對帳校正：現金拉到券商餘額；差額 > 0 發單位（入金），< 0 贖回單位（出金） ──
+  const adjByDate = new Map(normalizeCashAdjustments(options.cashAdjustments).map((a) => [a.date, a]));
+  const applyCalibration = (a) => {
+    const diff = a.balance - cash;
+    if (Math.abs(diff) <= 0.5) return;
+    if (totalUnits > EPSILON) {
+      const unitsDelta = diff / currentUnitNAV();
+      totalUnits = Math.max(EPSILON, totalUnits + unitsDelta);
+    }
+    // totalUnits 為 0（尚未建倉）時，下方會依總資產初始化單位
+    cash = a.balance;
   };
 
   for (const dateStr of timeline) {
@@ -234,6 +253,9 @@ function runDailySimulation(entries, timeline, options = {}) {
       applyCash(cashDelta);
     }
 
+    const adj = adjByDate.get(dateStr);
+    if (adj) applyCalibration(adj);
+
     // ── 以成本估計的權益（供單位初始化與無價時 fallback）：
     //    現股=成本、融資=自付部分、融券=保證金 ──
     let positionCostEquity = 0;
@@ -268,9 +290,57 @@ function runDailySimulation(entries, timeline, options = {}) {
         return acc;
       }, {}),
     });
+
+    if (totalUnits > EPSILON) {
+      const mtmAssets = markRowToMarket(result[result.length - 1], priceMapByCode);
+      if (mtmAssets > EPSILON) lastMtmNav = mtmAssets / totalUnits;
+    }
   }
 
   return result;
+}
+
+/** 單日盯市後的總資產（現金 + 各部位權益 − 若今日平倉的預估費用與融資應計利息） */
+function markRowToMarket(row, priceMapByCode) {
+  const dateStr = row.date;
+  let totalMarketValue = row.cash;
+  // 現股（多單盯市；空單 = 成本 + price×qty，qty 為負）
+  for (const [code, h] of Object.entries(row.holdings || {})) {
+    const price = getPriceOnDate(priceMapByCode, code, dateStr);
+    const qty = h.qty;
+    const cost = h.positionCost;
+    if (price != null && price > 0) {
+      totalMarketValue += qty > 0 ? price * qty : cost + price * qty;
+      // 若今日平倉的預估費用：多單賣出手續費＋證交稅、空單回補手續費
+      totalMarketValue -= qty > 0
+        ? calcBrokerFee(price, qty) + calcSellTax(code, price, qty)
+        : calcBrokerFee(price, -qty);
+    } else {
+      totalMarketValue += cost;
+    }
+  }
+  // 融資多頭：權益 = 市值 − 未償還借款本金（借款按成本固定，不隨股價變動）
+  for (const [code, m] of Object.entries(row.mlong || {})) {
+    const price = getPriceOnDate(priceMapByCode, code, dateStr);
+    const loan = m.cost * MARGIN_LONG_LOAN_RATIO;
+    totalMarketValue -= accruedMarginInterest(m.lots, dateStr);
+    if (price != null && price > 0) {
+      totalMarketValue += price * m.qty - loan;
+      totalMarketValue -= calcBrokerFee(price, m.qty) + calcSellTax(code, price, m.qty);
+    } else {
+      totalMarketValue += m.cost - loan; // = 自付部分
+    }
+  }
+  // 融券空頭：權益 = 保證金 + 方向損益（放空獲利 = 賣出成本 − 現價市值）
+  for (const [code, sh] of Object.entries(row.short || {})) {
+    const price = getPriceOnDate(priceMapByCode, code, dateStr);
+    if (price != null && price > 0) {
+      totalMarketValue += sh.deposit + (sh.cost - price * sh.qty) - calcBrokerFee(price, sh.qty);
+    } else {
+      totalMarketValue += sh.deposit;
+    }
+  }
+  return totalMarketValue;
 }
 
 /**
@@ -283,45 +353,7 @@ export function applyMarkToMarket(dailyRows, priceMapByCode) {
   const out = [];
   for (let i = 0; i < dailyRows.length; i++) {
     const row = dailyRows[i];
-    const dateStr = row.date;
-    let totalMarketValue = row.cash;
-    // 現股（多單盯市；空單 = 成本 + price×qty，qty 為負）
-    for (const [code, h] of Object.entries(row.holdings)) {
-      const price = getPriceOnDate(priceMapByCode, code, dateStr);
-      const qty = h.qty;
-      const cost = h.positionCost;
-      if (price != null && price > 0) {
-        totalMarketValue += qty > 0 ? price * qty : cost + price * qty;
-        // 若今日平倉的預估費用：多單賣出手續費＋證交稅、空單回補手續費
-        totalMarketValue -= qty > 0
-          ? calcBrokerFee(price, qty) + calcSellTax(code, price, qty)
-          : calcBrokerFee(price, -qty);
-      } else {
-        totalMarketValue += cost;
-      }
-    }
-    // 融資多頭：權益 = 市值 − 未償還借款本金（借款按成本固定，不隨股價變動）
-    for (const [code, m] of Object.entries(row.mlong || {})) {
-      const price = getPriceOnDate(priceMapByCode, code, dateStr);
-      const loan = m.cost * MARGIN_LONG_LOAN_RATIO;
-      totalMarketValue -= accruedMarginInterest(m.lots, dateStr);
-      if (price != null && price > 0) {
-        totalMarketValue += price * m.qty - loan;
-        totalMarketValue -= calcBrokerFee(price, m.qty) + calcSellTax(code, price, m.qty);
-      } else {
-        totalMarketValue += m.cost - loan; // = 自付部分
-      }
-    }
-    // 融券空頭：權益 = 保證金 + 方向損益（放空獲利 = 賣出成本 − 現價市值）
-    for (const [code, sh] of Object.entries(row.short || {})) {
-      const price = getPriceOnDate(priceMapByCode, code, dateStr);
-      if (price != null && price > 0) {
-        totalMarketValue += sh.deposit + (sh.cost - price * sh.qty) - calcBrokerFee(price, sh.qty);
-      } else {
-        totalMarketValue += sh.deposit;
-      }
-    }
-    const totalAssets = totalMarketValue;
+    const totalAssets = markRowToMarket(row, priceMapByCode);
     const totalUnits = row.totalUnits;
     const nav = totalUnits > EPSILON ? totalAssets / totalUnits : (out.length ? out[out.length - 1].nav : INITIAL_NAV);
     out.push({ ...row, totalAssets, nav });
@@ -341,12 +373,14 @@ export function buildDailyNAVCurve(entries, todayStr, priceMapByCode = {}, optio
   const list = (entries || []).filter((e) => e.direction === 'BUY' || e.direction === 'SELL');
   if (list.length === 0) return [];
 
-  const firstDate = list.map((e) => (e.date || '').slice(0, 10)).filter(Boolean).sort()[0];
+  // 時間軸起點：第一筆交易或第一個對帳校正點（取早者）
+  const firstAdj = normalizeCashAdjustments(options.cashAdjustments)[0]?.date;
+  const firstDate = [...list.map((e) => (e.date || '').slice(0, 10)), firstAdj].filter(Boolean).sort()[0];
   if (!firstDate) return [];
 
   const timeline = getDailyTimeline(firstDate, todayStr);
   if (timeline.length === 0) return [];
 
-  const simulated = runDailySimulation(entries, timeline, { ...options, asOfDate: todayStr });
+  const simulated = runDailySimulation(entries, timeline, { ...options, asOfDate: todayStr }, priceMapByCode);
   return applyMarkToMarket(simulated, priceMapByCode);
 }

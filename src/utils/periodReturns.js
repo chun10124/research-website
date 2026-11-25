@@ -8,6 +8,7 @@
  *           回補(BUY) 入「釋放保證金 + 已實現損益」。
  *   - 每筆另扣當下付出的手續費、證交稅、融資利息、借券費（與 pnlCalculator 同一套規則）。
  *   - 除息日入帳現金股利（空單為補償支出）。
+ *   - 對帳校正（cashAdjustments）：某日收盤後現金＝券商餘額；與推算現金的差額記為入金／出金，之後從該餘額續算。
  *   ⇒ 開槓桿不會被誤判為入金，總資產 = 真實權益，曝險可正確 > 100%。
  *
  * 正確資產定義：
@@ -43,10 +44,31 @@ const TRADE_EPSILON = 1e-6;
  * 並維護各標的的融資／融券未平倉池，平倉時才知道要償還的借款／釋放的保證金。
  *
  * @param {Array} entries 交易日誌 entries（同 Firestore 格式）
- * @param {{ dividends?, asOfDate? }} options 除權息事件（見 pnlCalculator runLedger）
- * @returns {{ id, date, amount, type: 'deposit' }[]}  自動識別的入金清單
+ * @param {{ dividends?, asOfDate?, cashAdjustments? }} options 除權息事件（見 pnlCalculator runLedger）；
+ *        cashAdjustments: [{ date, balance }] 對帳校正（該日所有交易與除息之後，現金＝balance）
+ * @returns {{ id, date, amount, type: 'deposit'|'withdrawal', source?: 'calibration' }[]}  入金／出金清單
  */
 export function autoDetectCashFlows(entries, options = {}) {
+  return computeCashLedger(entries, options).flows;
+}
+
+/** 對帳校正點：過濾無效值、依日期升序（同日以最後一筆為準） */
+export function normalizeCashAdjustments(list) {
+  const byDate = new Map();
+  for (const a of list || []) {
+    const date = String(a?.date || '').slice(0, 10);
+    const balance = Number(a?.balance);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(balance) || balance < 0) continue;
+    byDate.set(date, { ...a, date, balance });
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * 同 autoDetectCashFlows，另回傳推算現金：
+ * @returns {{ flows, cashBalance, calibrations: { date, balance, before, diff }[] }}
+ */
+export function computeCashLedger(entries, options = {}) {
   const sorted = [...(entries || [])].sort((a, b) => {
     const da = new Date(a.date).getTime();
     const db = new Date(b.date).getTime();
@@ -81,10 +103,40 @@ export function autoDetectCashFlows(entries, options = {}) {
     cashBalance += cashDelta;
     cashBalance = Math.max(0, cashBalance); // 浮點數保護
   };
-  const applyDividendsUpTo = (dateStr) => {
-    while (nextDiv < dividendEffects.length && dividendEffects[nextDiv].date <= dateStr) {
-      const d = dividendEffects[nextDiv++];
-      applyCash(d.cash, d.date);
+  const adjustments = normalizeCashAdjustments(options.cashAdjustments);
+  let nextAdj = 0;
+  const calibrations = [];
+  // 對帳校正：現金拉到券商餘額，差額記為入金（正）或出金（負）
+  const applyCalibration = (a) => {
+    const before = cashBalance;
+    const diff = a.balance - before;
+    if (Math.abs(diff) > 0.5) {
+      deposits.push({
+        id: `cal-${a.date}`,
+        date: a.date,
+        amount: Math.round(Math.abs(diff) * 100) / 100,
+        type: diff > 0 ? 'deposit' : 'withdrawal',
+        source: 'calibration',
+      });
+    }
+    cashBalance = a.balance;
+    calibrations.push({ date: a.date, balance: a.balance, before, diff });
+  };
+  // 依日期推進：除息（含 dateStr 當日）與「早於 dateStr」的校正點，同日除息先於校正
+  const applyDividendsUpTo = (dateStr, { includeAdjOnDate = false } = {}) => {
+    for (;;) {
+      const d = nextDiv < dividendEffects.length ? dividendEffects[nextDiv] : null;
+      const a = nextAdj < adjustments.length ? adjustments[nextAdj] : null;
+      const aDue = a && (includeAdjOnDate ? a.date <= dateStr : a.date < dateStr);
+      const dDue = d && d.date <= dateStr;
+      if (aDue && (!dDue || a.date < d.date)) {
+        applyCalibration(adjustments[nextAdj++]);
+      } else if (dDue) {
+        nextDiv++;
+        applyCash(d.cash, d.date);
+      } else {
+        break;
+      }
     }
   };
 
@@ -150,9 +202,9 @@ export function autoDetectCashFlows(entries, options = {}) {
     cashDelta -= tradeCost(e);
     applyCash(cashDelta, (e.date || '').slice(0, 10));
   }
-  applyDividendsUpTo('9999-12-31');
+  applyDividendsUpTo('9999-12-31', { includeAdjOnDate: true });
 
-  return deposits;
+  return { flows: deposits, cashBalance, calibrations };
 }
 
 // ─── 基礎工具 ───────────────────────────────────────────────
