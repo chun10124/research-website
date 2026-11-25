@@ -13,6 +13,7 @@ import { PNL_COLOR, GOLDEN_BORDER_COLOR, formatQuantity, formatAvgCost, formatPn
 import { calculatePnlSummary, calcUnrealizedPnl, getStartDate, MARGIN_LONG_LOAN_RATIO, MARGIN_LONG_ANNUAL_RATE, MARGIN_SHORT_DEPOSIT_RATIO } from '../utils/pnlCalculator';
 import { computeCashLedger, getCumulativeCFUpTo } from '../utils/periodReturns';
 import { fetchCurrentPrice } from '../features/StockAnalysis/api/stockApi';
+import { useRealtimeQuotes } from '../features/StockAnalysis/api/realtimeQuotes';
 import useJournalDividends from './useJournalDividends';
 import {
   buildJournalNameMismatchReport,
@@ -68,8 +69,8 @@ function TradeJournal() {
   const [historyFilterRange, setHistoryFilterRange] = useState('ALL'); 
   const [historyFilterStock, setHistoryFilterStock] = useState('');
   const [pnlFilterStock, setPnlFilterStock] = useState(''); // 新增：損益區搜尋狀態
-  const [positionPrices, setPositionPrices] = useState({}); // code -> currentPrice，供未實現損益
-  const [positionPricesLoading, setPositionPricesLoading] = useState(false);
+  const [fetchedPrices, setFetchedPrices] = useState({}); // code -> 收盤價（Yahoo），即時價不可得時的備援
+  const [fetchedPricesLoading, setFetchedPricesLoading] = useState(false);
   /** 四位數代碼：API 成功帶入名稱後鎖定；失敗或非四位數則允許手動輸入名稱 */
   const [allowManualName, setAllowManualName] = useState(false);
   const [stockNameLoading, setStockNameLoading] = useState(false);
@@ -332,11 +333,11 @@ function TradeJournal() {
 
   useEffect(() => {
     if (positionCodes.length === 0) {
-      setPositionPrices({});
-      setPositionPricesLoading(false);
+      setFetchedPrices({});
+      setFetchedPricesLoading(false);
       return;
     }
-    setPositionPricesLoading(true);
+    setFetchedPricesLoading(true);
     Promise.all(positionCodes.map((code) => fetchCurrentPrice(code)))
       .then((results) => {
         const next = {};
@@ -344,10 +345,23 @@ function TradeJournal() {
           const res = results[i];
           if (res?.currentPrice != null) next[code] = res.currentPrice;
         });
-        setPositionPrices(next);
+        setFetchedPrices(next);
       })
-      .finally(() => setPositionPricesLoading(false));
+      .finally(() => setFetchedPricesLoading(false));
   }, [positionCodes.join(',')]);
+
+  // 盤中即時價（富邦，經 Worker；僅白名單登入者）優先於收盤價，與績效頁同一來源
+  const realtime = useRealtimeQuotes(positionCodes);
+  const positionPrices = useMemo(() => {
+    const m = { ...fetchedPrices };
+    positionCodes.forEach((code) => {
+      const p = realtime.prices[String(code).replace(/\.(TW|TWO)$/i, '')];
+      if (p > 0) m[code] = p;
+    });
+    return m;
+  }, [fetchedPrices, realtime.prices, positionCodes]);
+  // 開頁等第一筆即時價時視同載入中：不先秀收盤價，拿到即時價或逾時才顯示（同績效頁）
+  const positionPricesLoading = fetchedPricesLoading || (positionCodes.length > 0 && !realtime.ready);
 
   // 總未實現損益（淨額：已扣預估平倉手續費、證交稅與融資應計利息）
   const totalUnrealizedPnl = useMemo(() => {
